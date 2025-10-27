@@ -1,0 +1,123 @@
+# ADS-B 3D Viewer - Standalone Deployment Example
+#
+# This is a minimal example for deploying the 3D viewer as a standalone container
+# pointing to your existing ADS-B feeder (ultrafeeder, readsb, tar1090, etc.)
+#
+# Quick Start:
+# 1. Copy this file: cp docker-compose.example.yml docker-compose.yml
+# 2. Edit the environment variables below with your coordinates and feeder
+# 3. Run: docker compose up -d
+# 4. Access: http://your-server:8086
+
+version: '3.8'
+
+services:
+  adsb-3d:
+    # TODO: Replace with published image when available
+    # image: ghcr.io/username/adsb-3d:latest
+    build: .
+    container_name: adsb-3d
+    hostname: adsb-3d
+    restart: unless-stopped
+
+    environment:
+      # ===================================================================
+      # REQUIRED: Your Station Location
+      # ===================================================================
+      - LATITUDE=45.0000                 # Your latitude (decimal degrees)
+      - LONGITUDE=-90.0000               # Your longitude (decimal degrees)
+      - ALTITUDE=1234                    # Your altitude (feet MSL)
+      - LOCATION_NAME=My Home Station    # Display name for your station
+
+      # ===================================================================
+      # REQUIRED: Your ADS-B Feeder
+      # ===================================================================
+      # URL or hostname of your ADS-B feeder
+      # Works with: ultrafeeder, readsb, tar1090, dump1090, etc.
+      # Must expose the standard /data/aircraft.json endpoint
+      #
+      # Examples:
+      #   - FEEDER_URL=http://ultrafeeder        # Docker service name
+      #   - FEEDER_URL=http://192.168.1.50:8080  # External IP/port
+      #   - FEEDER_URL=https://adsb.example.com  # External domain
+      #
+      - FEEDER_URL=http://ultrafeeder    # Change to your feeder's URL
+
+      # ===================================================================
+      # OPTIONAL: Base Path for Reverse Proxy
+      # ===================================================================
+      # Leave blank for auto-detection, or set explicitly
+      # Examples:
+      #   - BASE_PATH=/3d         # For example.com/3d
+      #   - BASE_PATH=/adsb       # For example.com/adsb
+      #   - BASE_PATH=            # For root domain (adsb3d.example.com)
+      # - BASE_PATH=
+
+      # ===================================================================
+      # OPTIONAL: Historical Mode (Advanced)
+      # ===================================================================
+      # Enable/disable historical mode UI (default: true)
+      # true  = Show historical UI, auto-detect Track API at /api/health
+      # false = Live-only mode
+      # Requires: Track API service running (see README for setup)
+      # - ENABLE_HISTORICAL=true
+
+      # ===================================================================
+      # OPTIONAL: Timezone
+      # ===================================================================
+      - TZ=America/Chicago
+
+    ports:
+      - "8086:80"                        # Web interface
+
+    # ===================================================================
+    # OPTIONAL: Docker Networks
+    # ===================================================================
+    # If your feeder is on a custom network, add it here:
+    # networks:
+    #   - your_network_name
+
+    # ===================================================================
+    # OPTIONAL: Health Check
+    # ===================================================================
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    labels:
+      # Optional: Homepage Dashboard integration
+      - "homepage.enable=true"
+      - "homepage.name=ADS-B 3D"
+      - "homepage.group=Aviation"
+      - "homepage.icon=mdi-airplane-takeoff"
+      - "homepage.href=http://your-server:8086"
+      - "homepage.description=3D Aircraft Visualization"
+
+# ===================================================================
+# NETWORKS
+# ===================================================================
+# Uncomment if you need to connect to an existing Docker network
+# networks:
+#   your_network_name:
+#     external: true
+
+# ===================================================================
+# DEPLOYMENT SCENARIOS
+# ===================================================================
+#
+# Scenario 1: Root Domain (adsb3d.example.com)
+# - Don't set BASE_PATH (auto-detects as root)
+# - Reverse proxy: proxy_pass http://adsb-3d:80;
+#
+# Scenario 2: Subdirectory (example.com/3d)
+# - Don't set BASE_PATH (auto-detects /3d, /adsb, /adsb-3d)
+# - Reverse proxy: location /3d { proxy_pass http://adsb-3d:80; }
+#
+# Scenario 3: Custom Subdirectory (example.com/mypath)
+# - Set BASE_PATH=/mypath
+# - Reverse proxy: location /mypath { proxy_pass http://adsb-3d:80; }
+#
+# See README.md for detailed reverse proxy configurations

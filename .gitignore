@@ -1,0 +1,45 @@
+# Environment configuration (contains sensitive data)
+.env
+
+# Docker volumes and persistent data
+timescaledb/data/
+ultrafeeder/
+prometheus/
+
+# Build artifacts
+*.log
+*.tmp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node modules (if developing locally)
+node_modules/
+
+# Testing and development
+test/
+*.test.js
+coverage/
+
+# Backup files
+*.bak
+*.backup
+*.sql.gz
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Development/AI documentation (not for public repos)
+CLAUDE.md
+.claude/
+docs/
