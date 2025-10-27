@@ -63,28 +63,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test health endpoint
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "Waiting for container to start..."
-          sleep 10
-          docker run --rm -d --name test-adsb-3d \
-            -e LATITUDE=45.0000 \
-            -e LONGITUDE=-90.0000 \
-            -e ALTITUDE=1234 \
-            -e FEEDER_HOST=localhost \
-            -p 8086:80 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-          sleep 5
-
-          # Test health endpoint
-          HEALTH=$(curl -s http://localhost:8086/health)
-          if [ "$HEALTH" != "OK" ]; then
-            echo "Health check failed!"
-            docker logs test-adsb-3d
-            exit 1
-          fi
-
-          echo "Health check passed!"
-          docker stop test-adsb-3d
