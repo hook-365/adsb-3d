@@ -1,6 +1,9 @@
 # Environment configuration (contains sensitive data)
 .env
 
+# Local docker-compose for testing (use docker-compose.example.yml as template)
+docker-compose.yml
+
 # Docker volumes and persistent data
 timescaledb/data/
 ultrafeeder/

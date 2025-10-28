@@ -42,7 +42,7 @@ window.ADSB_CONFIG = {
 };
 
 // Historical mode configuration
-// When enabled, expects track-api service to be running
+// When enabled, expects track-service to be running
 window.HISTORICAL_CONFIG = {
     enabled: ${ENABLE_HISTORICAL:-true}
 };
@@ -61,7 +61,7 @@ fi
 if [ "${ENABLE_HISTORICAL}" = "false" ]; then
     echo "Historical mode disabled - running in live-only mode"
 else
-    echo "Historical mode enabled - Track API will be auto-detected at /api/health"
+    echo "Historical mode enabled - Track Service will be auto-detected at /api/health"
 fi
 
 # Parse FEEDER_URL to extract hostname for nginx
@@ -84,8 +84,8 @@ else
 fi
 
 # Set default TRACK_API_HOST if not provided (for nginx proxy)
-export TRACK_API_HOST=${TRACK_API_HOST:-track-api:8000}
-echo "Track API host for proxy: ${TRACK_API_HOST}"
+export TRACK_API_HOST=${TRACK_API_HOST:-track-service:8000}
+echo "Track Service host for proxy: ${TRACK_API_HOST}"
 
 # Replace environment variables in nginx config
 envsubst '${FEEDER_HOST} ${TRACK_API_HOST}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
