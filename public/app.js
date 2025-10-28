@@ -948,8 +948,18 @@ const URLState = {
                 await switchToHistoricalMode();
 
                 // Set preset or custom mode with validation
-                if (urlParams.preset && urlParams.preset !== 'custom') {
-                    // Validate preset value
+                // IMPORTANT: If explicit start/end times are provided, use custom mode (they take priority)
+                if (urlParams.start && urlParams.end) {
+                    // Explicit times provided - use custom mode
+                    const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
+                    if (customRadio) {
+                        customRadio.checked = true;
+                        const customRange = document.getElementById('custom-time-range');
+                        if (customRange) customRange.style.display = 'block';
+                    }
+                    console.log('[URL State] Using custom time mode due to explicit start/end in URL');
+                } else if (urlParams.preset && urlParams.preset !== 'custom') {
+                    // No explicit times, but preset is provided
                     const validPresets = ['1', '4', '8', '12', '24'];
                     if (validPresets.includes(urlParams.preset)) {
                         const presetRadio = document.querySelector(`input[name="time-preset"][value="${urlParams.preset}"]`);
@@ -962,7 +972,7 @@ const URLState = {
                         console.warn('[URL State] Invalid preset value:', urlParams.preset, '- using custom');
                     }
                 } else {
-                    // Select custom mode
+                    // Default to custom mode
                     const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
                     if (customRadio) {
                         customRadio.checked = true;
@@ -976,6 +986,19 @@ const URLState = {
                 const endTimeInput = document.getElementById('end-time');
                 if (startTimeInput) startTimeInput.value = urlParams.start;
                 if (endTimeInput) endTimeInput.value = urlParams.end;
+
+                // CRITICAL: Also update HistoricalState directly since setting the preset radio
+                // may have triggered the change event which calculates times from NOW
+                // We need to override those with the explicit URL times
+                if (urlParams.start && urlParams.end) {
+                    const startDate = new Date(urlParams.start);
+                    const endDate = new Date(urlParams.end);
+                    if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                        HistoricalState.settings.startTime = startDate;
+                        HistoricalState.settings.endTime = endDate;
+                        console.log('[URL State] Set HistoricalState times from URL:', { start: startDate, end: endDate });
+                    }
+                }
 
                 // Apply tron mode if specified
                 if (urlParams.tron === '1' || urlParams.tron === 'true') {
@@ -2885,6 +2908,16 @@ function setupHistoricalControls() {
 
     // Load Data button click handler
     loadButton.addEventListener('click', async () => {
+        // Read current time inputs (in case they were set by URL state without triggering change events)
+        if (startTimeInput.value) {
+            HistoricalState.settings.startTime = new Date(startTimeInput.value);
+            console.log('[Historical] Synced startTime from input:', HistoricalState.settings.startTime);
+        }
+        if (endTimeInput.value) {
+            HistoricalState.settings.endTime = new Date(endTimeInput.value);
+            console.log('[Historical] Synced endTime from input:', HistoricalState.settings.endTime);
+        }
+
         // Validate time range
         if (!HistoricalState.settings.startTime || !HistoricalState.settings.endTime) {
             statusDiv.innerHTML = '⚠️ Please select both start and end times';
