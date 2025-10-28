@@ -96,6 +96,23 @@ services:
       - "homepage.href=http://your-server:8086"
       - "homepage.description=3D Aircraft Visualization"
 
+  # ===================================================================
+  # OPTIONAL: TimescaleDB for Historical Data Storage
+  # ===================================================================
+  # Uncomment to add historical track storage
+  # timescaledb-adsb:
+  #   image: timescale/timescaledb:latest-pg16
+  #   container_name: timescaledb-adsb
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_DB=adsb_tracks
+  #     - POSTGRES_USER=adsb
+  #     - POSTGRES_PASSWORD=changeme123
+  #   volumes:
+  #     - ./timescaledb/data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5433:5432"
+
 # ===================================================================
 # NETWORKS
 # ===================================================================
@@ -103,6 +120,17 @@ services:
 # networks:
 #   your_network_name:
 #     external: true
+
+# ===================================================================
+# DATA STORAGE
+# ===================================================================
+# If using TimescaleDB, historical aircraft tracks are stored in:
+#   ./timescaledb/data/
+#
+# Backup regularly! Typical disk usage:
+#   - Light traffic (10-20 aircraft): ~100MB/day
+#   - Moderate traffic (50-100 aircraft): ~500MB/day
+#   - Heavy traffic (200+ aircraft): ~2GB/day
 
 # ===================================================================
 # DEPLOYMENT SCENARIOS
