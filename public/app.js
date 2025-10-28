@@ -2391,24 +2391,24 @@ function applyHistoricalFilters() {
             visible = false;
         }
 
-        // Altitude filter (check if ANY position is in range)
+        // Altitude filter (exclude if ANY position is outside range)
         if (track.positions && track.positions.length > 0) {
-            const hasValidAltitude = track.positions.some(pos => {
+            const allAltitudesInRange = track.positions.every(pos => {
                 const alt = pos.alt || pos.altitude || 0;
                 return alt >= minAlt && alt <= maxAlt;
             });
-            if (!hasValidAltitude) {
+            if (!allAltitudesInRange) {
                 visible = false;
             }
         }
 
-        // Speed filter (check if ANY position has speed in range)
+        // Speed filter (check if ALL positions have speed in range)
         if (track.positions && track.positions.length > 0) {
-            const hasValidSpeed = track.positions.some(pos => {
+            const allSpeedsInRange = track.positions.every(pos => {
                 const speed = pos.gs || pos.speed || 0;
                 return speed >= minSpeed && speed <= maxSpeed;
             });
-            if (!hasValidSpeed) {
+            if (!allSpeedsInRange) {
                 visible = false;
             }
         }
