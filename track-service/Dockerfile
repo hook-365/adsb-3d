@@ -5,6 +5,8 @@ WORKDIR /app
 # Install build dependencies for Python packages with C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
+    make \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -13,7 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Remove build dependencies to reduce image size
-RUN apt-get purge -y --auto-remove gcc libc6-dev
+RUN apt-get purge -y --auto-remove gcc g++ make libc6-dev
 
 # Copy application
 COPY main.py .
