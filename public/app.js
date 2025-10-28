@@ -916,7 +916,7 @@ const URLState = {
                 // Check if Track API is available
                 if (!AppFeatures.historical) {
                     console.warn('[URL State] Historical mode requested but Track API not available - falling back to live mode');
-                    await switchToLiveMode();
+                    await switchToLiveMode(true); // Skip URL update when loading from URL
                     return false;
                 }
 
@@ -929,7 +929,7 @@ const URLState = {
                     console.error('[URL State] Invalid date format in URL - falling back to live mode');
                     console.error('[URL State] Start:', urlParams.start, '→', startDate);
                     console.error('[URL State] End:', urlParams.end, '→', endDate);
-                    await switchToLiveMode();
+                    await switchToLiveMode(true); // Skip URL update when loading from URL
                     return false;
                 }
 
@@ -939,7 +939,7 @@ const URLState = {
 
                 if (startDate > now) {
                     console.warn('[URL State] Start time is in the future - falling back to live mode');
-                    await switchToLiveMode();
+                    await switchToLiveMode(true); // Skip URL update when loading from URL
                     return false;
                 }
 
@@ -954,12 +954,12 @@ const URLState = {
 
                 if (endDate <= startDate) {
                     console.error('[URL State] End time is before or equal to start time - falling back to live mode');
-                    await switchToLiveMode();
+                    await switchToLiveMode(true); // Skip URL update when loading from URL
                     return false;
                 }
 
-                // Switch to historical mode first
-                await switchToHistoricalMode();
+                // Switch to historical mode first (skip URL update - we'll do it after loading data)
+                await switchToHistoricalMode(true);
 
                 // Set preset or custom mode with validation
                 // IMPORTANT: If explicit start/end times are provided, use custom mode (they take priority)
@@ -1116,7 +1116,7 @@ const URLState = {
 
             // Mode is explicitly 'live' or unrecognized
             if (urlParams.mode === 'live') {
-                await switchToLiveMode();
+                await switchToLiveMode(true); // Skip URL update when loading from URL
                 console.log('[URL State] Applied live mode from URL');
                 return true;
             }
@@ -1131,7 +1131,7 @@ const URLState = {
 
             // Try to recover by switching to live mode
             try {
-                await switchToLiveMode();
+                await switchToLiveMode(true); // Skip URL update when recovering from error
             } catch (recoveryError) {
                 console.error('[URL State] Failed to recover to live mode:', recoveryError);
             }
@@ -3004,11 +3004,11 @@ function setupHistoricalControls() {
             // Better error messages based on error type
             let errorMessage = '❌ ';
             if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                errorMessage += 'Cannot reach Track API. Check if track-api container is running.';
+                errorMessage += 'Cannot reach Track Service. Check if track-service container is running.';
             } else if (error.message.includes('404')) {
-                errorMessage += 'Track API endpoint not found. Check API version.';
+                errorMessage += 'Track Service endpoint not found. Check API version.';
             } else if (error.message.includes('500')) {
-                errorMessage += 'Track API error. Check track-api logs for details.';
+                errorMessage += 'Track Service error. Check track-service logs for details.';
             } else if (error.message.includes('timeout')) {
                 errorMessage += 'Request timed out. Try a smaller time range.';
             } else {
@@ -3120,10 +3120,11 @@ function setupHistoricalControls() {
             URLState.updateFromCurrentState();
 
             if (HistoricalState.tronMode) {
-                // Create curtains for all existing tracks
+                // Create curtains only for visible tracks (those in the scene)
                 let curtainsCreated = 0;
-                HistoricalState.trackMeshes.forEach(({trail}) => {
-                    if (trail && trail.positions.length > 1) {
+                HistoricalState.trackMeshes.forEach(({line, trail}) => {
+                    // Only create curtain if the track line is visible (in the scene)
+                    if (line && line.parent && trail && trail.positions.length > 1) {
                         updateTronCurtain(trail);
                         curtainsCreated++;
                     }
@@ -3249,7 +3250,7 @@ function clearLiveAircraft() {
 }
 
 // Switch to live mode
-async function switchToLiveMode() {
+async function switchToLiveMode(skipURLUpdate = false) {
     if (currentMode === 'live') return;
 
     console.log('[Mode] Switching to Live mode');
@@ -3287,6 +3288,12 @@ async function switchToLiveMode() {
         liveOptionsSection.style.display = 'block';
     }
 
+    // Update mode button active states
+    const liveModeBtn = document.getElementById('live-mode-btn');
+    const historicalModeBtn = document.getElementById('historical-mode-btn');
+    if (liveModeBtn) liveModeBtn.classList.add('active');
+    if (historicalModeBtn) historicalModeBtn.classList.remove('active');
+
     // Start live updates
     if (!liveUpdateInterval) {
         fetchAircraftData();
@@ -3302,12 +3309,14 @@ async function switchToLiveMode() {
     await new Promise(resolve => setTimeout(resolve, 150));
     renderer.domElement.classList.remove('fading');
 
-    // Update URL to reflect live mode
-    URLState.updateFromCurrentState();
+    // Update URL to reflect live mode (unless loading from URL)
+    if (!skipURLUpdate) {
+        URLState.updateFromCurrentState();
+    }
 }
 
 // Switch to historical mode
-async function switchToHistoricalMode() {
+async function switchToHistoricalMode(skipURLUpdate = false) {
     if (currentMode === 'historical') return;
 
     console.log('[Mode] Switching to Historical mode');
@@ -3355,6 +3364,12 @@ async function switchToHistoricalMode() {
         infoPanel.style.display = 'none';
     }
 
+    // Update mode button active states
+    const liveModeBtn = document.getElementById('live-mode-btn');
+    const historicalModeBtn = document.getElementById('historical-mode-btn');
+    if (historicalModeBtn) historicalModeBtn.classList.add('active');
+    if (liveModeBtn) liveModeBtn.classList.remove('active');
+
     // Show historical controls panel
     const historicalControls = document.getElementById('historical-controls');
     if (historicalControls) {
@@ -3378,8 +3393,10 @@ async function switchToHistoricalMode() {
     await new Promise(resolve => setTimeout(resolve, 150));
     renderer.domElement.classList.remove('fading');
 
-    // Update URL to reflect historical mode (without dates yet - user needs to load data)
-    URLState.updateFromCurrentState();
+    // Update URL to reflect historical mode (unless loading from URL)
+    if (!skipURLUpdate) {
+        URLState.updateFromCurrentState();
+    }
 }
 
 // Setup mode button event listeners
