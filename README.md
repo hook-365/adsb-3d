@@ -17,20 +17,20 @@ Real-time and historical 3D visualization of ADS-B aircraft data with 7 visual t
 
 ## Quick Start
 
-### Basic Deployment
+### Using Published Image (Recommended)
 
-The simplest way to run this container:
+The easiest way to run the container using the pre-built image from GitHub Container Registry:
 
 ```yaml
 services:
   adsb-3d:
-    build: ./adsb-3d
+    image: ghcr.io/hook-365/adsb-3d:latest
     container_name: adsb-3d
     restart: unless-stopped
     environment:
       # Your station location (required)
-      - LATITUDE=45
-      - LONGITUDE=-90
+      - LATITUDE=45.0000
+      - LONGITUDE=-90.0000
       - ALTITUDE=1000
       - LOCATION_NAME=My Station
 
@@ -47,6 +47,50 @@ services:
 ```
 
 Access at: `http://your-server:8086`
+
+### Building Locally
+
+If you prefer to build the image yourself:
+
+```yaml
+services:
+  adsb-3d:
+    build: .
+    container_name: adsb-3d
+    restart: unless-stopped
+    environment:
+      - LATITUDE=45.0000
+      - LONGITUDE=-90.0000
+      - ALTITUDE=1000
+      - LOCATION_NAME=My Station
+      - FEEDER_URL=http://ultrafeeder
+    ports:
+      - "8086:80"
+```
+
+Then build and run:
+```bash
+docker compose build
+docker compose up -d
+```
+
+### Quick Docker Run
+
+If you just want to test it quickly without docker-compose:
+
+```bash
+docker run -d \
+  --name adsb-3d \
+  -e LATITUDE=45.0000 \
+  -e LONGITUDE=-90.0000 \
+  -e ALTITUDE=1000 \
+  -e LOCATION_NAME="My Station" \
+  -e FEEDER_URL=http://ultrafeeder \
+  -p 8086:80 \
+  ghcr.io/hook-365/adsb-3d:latest
+```
+
+Then access at `http://your-server:8086`
 
 ### Deployment Modes
 
