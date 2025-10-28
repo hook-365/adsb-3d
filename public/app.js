@@ -802,7 +802,7 @@ const URLState = {
      */
     getParams() {
         const params = new URLSearchParams(window.location.search);
-        return {
+        const result = {
             // Mode
             mode: params.get('mode'), // 'live' or 'historical'
 
@@ -838,6 +838,20 @@ const URLState = {
             // Selected aircraft
             icao: params.get('icao') // ICAO hex code
         };
+
+        // Debug logging
+        if (result.start || result.end || result.preset) {
+            console.log('[URL State] Extracted parameters:', {
+                start: result.start,
+                end: result.end,
+                preset: result.preset,
+                mode: result.mode,
+                altmax: result.altmax,
+                minpos: result.minpos
+            });
+        }
+
+        return result;
     },
 
     /**
@@ -991,13 +1005,19 @@ const URLState = {
                 // may have triggered the change event which calculates times from NOW
                 // We need to override those with the explicit URL times
                 if (urlParams.start && urlParams.end) {
+                    console.log('[URL State] Attempting to set times from URL:', { urlStart: urlParams.start, urlEnd: urlParams.end });
                     const startDate = new Date(urlParams.start);
                     const endDate = new Date(urlParams.end);
+                    console.log('[URL State] Parsed dates:', { startDate, endDate, startValid: !isNaN(startDate.getTime()), endValid: !isNaN(endDate.getTime()) });
                     if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
                         HistoricalState.settings.startTime = startDate;
                         HistoricalState.settings.endTime = endDate;
-                        console.log('[URL State] Set HistoricalState times from URL:', { start: startDate, end: endDate });
+                        console.log('[URL State] ✓ Set HistoricalState times from URL:', { start: startDate.toISOString(), end: endDate.toISOString() });
+                    } else {
+                        console.warn('[URL State] ✗ Failed to parse dates from URL');
                     }
+                } else {
+                    console.log('[URL State] No explicit start/end in URL (start=' + urlParams.start + ', end=' + urlParams.end + ')');
                 }
 
                 // Apply tron mode if specified
