@@ -1003,7 +1003,12 @@ const URLState = {
                     const altMax = parseInt(urlParams.altmax);
                     if (!isNaN(altMax) && altMax >= 0 && altMax <= 60000) {
                         const input = document.getElementById('filter-altitude-max');
-                        if (input) input.value = altMax;
+                        if (input) {
+                            input.value = altMax;
+                            console.log('[URL State] Set altmax filter to:', altMax, '(input element exists:', !!input, ')');
+                        } else {
+                            console.warn('[URL State] Could not find filter-altitude-max input element');
+                        }
                     } else {
                         console.warn('[URL State] Invalid altmax value:', urlParams.altmax);
                     }
@@ -1013,7 +1018,12 @@ const URLState = {
                     const minPos = parseInt(urlParams.minpos);
                     if (!isNaN(minPos) && minPos >= 2 && minPos <= 10000) {
                         const input = document.getElementById('filter-min-positions');
-                        if (input) input.value = minPos;
+                        if (input) {
+                            input.value = minPos;
+                            console.log('[URL State] Set minpos filter to:', minPos);
+                        } else {
+                            console.warn('[URL State] Could not find filter-min-positions input element');
+                        }
                     } else {
                         console.warn('[URL State] Invalid minpos value:', urlParams.minpos);
                     }
@@ -2366,13 +2376,28 @@ function applyHistoricalFilters() {
 
     // Get filter values
     const militaryOnly = document.getElementById('filter-military-only').checked;
-    const minAlt = parseInt(document.getElementById('filter-altitude-min').value) || 0;
-    const maxAlt = parseInt(document.getElementById('filter-altitude-max').value) || 999999;
-    const minPositions = parseInt(document.getElementById('filter-min-positions').value) || 0;
-    const minSpeed = parseInt(document.getElementById('filter-speed-min').value) || 0;
-    const maxSpeed = parseInt(document.getElementById('filter-speed-max').value) || 999999;
+    const altMinInput = document.getElementById('filter-altitude-min');
+    const altMaxInput = document.getElementById('filter-altitude-max');
+    const minPosInput = document.getElementById('filter-min-positions');
+    const spdMinInput = document.getElementById('filter-speed-min');
+    const spdMaxInput = document.getElementById('filter-speed-max');
 
-    console.log('[Historical] Filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
+    const minAlt = parseInt(altMinInput?.value) || 0;
+    const maxAlt = parseInt(altMaxInput?.value) || 999999;
+    const minPositions = parseInt(minPosInput?.value) || 0;
+    const minSpeed = parseInt(spdMinInput?.value) || 0;
+    const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
+
+    // Debug: Log raw input values to help troubleshoot
+    console.log('[Historical] DOM input values:', {
+        'filter-altitude-min': altMinInput?.value,
+        'filter-altitude-max': altMaxInput?.value,
+        'filter-min-positions': minPosInput?.value,
+        'filter-speed-min': spdMinInput?.value,
+        'filter-speed-max': spdMaxInput?.value
+    });
+
+    console.log('[Historical] Parsed filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
 
     let visibleCount = 0;
     let hiddenCount = 0;
