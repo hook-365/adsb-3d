@@ -2422,6 +2422,12 @@ function applyHistoricalFilters() {
 
     let visibleCount = 0;
     let hiddenCount = 0;
+    let filterBreakdown = {
+        military: 0,
+        minPositions: 0,
+        altitude: 0,
+        speed: 0
+    };
 
     // Apply filters to each track mesh
     HistoricalState.trackMeshes.forEach(({ line, points, track, instanceIndices, endpointMesh, trail }, icao) => {
@@ -2430,21 +2436,31 @@ function applyHistoricalFilters() {
         // Military filter
         if (militaryOnly && !track.is_military) {
             visible = false;
+            filterBreakdown.military++;
         }
 
         // Minimum positions filter
         if (track.positions && track.positions.length < minPositions) {
             visible = false;
+            filterBreakdown.minPositions++;
         }
 
         // Altitude filter (exclude if ANY position is outside range)
         if (track.positions && track.positions.length > 0) {
+            const altitudeList = track.positions.map(p => p.alt || p.altitude || 0);
+            const altMin = Math.min(...altitudeList);
+            const altMax = Math.max(...altitudeList);
             const allAltitudesInRange = track.positions.every(pos => {
                 const alt = pos.alt || pos.altitude || 0;
                 return alt >= minAlt && alt <= maxAlt;
             });
             if (!allAltitudesInRange) {
                 visible = false;
+                filterBreakdown.altitude++;
+                // Log first few failures for debugging
+                if (filterBreakdown.altitude <= 3) {
+                    console.log(`[Historical] Altitude filter rejected track: alt range ${altMin}-${altMax} not in ${minAlt}-${maxAlt}`);
+                }
             }
         }
 
@@ -2456,6 +2472,7 @@ function applyHistoricalFilters() {
             });
             if (!allSpeedsInRange) {
                 visible = false;
+                filterBreakdown.speed++;
             }
         }
 
@@ -2491,6 +2508,7 @@ function applyHistoricalFilters() {
     });
 
     console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
+    console.log('[Historical] Filter breakdown:', filterBreakdown);
 
     // Update status
     const statusDiv = document.getElementById('historical-status');
