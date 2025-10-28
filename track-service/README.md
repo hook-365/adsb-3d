@@ -67,3 +67,9 @@ When the container stops:
 1. Collector receives stop signal
 2. Collector completes current cycle
 3. Database pool closes cleanly
+
+## Credits
+
+- **Mictronics readsb-protobuf**: Military aircraft database (GPL-3.0)
+  - Source: https://github.com/Mictronics/readsb-protobuf
+  - Database file: `webapp/src/db/aircrafts.json`

@@ -289,5 +289,6 @@ MIT License
 
 - **Three.js**: 3D rendering engine
 - **tar1090**: ADS-B altitude color scheme
+- **Mictronics readsb-protobuf**: Military aircraft database (GPL-3.0)
 - **sdr-enthusiasts**: Ultrafeeder Docker image
 - **airport-data.com**: Aircraft images
