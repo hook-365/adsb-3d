@@ -1,0 +1,286 @@
+# ADS-B 3D Viewer - Full Historical Stack
+#
+# This example shows the complete deployment with historical track storage and playback.
+# Includes: 3D Viewer, TimescaleDB, Track Collector, and Track API
+#
+# Quick Start:
+# 1. Copy this file: cp docker-compose.full.yml docker-compose.yml
+# 2. Create a .env file with your settings (see .env.example)
+# 3. Run: docker compose up -d
+# 4. Access: http://your-server:8086
+
+version: '3.8'
+
+services:
+  # ===================================================================
+  # ADS-B 3D Viewer - Web Interface
+  # ===================================================================
+  adsb-3d:
+    image: ghcr.io/hook-365/adsb-3d:latest
+    container_name: adsb-3d
+    hostname: adsb-3d
+    restart: unless-stopped
+
+    environment:
+      # ===================================================================
+      # REQUIRED: Your Station Location
+      # ===================================================================
+      - LATITUDE=${LATITUDE:-45.0000}
+      - LONGITUDE=${LONGITUDE:-90.0000}
+      - ALTITUDE=${ALTITUDE:-1000}
+      - LOCATION_NAME=${LOCATION_NAME:-My Station}
+
+      # ===================================================================
+      # REQUIRED: Your ADS-B Feeder
+      # ===================================================================
+      # URL or hostname of your ADS-B feeder (ultrafeeder, readsb, tar1090, dump1090, etc.)
+      # Must expose the standard /data/aircraft.json endpoint
+      #
+      # Examples:
+      #   - FEEDER_URL=http://ultrafeeder        # Docker service name
+      #   - FEEDER_URL=http://192.168.1.50:8080  # External IP/port
+      #   - FEEDER_URL=https://adsb.example.com  # External domain
+      #
+      - FEEDER_URL=${FEEDER_URL:-http://ultrafeeder}
+
+      # ===================================================================
+      # OPTIONAL: Historical Mode (default: true)
+      # ===================================================================
+      # true  = Show historical UI, auto-detect Track API
+      # false = Live-only mode (no historical features)
+      - ENABLE_HISTORICAL=${ENABLE_HISTORICAL:-true}
+
+      # ===================================================================
+      # OPTIONAL: Timezone
+      # ===================================================================
+      - TZ=${TZ:-UTC}
+
+    ports:
+      - "8086:80"  # 3D Viewer web interface
+
+    networks:
+      - adsb-network
+
+    depends_on:
+      - track-api
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    labels:
+      - "homepage.enable=true"
+      - "homepage.name=ADS-B 3D"
+      - "homepage.group=Aviation"
+      - "homepage.icon=mdi-airplane-takeoff"
+      - "homepage.href=http://your-server:8086"
+      - "homepage.description=3D Aircraft Visualization"
+
+  # ===================================================================
+  # TimescaleDB - Time-Series Database for Aircraft Tracks
+  # ===================================================================
+  timescaledb-adsb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: timescaledb-adsb
+    hostname: timescaledb-adsb
+    restart: unless-stopped
+
+    environment:
+      - POSTGRES_DB=adsb_tracks
+      - POSTGRES_USER=adsb
+      - POSTGRES_PASSWORD=${TIMESCALEDB_PASSWORD:-changeme123}
+      - TZ=${TZ:-UTC}
+      - TIMESCALEDB_TELEMETRY=off
+
+    ports:
+      # Optional: External access for debugging/backup
+      # Comment out if not needed
+      - "5433:5432"
+
+    volumes:
+      # CRITICAL: Persistent storage for aircraft track history
+      # Change './timescaledb/data' to your preferred storage location
+      - ./timescaledb/data:/var/lib/postgresql/data
+
+      # Optional: Initialization scripts (creates hypertables, indexes, etc.)
+      # Uncomment if you have custom init scripts
+      # - ./timescaledb/init:/docker-entrypoint-initdb.d
+
+    networks:
+      - adsb-network
+
+    # Performance tuning for time-series workload
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - default_statistics_target=100
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - work_mem=8MB
+      - -c
+      - min_wal_size=1GB
+      - -c
+      - max_wal_size=4GB
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adsb -d adsb_tracks"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ===================================================================
+  # Track Collector - Continuously Collects Aircraft Positions
+  # ===================================================================
+  track-collector:
+    image: ghcr.io/hook-365/adsb-track-collector:latest
+    container_name: track-collector
+    hostname: track-collector
+    restart: unless-stopped
+
+    environment:
+      # Database connection
+      - DATABASE_URL=postgresql://adsb:${TIMESCALEDB_PASSWORD:-changeme123}@timescaledb-adsb:5432/adsb_tracks
+
+      # Data source (your ADS-B feeder)
+      - FEEDER_URL=${FEEDER_URL:-http://ultrafeeder}
+
+      # Collection interval (seconds)
+      - COLLECTION_INTERVAL=${COLLECTION_INTERVAL:-5}
+
+      - TZ=${TZ:-UTC}
+
+    networks:
+      - adsb-network
+
+    depends_on:
+      timescaledb-adsb:
+        condition: service_healthy
+
+    # Restart policy in case of database connection issues
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  # ===================================================================
+  # Track API - REST API for Historical Track Queries
+  # ===================================================================
+  track-api:
+    image: ghcr.io/hook-365/adsb-track-api:latest
+    container_name: track-api
+    hostname: track-api
+    restart: unless-stopped
+
+    environment:
+      # Database connection
+      - DATABASE_URL=postgresql://adsb:${TIMESCALEDB_PASSWORD:-changeme123}@timescaledb-adsb:5432/adsb_tracks
+
+      # API configuration
+      - MAX_TRACKS_PER_QUERY=${MAX_TRACKS_PER_QUERY:-10000}
+      - QUERY_TIMEOUT_SECONDS=${QUERY_TIMEOUT_SECONDS:-60}
+
+      - TZ=${TZ:-UTC}
+
+    ports:
+      # Optional: Direct API access for debugging
+      # Comment out if not needed (3D viewer proxies through nginx)
+      - "8087:8000"
+
+    networks:
+      - adsb-network
+
+    depends_on:
+      timescaledb-adsb:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# ===================================================================
+# NETWORKS
+# ===================================================================
+networks:
+  adsb-network:
+    driver: bridge
+
+# ===================================================================
+# DATA PERSISTENCE
+# ===================================================================
+# TimescaleDB Volume:
+#   - Location: ./timescaledb/data
+#   - Contains: All aircraft position history
+#   - Size: Grows over time (depends on aircraft traffic and retention period)
+#   - Backup: Recommended to backup this directory regularly
+#
+# Typical disk usage:
+#   - ~100MB per day for light traffic (10-20 aircraft)
+#   - ~500MB per day for moderate traffic (50-100 aircraft)
+#   - ~2GB per day for heavy traffic (200+ aircraft)
+#
+# Data retention can be configured in the database (see README for SQL commands)
+
+# ===================================================================
+# ENVIRONMENT VARIABLES (.env file)
+# ===================================================================
+# Create a .env file in the same directory with these variables:
+#
+# # Station Location (required)
+# LATITUDE=45.0000
+# LONGITUDE=-90.0000
+# ALTITUDE=1000
+# LOCATION_NAME=My Station
+#
+# # Feeder Configuration (required)
+# FEEDER_URL=http://ultrafeeder
+#
+# # Database Password (required)
+# TIMESCALEDB_PASSWORD=your_secure_password_here
+#
+# # Optional Settings
+# TZ=America/Chicago
+# ENABLE_HISTORICAL=true
+# COLLECTION_INTERVAL=5
+# MAX_TRACKS_PER_QUERY=10000
+# QUERY_TIMEOUT_SECONDS=60
+
+# ===================================================================
+# DEPLOYMENT NOTES
+# ===================================================================
+# 1. First deployment will initialize the database (takes ~30 seconds)
+# 2. Track collection starts immediately once database is ready
+# 3. Historical data will accumulate over time
+# 4. Access the 3D viewer at http://your-server:8086
+# 5. Historical mode will auto-detect when Track API is available
+#
+# To check logs:
+#   docker compose logs -f track-collector  # Data collection
+#   docker compose logs -f track-api        # API queries
+#   docker compose logs -f timescaledb-adsb # Database
+#
+# To backup database:
+#   docker compose exec timescaledb-adsb pg_dump -U adsb adsb_tracks > backup.sql
+#
+# To restore database:
+#   docker compose exec -T timescaledb-adsb psql -U adsb adsb_tracks < backup.sql

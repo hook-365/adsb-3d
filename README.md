@@ -105,11 +105,43 @@ docker compose up -d adsb-3d
 ```
 
 **Full Historical Stack** (includes TimescaleDB, Track Collector, Track API):
+
+For a complete deployment with historical track storage and playback, use `docker-compose.full.yml`:
+
 ```bash
-docker compose --profile historical up -d
+# Copy the full stack template
+cp docker-compose.full.yml docker-compose.yml
+
+# Create .env file with your settings (see below)
+nano .env
+
+# Deploy all services
+docker compose up -d
 ```
 
+The full stack includes:
+- **adsb-3d**: 3D visualization web interface (port 8086)
+- **timescaledb-adsb**: Time-series database for aircraft tracks (port 5433)
+- **track-collector**: Continuously collects position data from your feeder
+- **track-api**: REST API for historical track queries (port 8087)
+
+**Data Storage Location:**
+
+Historical aircraft tracks are stored in:
+```
+./timescaledb/data/
+```
+
+**Disk Usage Estimates:**
+- Light traffic (10-20 aircraft): ~100MB/day
+- Moderate traffic (50-100 aircraft): ~500MB/day
+- Heavy traffic (200+ aircraft): ~2GB/day
+
+**Important:** Backup the `./timescaledb/data` directory regularly to preserve your historical data!
+
 ## Environment Variables
+
+### Core Settings (All Deployments)
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
@@ -120,6 +152,37 @@ docker compose --profile historical up -d
 | `FEEDER_URL` | Yes | ADS-B feeder URL | `http://ultrafeeder` |
 | `ENABLE_HISTORICAL` | No | Enable historical mode (true/false) | `true` |
 | `TZ` | No | Timezone | `America/Chicago` |
+
+### Full Stack Settings (docker-compose.full.yml only)
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `TIMESCALEDB_PASSWORD` | Yes | Database password | `changeme123` |
+| `COLLECTION_INTERVAL` | No | Data collection interval (seconds) | `5` |
+| `MAX_TRACKS_PER_QUERY` | No | Max aircraft per API query | `10000` |
+| `QUERY_TIMEOUT_SECONDS` | No | API query timeout | `60` |
+
+**Example .env file for full stack:**
+```bash
+# Station Location
+LATITUDE=45.0000
+LONGITUDE=-90.0000
+ALTITUDE=1000
+LOCATION_NAME=My Station
+
+# Feeder Configuration
+FEEDER_URL=http://ultrafeeder
+
+# Database
+TIMESCALEDB_PASSWORD=your_secure_password_here
+
+# Optional Settings
+TZ=America/Chicago
+ENABLE_HISTORICAL=true
+COLLECTION_INTERVAL=5
+MAX_TRACKS_PER_QUERY=10000
+QUERY_TIMEOUT_SECONDS=60
+```
 
 ### FEEDER_URL Formats
 
