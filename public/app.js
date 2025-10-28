@@ -1981,6 +1981,27 @@ async function loadRecentTrails() {
         return;
     }
 
+    // Don't load recent trails when in historical mode with active filters
+    // This prevents mixing live current data with historical filtered data
+    const altMaxInput = document.getElementById('filter-altitude-max');
+    const altMinInput = document.getElementById('filter-altitude-min');
+    const minPosInput = document.getElementById('filter-min-positions');
+    const spdMinInput = document.getElementById('filter-speed-min');
+    const spdMaxInput = document.getElementById('filter-speed-max');
+    const militaryInput = document.getElementById('filter-military-only');
+
+    const hasActiveFilters = (altMaxInput?.value && parseInt(altMaxInput.value) < 999999) ||
+                            (altMinInput?.value && parseInt(altMinInput.value) > 0) ||
+                            (minPosInput?.value && parseInt(minPosInput.value) > 0) ||
+                            (spdMinInput?.value && parseInt(spdMinInput.value) > 0) ||
+                            (spdMaxInput?.value && parseInt(spdMaxInput.value) < 999999) ||
+                            (militaryInput?.checked);
+
+    if (currentMode === 'historical' && hasActiveFilters) {
+        console.log('[RecentTrails] Skipping - historical mode with active filters detected');
+        return;
+    }
+
     const minutes = RecentTrailsState.minutes;
     const endTime = new Date();
     const startTime = new Date(endTime.getTime() - (minutes * 60 * 1000));
