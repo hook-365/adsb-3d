@@ -61,6 +61,86 @@ def ensure_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+async def run_database_migrations(db_pool):
+    """
+    Run automatic database migrations on startup.
+    Enables compression for existing deployments that upgrade.
+    """
+    logger.info("=" * 60)
+    logger.info("Running database migrations...")
+    logger.info("=" * 60)
+
+    try:
+        async with db_pool.acquire() as conn:
+            # Check if compression is enabled
+            logger.info("Checking TimescaleDB compression status...")
+            compression_enabled = await conn.fetchval("""
+                SELECT compression_enabled
+                FROM timescaledb_information.hypertables
+                WHERE hypertable_name = 'aircraft_positions'
+            """)
+
+            if compression_enabled:
+                logger.info("✓ Compression already enabled - skipping")
+            else:
+                logger.info("✗ Compression not enabled - enabling now...")
+                await conn.execute("""
+                    ALTER TABLE aircraft_positions SET (
+                        timescaledb.compress,
+                        timescaledb.compress_segmentby = 'icao',
+                        timescaledb.compress_orderby = 'time DESC'
+                    )
+                """)
+                logger.info("✓ Compression enabled successfully!")
+                logger.info("  → Segments by ICAO for better compression")
+                logger.info("  → Orders by time DESC for query performance")
+                logger.info("  → Expected storage savings: 70-80%")
+
+            # Check if is_military column exists
+            logger.info("Checking aircraft_metadata schema...")
+            has_military = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'aircraft_metadata' AND column_name = 'is_military'
+                )
+            """)
+
+            if has_military:
+                logger.info("✓ Military aircraft column present")
+            else:
+                logger.info("✗ Adding is_military column...")
+                await conn.execute("""
+                    ALTER TABLE aircraft_metadata ADD COLUMN is_military BOOLEAN DEFAULT false
+                """)
+                await conn.execute("""
+                    CREATE INDEX idx_metadata_military ON aircraft_metadata (is_military) WHERE is_military = true
+                """)
+                logger.info("✓ Military aircraft tracking enabled!")
+
+            # Check compression policy
+            logger.info("Checking compression policy...")
+            has_policy = await conn.fetchval("""
+                SELECT COUNT(*) FROM timescaledb_information.jobs
+                WHERE proc_name = 'policy_compression'
+                AND hypertable_name = 'aircraft_positions'
+            """)
+
+            if has_policy > 0:
+                logger.info("✓ Automatic compression policy active (compresses data >7 days old)")
+            else:
+                logger.info("⚠ No compression policy found - chunks won't auto-compress")
+                logger.info("  Run init scripts to add compression policy")
+
+        logger.info("=" * 60)
+        logger.info("Database migrations complete!")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error(f"Error during database migrations: {e}")
+        logger.error("Service will continue, but compression may not be enabled")
+        logger.error("Check TimescaleDB logs for details")
+
+
 # ============================================================================
 # AIRCRAFT TRACK COLLECTOR (Background Task)
 # ============================================================================
@@ -347,6 +427,9 @@ async def startup():
         async with db_pool.acquire() as conn:
             version = await conn.fetchval('SELECT version()')
             logger.info(f"Connected to: {version}")
+
+        # Run database migrations (compression, schema updates)
+        await run_database_migrations(db_pool)
 
         # Start background collector
         collector_instance = AircraftTrackCollector(db_pool)

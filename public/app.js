@@ -1727,6 +1727,251 @@ let showAirportsEnabled = true; // On by default
 let showRunwaysEnabled = true;
 
 // ============================================================================
+// AIRCRAFT SHAPE SYSTEM - SVG-based rendering (like tar1090)
+// ============================================================================
+// Use Shift+S to toggle between sphere and aircraft shape rendering
+// Aircraft shapes provide accurate representations using tar1090's SVG system
+
+let useSpriteMode = true; // Toggle with Shift+S (SVG shapes enabled by default)
+let spriteTexture = null; // Legacy sprite sheet (no longer used)
+
+// SVG Aircraft Shape System is loaded from aircraft-svg-system.js
+// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
+
+// SVG Aircraft Shape System is loaded from aircraft-svg-system.js
+// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
+
+// Load sprite texture
+function loadSpriteTexture() {
+    const loader = new THREE.TextureLoader();
+    // Set crossOrigin to allow loading from same origin
+    loader.crossOrigin = 'anonymous';
+
+    // Use absolute path to avoid relative path issues
+    loader.load(
+        '/images/sprites.png',
+        (texture) => {
+            // Configure texture for sprite sheet usage
+            // Use NearestFilter to prevent bleeding between sprites
+            texture.minFilter = THREE.NearestFilter;
+            texture.magFilter = THREE.NearestFilter;
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            // CRITICAL: Set wrapping to ClampToEdge to prevent texture bleeding
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+
+            // Don't generate mipmaps for sprite sheets
+            texture.generateMipmaps = false;
+
+            spriteTexture = texture;
+
+            // DIAGNOSTIC: Log actual texture dimensions
+            console.log('[Sprites] Loaded sprite sheet:');
+            console.log(`  - Image dimensions: ${texture.image.width}x${texture.image.height}`);
+            console.log(`  - Expected: 1376x516`);
+            console.log(`  - Match: ${texture.image.width === 1376 && texture.image.height === 516 ? 'YES' : 'NO'}`);
+            console.log(`  - Texture ready: ${texture.image.complete}`);
+            console.log(`  - Sprite size: ${SPRITE_CONFIG.spriteWidth}x${SPRITE_CONFIG.spriteHeight}`);
+            console.log(`  - Grid: ${SPRITE_CONFIG.columns}x${SPRITE_CONFIG.rows}`);
+
+            // Check if user wanted sprite mode enabled
+            const savedSpriteMode = localStorage.getItem('useSpriteMode');
+            if (savedSpriteMode === 'true' && !useSpriteMode) {
+                console.log('[Sprites] Auto-enabling sprite mode from localStorage');
+                useSpriteMode = true;
+                // Clear any aircraft to force re-render with sprites
+                aircraftMeshes.forEach((mesh, hex) => {
+                    removeAircraft(hex);
+                });
+                aircraftMeshes.clear();
+            }
+        },
+        (progress) => {
+            // Optional: log loading progress
+            if (progress.lengthComputable) {
+                const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                console.log(`[Sprites] Loading: ${percent}%`);
+            }
+        },
+        (error) => {
+            console.error('[Sprites] Failed to load sprite sheet:', error);
+            console.error('[Sprites] Sprites unavailable, using spheres only');
+            console.error('[Sprites] URL attempted:', '/images/sprites.png');
+        }
+    );
+}
+
+// Get sprite position based on aircraft category
+// Returns {row, col} - heading rotation is done via mesh rotation, not sprite selection
+function getSpritePosition(category = 'default') {
+    const position = SPRITE_POSITIONS[category] || SPRITE_POSITIONS.default;
+    return { row: position.row, col: position.col };
+}
+
+// Create shader material for sprite rendering
+// This avoids texture cloning issues by selecting sprite regions in the shader
+function createSpriteMaterial(row, column, color) {
+    const spriteWidth = SPRITE_CONFIG.spriteWidth;
+    const spriteHeight = SPRITE_CONFIG.spriteHeight;
+    const texWidth = SPRITE_CONFIG.textureWidth;
+    const texHeight = SPRITE_CONFIG.textureHeight;
+
+    // Calculate UV offset and size for this sprite
+    // Keep it simple - no half-pixel adjustments yet
+    const uOffset = column * spriteWidth / texWidth;
+    const uSize = spriteWidth / texWidth;
+
+    // Flip V coordinate: WebGL (0,0) is bottom-left, but image row 0 is at top
+    // Row 0 is at top of image (V near 1.0), row 5 is at bottom (V near 0.0)
+    const vOffset = 1.0 - ((row + 1) * spriteHeight / texHeight);
+    const vSize = spriteHeight / texHeight;
+
+    console.log(`[Sprites] Shader material for [${row},${column}]: uOffset=${uOffset.toFixed(4)}, vOffset=${vOffset.toFixed(4)}, uSize=${uSize.toFixed(4)}, vSize=${vSize.toFixed(4)}`);
+
+    // Custom shader that samples only the specified sprite region
+    const vertexShader = `
+        varying vec2 vUv;
+
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `
+        uniform sampler2D spriteSheet;
+        uniform vec2 uvOffset;
+        uniform vec2 uvSize;
+        uniform vec3 tintColor;
+        varying vec2 vUv;
+
+        void main() {
+            // Map UV coordinates to sprite region
+            vec2 spriteUV = uvOffset + (vUv * uvSize);
+
+            // Sample the sprite sheet
+            vec4 texColor = texture2D(spriteSheet, spriteUV);
+
+            // Apply color tint to non-transparent pixels
+            vec3 finalColor = texColor.rgb * tintColor;
+
+            gl_FragColor = vec4(finalColor, texColor.a);
+        }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            spriteSheet: { value: spriteTexture },
+            uvOffset: { value: new THREE.Vector2(uOffset, vOffset) },
+            uvSize: { value: new THREE.Vector2(uSize, vSize) },
+            tintColor: { value: new THREE.Color(color) }
+        },
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+
+    return material;
+}
+
+// Determine aircraft category from type/size data
+// Returns category name that maps to SPRITE_POSITIONS
+function getAircraftCategory(aircraftData) {
+    if (!aircraftData) {
+        return 'default';
+    }
+
+    // First check the 't' field (ICAO type designator) from registration data
+    const typeCode = (aircraftData.t || '').toUpperCase();
+
+    // Check if we have a direct type mapping
+    if (typeCode && TYPE_TO_SPRITE[typeCode]) {
+        const spriteKey = TYPE_TO_SPRITE[typeCode];
+        // Make sure this sprite position exists
+        if (SPRITE_POSITIONS[spriteKey]) {
+            // console.log(`[Sprites] Type ${typeCode} -> ${spriteKey}`);
+            return spriteKey;
+        }
+    }
+
+    // Check ADS-B category field (some aircraft transmit this)
+    // Following tar1090's CategoryIcons mapping exactly
+    const category = aircraftData.category;
+    if (category) {
+        // Categories from ADS-B specification (matching tar1090)
+        // A-series: Fixed-wing aircraft
+        if (category === 'A1') return 'cessna';       // Light (< 7 tons) - Cessna-type GA
+        if (category === 'A2') return 'jet_swept';    // Small (< 34 tons) - Regional jets
+        if (category === 'A3') return 'airliner';     // Large (< 136 tons) - Airliners
+        if (category === 'A4') return 'airliner';     // High vortex (< 136 tons)
+        if (category === 'A5') return 'heavy_2e';     // Heavy (> 136 tons)
+        if (category === 'A6') return 'hi_perf';      // High performance
+        if (category === 'A7') return 'helicopter';   // Rotorcraft
+
+        // B-series: Gliders/Balloons
+        if (category === 'B1') return 'glider';
+        if (category === 'B2') return 'balloon';
+        if (category === 'B4') return 'light';        // Ultralight
+        if (category === 'B6') return 'light';        // UAV/drone
+
+        // C-series: Ground vehicles
+        if (category === 'C0') return 'ground_vehicle';
+        if (category === 'C1') return 'ground_vehicle';  // Emergency
+        if (category === 'C2') return 'ground_vehicle';  // Service
+        if (category === 'C3') return 'tower';           // Tower
+    }
+
+    // Additional type detection patterns
+    if (typeCode) {
+        // Helicopters
+        if (typeCode.startsWith('H') || typeCode.includes('HELI') ||
+            typeCode.startsWith('R22') || typeCode.startsWith('R44') ||
+            typeCode.startsWith('EC1') || typeCode.startsWith('AS3')) {
+            return 'helicopter';
+        }
+
+        // Light aircraft patterns
+        if (typeCode.startsWith('C1') || typeCode.startsWith('PA') ||
+            typeCode.startsWith('BE') || typeCode.startsWith('SR2') ||
+            typeCode.startsWith('DA4') || typeCode.startsWith('RV') ||
+            typeCode.includes('VANS') || typeCode.startsWith('LONG') ||
+            typeCode.startsWith('GLASAIR') || typeCode.startsWith('LANCAIR')) {
+            return 'light';
+        }
+
+        // Turboprops
+        if (typeCode.startsWith('AT') || typeCode.startsWith('DH8') ||
+            typeCode.includes('TURBO')) {
+            return 'turboprop';
+        }
+
+        // Military fighters
+        if (typeCode.startsWith('F') && typeCode.length <= 4 &&
+            /^F\d/.test(typeCode)) {
+            return 'fighter';
+        }
+
+        // Wide-body detection
+        if (typeCode.startsWith('A33') || typeCode.startsWith('A34') ||
+            typeCode.startsWith('A35') || typeCode.startsWith('B77') ||
+            typeCode.startsWith('B78')) {
+            return 'heavy_2e';
+        }
+
+        // Four-engine detection
+        if (typeCode.startsWith('A38') || typeCode.startsWith('B74')) {
+            return 'heavy_4e';
+        }
+    }
+
+    // Default to generic airliner for unknown types
+    return 'airliner';
+}
+
+// ============================================================================
 // HISTORICAL MODE FUNCTIONS
 // ============================================================================
 
@@ -3630,6 +3875,18 @@ async function initializeApp() {
         }
     }
 
+    // Load sprite mode preference (secret testing feature)
+    // But DON'T enable it yet - wait for texture to load
+    const savedSpriteMode = localStorage.getItem('useSpriteMode');
+    let wantsSpriteMode = false;
+    if (savedSpriteMode !== null) {
+        wantsSpriteMode = savedSpriteMode === 'true';
+        if (wantsSpriteMode) {
+            console.log('[Sprites] Will enable sprite mode after texture loads');
+            // Don't set useSpriteMode=true yet!
+        }
+    }
+
     // Load trail fade preferences
     const savedAutoFade = localStorage.getItem('autoFadeTrails');
     if (savedAutoFade !== null) {
@@ -3781,6 +4038,8 @@ function init() {
 
     // Hide loading
     document.getElementById('loading').style.display = 'none';
+
+    // SVG aircraft system loaded via aircraft-svg-system.js
 
     // Start animation loop
     animate();
@@ -4432,12 +4691,16 @@ function updateCameraPosition(centerPoint = new THREE.Vector3(0, 0, 0)) {
 
 function setupMouseControls() {
     let previousMousePosition = { x: 0, y: 0 };
+    let mouseDownPosition = { x: 0, y: 0 };
+    let actuallyDragged = false;
 
     const canvas = document.getElementById('canvas');
 
     canvas.addEventListener('mousedown', (e) => {
         isDragging = true;
+        actuallyDragged = false; // Reset drag tracking
         previousMousePosition = { x: e.clientX, y: e.clientY };
+        mouseDownPosition = { x: e.clientX, y: e.clientY }; // Track initial position
 
         // Sync camera angles with current position before starting drag
         // This ensures dragging continues from current orientation
@@ -4455,6 +4718,16 @@ function setupMouseControls() {
             const deltaX = e.clientX - previousMousePosition.x;
             const deltaY = e.clientY - previousMousePosition.y;
 
+            // Calculate total distance moved from initial mousedown
+            const totalDeltaX = e.clientX - mouseDownPosition.x;
+            const totalDeltaY = e.clientY - mouseDownPosition.y;
+            const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
+
+            // Only consider it "dragging" if moved more than 5 pixels
+            if (totalDistance > 5) {
+                actuallyDragged = true;
+            }
+
             cameraAngleX += deltaX * 0.005;
             cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2, cameraAngleY - deltaY * 0.005));
 
@@ -4470,8 +4743,9 @@ function setupMouseControls() {
     });
 
     canvas.addEventListener('mouseup', () => {
-        wasDragging = isDragging;
+        wasDragging = actuallyDragged; // Only set if actually moved significantly
         isDragging = false;
+        actuallyDragged = false;
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -4537,6 +4811,7 @@ function setupTouchControls(canvas) {
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
             initialCameraDistance = cameraDistance;
+            // console.log(`[Mobile Zoom] Start pinch - initial distance: ${initialCameraDistance.toFixed(0)}, pinch: ${initialPinchDistance.toFixed(0)}`);
 
             syncCameraAnglesFromPosition();
 
@@ -4586,7 +4861,18 @@ function setupTouchControls(canvas) {
 
             if (initialPinchDistance !== null) {
                 const scale = currentDistance / initialPinchDistance;
-                cameraDistance = Math.max(20, Math.min(600, initialCameraDistance / scale));
+                // Standard mobile behavior: spread fingers (scale > 1) = zoom IN (decrease distance)
+                // pinch fingers (scale < 1) = zoom OUT (increase distance)
+                // So we divide by scale
+                const newDistance = initialCameraDistance / scale;
+
+                // Apply zoom with same limits as desktop (600 units max)
+                // When hitting the max, clamp to max instead of resetting
+                const oldCameraDistance = cameraDistance;
+                cameraDistance = Math.max(20, Math.min(600, newDistance));
+
+                // Debug logging disabled after fixing zoom issues
+                // console.log(`[Mobile Zoom] Pinch - scale: ${scale.toFixed(2)}, old: ${oldCameraDistance.toFixed(0)}, new: ${cameraDistance.toFixed(0)}, initial: ${initialCameraDistance.toFixed(0)}`);
 
                 // Update camera only if not in locked follow mode
                 if (!followMode || !followLocked) {
@@ -4670,8 +4956,13 @@ function setupTouchControls(canvas) {
                 }
 
                 // Find the hex for this aircraft group
+                // Check the tapped object, its parent, and all ancestors
                 for (const [hex, mesh] of aircraftMeshes.entries()) {
-                    if (mesh === aircraftGroup || mesh.children.includes(tappedObject)) {
+                    if (mesh === aircraftGroup ||
+                        mesh === tappedObject ||
+                        mesh.children.includes(tappedObject) ||
+                        tappedObject.parent === mesh) {
+                        console.log(`[Tap] Detected tap on aircraft ${hex}, showing details`);
                         showAircraftDetail(hex);
                         break;
                     }
@@ -4681,6 +4972,7 @@ function setupTouchControls(canvas) {
 
         if (e.touches.length === 0) {
             // All fingers lifted
+            // console.log(`[Mobile Zoom] All fingers lifted - final distance: ${cameraDistance.toFixed(0)}`);
             isDragging = false;
             initialPinchDistance = null;
             initialCameraDistance = null;
@@ -4689,6 +4981,7 @@ function setupTouchControls(canvas) {
             wasTouchDragging = false;
         } else if (e.touches.length === 1) {
             // One finger remaining - reset for single touch
+            // console.log(`[Mobile Zoom] One finger remaining - current distance: ${cameraDistance.toFixed(0)}`);
             touchStartPositions = [{
                 x: e.touches[0].clientX,
                 y: e.touches[0].clientY
@@ -5163,6 +5456,42 @@ function setupKeyboardShortcuts() {
                 // Show keyboard help
                 document.getElementById('keyboard-help-modal').classList.add('show');
                 break;
+            case 's':
+                // Shift+S: Toggle sprite/SVG mode (shows aircraft shapes instead of spheres)
+                if (e.shiftKey) {
+                    console.log(`[SVG Aircraft] Toggle requested, SVG system available=${!!window.AircraftSVGSystem}, current mode=${useSpriteMode ? 'aircraft shapes' : 'spheres'}`);
+
+                    if (!window.AircraftSVGSystem) {
+                        console.warn('[SVG Aircraft] SVG system not loaded, cannot enable aircraft shapes');
+                        showKeyboardHint('⚠️ Aircraft shapes not loaded <kbd>Shift+S</kbd>');
+                        return;
+                    }
+
+                    useSpriteMode = !useSpriteMode;
+                    localStorage.setItem('useSpriteMode', useSpriteMode);
+
+                    console.log(`[SVG Aircraft] Mode now: ${useSpriteMode ? 'aircraft shapes' : 'spheres'}`);
+                    console.log(`[SVG Aircraft] Clearing ${aircraftMeshes.size} aircraft for re-render`);
+
+                    // Clear all aircraft to force re-render with new mode
+                    aircraftMeshes.forEach((mesh, hex) => {
+                        removeAircraft(hex);
+                    });
+                    aircraftMeshes.clear();
+
+                    const mode = useSpriteMode ? 'Aircraft Shapes (SVG)' : 'Spheres';
+                    showKeyboardHint(`✈️ Aircraft Mode: ${mode} <kbd>Shift+S</kbd>`);
+                    console.log(`[SVG Aircraft] Mode switched to: ${mode}, waiting for aircraft to reload...`);
+                }
+                break;
+            case 'k':
+                // Secret: Ctrl+K: Show aircraft shape reference
+                if (e.ctrlKey) {
+                    e.preventDefault(); // Prevent browser search
+                    console.log('[Secret] Aircraft Shape Reference activated!');
+                    showAircraftShapeReference();
+                }
+                break;
             case 'escape':
                 // Close keyboard help modal if open
                 const keyboardHelpModal = document.getElementById('keyboard-help-modal');
@@ -5189,6 +5518,173 @@ function setupKeyboardShortcuts() {
                 break;
         }
     });
+}
+
+// Secret: Aircraft Shape Reference Viewer
+function showAircraftShapeReference() {
+    if (!window.AircraftSVGSystem) {
+        console.warn('[Shape Reference] SVG system not loaded');
+        return;
+    }
+
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('aircraft-shape-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'aircraft-shape-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        `;
+        modal.innerHTML = `
+            <div style="background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 8px; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+                <div style="padding: 20px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center;">
+                    <h2 style="margin: 0; color: var(--text-primary);">Aircraft Shape Reference</h2>
+                    <button onclick="document.getElementById('aircraft-shape-modal').style.display='none'" style="background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer; padding: 0 10px;">&times;</button>
+                </div>
+                <div id="aircraft-shape-grid" style="padding: 20px;">
+                    <p style="text-align: center; color: #888;">Loading shapes...</p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    // Build the shape reference grid
+    const shapeGrid = document.getElementById('aircraft-shape-grid');
+    const shapes = window.AircraftSVGSystem.AIRCRAFT_SHAPES;
+
+    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">';
+
+    // Get example aircraft for each shape (comprehensive mapping)
+    const shapeExamples = {
+        // Airbus family
+        'a319': ['A319'], 'a320': ['A320'], 'a321': ['A321'],
+        'a332': ['A332'], 'a333': ['A333'], 'a359': ['A359'],
+        'a380': ['A380'], 'a400': ['A400M'],
+
+        // Boeing family
+        'b737': ['B737'], 'b738': ['B738'], 'b739': ['B739'],
+        'b747': ['B747'], 'b752': ['B752'], 'b763': ['B763'],
+        'b772': ['B772'], 'b77l': ['B77L'], 'b77w': ['B77W'],
+        'b788': ['B788'], 'b789': ['B789'], 'b78x': ['B78X'],
+        'b707': ['B707'], 'b52': ['B52'],
+
+        // Military/Special purpose
+        'p8': ['P8'], 'e737': ['E737'], 'e3awacs': ['E3 AWACS'],
+        'p3_orion': ['P3 Orion'], 'kc135': ['KC135'], 'kc46': ['KC46'],
+        'c130': ['C130'], 'c17': ['C17'], 'c5': ['C5'], 'c2': ['C2'],
+
+        // Fighters
+        'f16': ['F16'], 'f18': ['F18'], 'f35': ['F35'],
+        'hi_perf': ['F15', 'F22'], 'f5_tiger': ['F5'],
+        'a10': ['A10'], 'mirage': ['Mirage'], 'rafale': ['Rafale'],
+        'typhoon': ['Typhoon'], 'sb39': ['JAS 39'], 'harrier': ['Harrier'],
+
+        // Helicopters
+        'helicopter': ['Generic'], 'blackhawk': ['UH-60'],
+        'apache': ['AH-64'], 'chinook': ['CH-47'],
+        's61': ['S61'], 'ec145': ['H145'],
+
+        // General aviation
+        'cessna': ['C172', 'C152'], 'cirrus_sr22': ['SR22'],
+        'pa24': ['PA24'], 'rutan_veze': ['Veze'],
+
+        // Business/Regional
+        'crj2': ['CRJ2'], 'crj9': ['CRJ9'], 'e170': ['E170'],
+        'e190': ['E190'], 'e75l': ['E175'],
+
+        // Cargo/Heavy
+        'heavy_2e': ['B777', 'A330'], 'heavy_4e': ['B747', 'A340'],
+        'md11': ['MD11'], 'c97': ['Super Guppy'], 'beluga': ['Beluga'],
+
+        // Reconnaissance/Special
+        'u2': ['U2'], 'wb57': ['WB-57'], 't38': ['T-38'],
+
+        // Tiltrotor
+        'v22_slow': ['V22 (slow)'], 'v22_fast': ['V22 (fast)'],
+
+        // Other
+        'glider': ['Glider'], 'balloon': ['Balloon'], 'blimp': ['Blimp'],
+        'uav': ['UAV/Drone'], 'gyrocopter': ['Gyrocopter'],
+        'ground_vehicle': ['Ground Vehicle'], 'ground_unknown': ['Ground Unknown'],
+        'airliner': ['Generic Jet'],
+
+        // Special shapes
+        'pumpkin': ['Pumpkin'], 'witchl': ['Witch (left)'], 'witchr': ['Witch (right)']
+    };
+
+    for (const [shapeName, shape] of Object.entries(shapes)) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 150;
+        canvas.height = 150;
+        const ctx = canvas.getContext('2d');
+
+        // Draw shape to canvas
+        const viewBox = shape.viewBox.split(' ').map(Number);
+        const vbX = viewBox[0];
+        const vbY = viewBox[1];
+        const vbW = viewBox[2];
+        const vbH = viewBox[3];
+
+        const scale = Math.min(120 / vbW, 120 / vbH);
+        const offsetX = 75 - (vbX + vbW / 2) * scale;
+        const offsetY = 75 - (vbY + vbH / 2) * scale;
+
+        ctx.save();
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        const svgPath = new Path2D(shape.path);
+        ctx.fillStyle = '#00aaff';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = (shape.strokeScale || 1) / scale;
+        ctx.fill(svgPath);
+        ctx.stroke(svgPath);
+
+        // Handle accent (secondary path, if present - e.g., fuselage windows on P8)
+        if (shape.accent) {
+            const accentPaths = Array.isArray(shape.accent) ? shape.accent : [shape.accent];
+            const accentMult = shape.accentMult || 1;
+
+            accentPaths.forEach(accentPath => {
+                const accentSvgPath = new Path2D(accentPath);
+                ctx.lineWidth = ((shape.strokeScale || 1) / scale) * accentMult;
+                ctx.stroke(accentSvgPath);
+            });
+        }
+
+        ctx.restore();
+
+        const dataUrl = canvas.toDataURL();
+        const examples = shapeExamples[shapeName] || [];
+        const exampleText = examples.length > 0 ? examples.join(', ') : 'N/A';
+
+        html += `
+            <div style="border: 1px solid #333; padding: 15px; border-radius: 8px; text-align: center; background: rgba(0,0,0,0.3);">
+                <img src="${dataUrl}" style="width: 150px; height: 150px; image-rendering: pixelated;" alt="${shapeName}">
+                <div style="margin-top: 10px; font-weight: bold; color: #00aaff;">${shapeName}</div>
+                <div style="margin-top: 5px; font-size: 11px; color: #888;">Examples: ${exampleText}</div>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    shapeGrid.innerHTML = html;
+
+    // Show modal
+    modal.style.display = 'flex';
+    console.log(`[Shape Reference] Displayed ${Object.keys(shapes).length} aircraft shapes`);
 }
 
 // Route cache management
@@ -5553,6 +6049,29 @@ function updateAircraft(aircraft) {
             mesh.userData.militaryInfo = militaryInfo; // Update military info
             mesh.userData.lastValidAltitude = altitude; // Store for altitude smoothing
 
+            // Update sprite rotation if in sprite mode and heading changed
+            if (useSpriteMode && ac.track !== undefined) {
+                mesh.children.forEach(child => {
+                    if (child.userData.isSprite) {
+                        const oldHeading = child.userData.spriteHeading || 0;
+                        const newHeading = ac.track;
+
+                        // Update if heading changed by more than 2 degrees
+                        if (Math.abs(newHeading - oldHeading) > 2.0) {
+                            // Rotate around Y axis for horizontal plane, negative like runways
+                            // NOTE: -90° SVG offset is baked into geometry, so only apply heading here
+                            child.rotation.y = -(newHeading * Math.PI / 180);
+                            child.userData.spriteHeading = newHeading;
+
+                            // Log rotation updates (sample 1% to avoid spam)
+                            if (Math.random() < 0.01) {
+                                console.log(`[Sprites] Rotating ${ac.hex}: ${oldHeading.toFixed(1)}° → ${newHeading.toFixed(1)}°`);
+                            }
+                        }
+                    }
+                });
+            }
+
             // Update color if military status changed
             if (CONFIG.highlightMilitary && isMilitary) {
                 mesh.traverse((child) => {
@@ -5629,20 +6148,109 @@ function updateAircraft(aircraft) {
     }
 }
 
-// Create simple 3D sphere for aircraft
-function createAircraftModel(color) {
+// Create aircraft model - sphere or sprite based on mode
+function createAircraftModel(color, aircraftData = null) {
     const group = new THREE.Group();
 
-    const material = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: color,
-        emissiveIntensity: 0.5,
-        shininess: 100
-    });
+    // SVG mode: Use accurate aircraft shapes from tar1090 (replacing sprite mode)
+    if (useSpriteMode && window.AircraftSVGSystem) {
+        // Get aircraft type and heading
+        const typeDesignator = aircraftData?.t || null;
+        const category = aircraftData?.category || null;
+        const heading = aircraftData?.track !== undefined ? aircraftData.track : 0;
 
-    // Main aircraft sphere
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), material);
-    group.add(sphere);
+        // Additional fields for enhanced matching (from tar1090 aircraft database)
+        // dbFlags is a bitmask that contains typeDescription when available
+        const typeDescription = aircraftData?.desc_short || null; // ICAO type description (e.g., "L2J")
+        const wtc = aircraftData?.wtc || null; // Wake turbulence category (L/M/H/J)
+        const altitude = aircraftData?.alt_baro === "ground" ? "ground" : null;
+
+        // Get the appropriate marker using tar1090's matching logic
+        const [shapeName, scaling] = window.AircraftSVGSystem.getBaseMarker(
+            category,
+            typeDesignator,
+            typeDescription,
+            wtc,
+            altitude
+        );
+
+        // Debug logging
+        if (aircraftData?.hex) {
+            console.log(`[SVG] Aircraft ${aircraftData.hex}: type=${typeDesignator}, category=${category}, typeDesc=${typeDescription}, wtc=${wtc}, shape=${shapeName}, scaling=${scaling}`);
+        }
+
+        // Generate or get cached texture (in white, so it's reusable)
+        const texture = window.AircraftSVGSystem.svgShapeToTexture(
+            shapeName,
+            '#ffffff',       // White fill (color applied via material)
+            '#000000',       // Black stroke
+            0.5,             // Thin stroke
+            scaling          // Shape-specific scaling
+        );
+
+        if (texture) {
+            // Create horizontal plane with texture
+            const size = 14;  // Increased size for better visibility at distance
+            const geometry = new THREE.PlaneGeometry(size, size);
+            geometry.rotateX(-Math.PI / 2); // Rotate to horizontal
+            // After rotateX: plane is horizontal, texture "up" now points +Z (south)
+
+            // Create material with SVG texture and altitude-based color
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                color: new THREE.Color(color),  // Apply altitude color to material
+                transparent: true,
+                alphaTest: 0.1,
+                side: THREE.DoubleSide,
+                depthWrite: true,
+                depthTest: true
+            });
+
+            const plane = new THREE.Mesh(geometry, material);
+
+            // Check if this shape should not be rotated (balloons, ground vehicles)
+            const shapeInfo = window.AircraftSVGSystem.AIRCRAFT_SHAPES[shapeName];
+            const noRotate = shapeInfo && shapeInfo.noRotate === true;
+
+            // NOTE: Rotation will be applied to the GROUP (parent), not the plane child
+            // This is handled in createAircraft() after the group is created
+            // Don't rotate the child here - just store the heading for later
+
+            // Store metadata for updates (use spriteHeading for consistency with update code)
+            plane.userData.aircraftShape = shapeName;
+            plane.userData.aircraftType = typeDesignator;
+            plane.userData.aircraftCategory = category;
+            plane.userData.noRotate = noRotate; // Store for later updates
+            plane.userData.spriteHeading = heading;  // Changed from aircraftHeading to spriteHeading
+            plane.userData.isSprite = true;  // Keep compatibility
+
+            group.add(plane);
+        } else {
+            // Fallback to sphere if texture generation failed
+            console.warn(`[SVG] Failed to generate texture for ${shapeName}, falling back to sphere`);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.5,
+                shininess: 100
+            });
+            const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), material);
+            group.add(sphere);
+        }
+    }
+    // Sphere mode: Use 3D spheres (original behavior)
+    else {
+        const material = new THREE.MeshPhongMaterial({
+            color: color,
+            emissive: new THREE.Color(0xffffff), // Bright white glow
+            emissiveIntensity: 0.8, // Increased from 0.5 for better visibility
+            shininess: 100
+        });
+
+        // Main aircraft sphere with increased size for better visibility
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), material);
+        group.add(sphere);
+    }
 
     return group;
 }
@@ -5655,16 +6263,43 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     const isMilitary = isMilitaryAircraft(hex);
     const militaryInfo = isMilitary ? getMilitaryInfo(hex) : null;
 
-    // Create aircraft sphere with altitude-based or military color
+    // Create aircraft sphere or sprite with altitude-based or military color
     const aircraftColor = (CONFIG.highlightMilitary && isMilitary) ? CONFIG.militaryColor : getAltitudeColor(y);
-    const mesh = createAircraftModel(aircraftColor);
+    const mesh = createAircraftModel(aircraftColor, aircraftData);
     mesh.position.set(x, y, z);
+
+    // Check if any child has sprite metadata (set in createAircraftModel)
+    let isSprite = false;
+    let noRotate = false;
+    mesh.traverse((child) => {
+        if (child.userData.isSprite) isSprite = true;
+        if (child.userData.noRotate) noRotate = true;
+    });
+
     mesh.userData = aircraftData;
     mesh.userData.isMLAT = isMLAT;
     mesh.userData.isVeryLow = isVeryLow;
     mesh.userData.isMilitary = isMilitary;
     mesh.userData.militaryInfo = militaryInfo;
     mesh.userData.lastValidAltitude = y; // Store for altitude smoothing
+    mesh.userData.isSprite = isSprite; // Copy from child for rotation logic
+    mesh.userData.noRotate = noRotate; // Copy from child for rotation logic
+
+    // Apply initial rotation to the GROUP (not the child plane)
+    // Geometry already has rotateX baked in, making it horizontal with nose pointing +Z (south)
+    // We only need to rotate around Y axis for heading
+
+    if (!noRotate && aircraftData.track !== undefined) {
+        const trackRad = aircraftData.track * Math.PI / 180;
+        // If backwards with trackRad, try negative rotation
+        mesh.rotation.y = -trackRad;
+    } else if (!noRotate) {
+        mesh.rotation.y = 0; // Default pointing south (will update when track available)
+    }
+    // For noRotate shapes, leave rotation at 0
+
+    // DEBUG: Log aircraft creation with detailed info
+    console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, isSprite=${isSprite}, rotation.y=${mesh.rotation.y.toFixed(3)} (${(mesh.rotation.y * 180 / Math.PI).toFixed(1)}°)`);
 
     // Add visual indicator for MLAT aircraft (wireframe overlay)
     if (isMLAT) {
@@ -5771,14 +6406,26 @@ function createTextLabel(text) {
     canvas.width = 320;
     canvas.height = 80;
 
-    // Draw text
+    // Draw background box
     context.fillStyle = 'rgba(0, 0, 0, 0.6)';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Add white border around the label box
+    context.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // White border
+    context.lineWidth = 3; // Border thickness
+    context.strokeRect(0, 0, canvas.width, canvas.height);
+
+    // Add white stroke/outline to text for better visibility
     context.font = 'Bold 28px Arial';
-    context.fillStyle = 'white';
+    context.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White text outline
+    context.lineWidth = 4; // Thick outline
+    context.lineJoin = 'round';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
+    context.strokeText(text, canvas.width / 2, canvas.height / 2);
+
+    // Fill text in white on top of outline
+    context.fillStyle = 'white';
     context.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -5951,25 +6598,31 @@ function updateAircraftPosition(hex, x, y, z) {
     mesh.traverse((child) => {
         if (child.isMesh && child.material) {
             child.material.color.setHex(color);
-            child.material.emissive.setHex(color);
+            // Only set emissive if the material supports it (sphere mode)
+            if (child.material.emissive) {
+                child.material.emissive.setHex(color);
+            }
         }
     });
 
     // Update rotation based on track (heading)
-    if (mesh.userData.track !== undefined) {
-        // Track is in degrees (0=North, 90=East, 180=South, 270=West)
-        // In our coordinate system: +X=East, -Z=North, +Y=Up
-        // Aircraft models already have fuselages horizontal, pointing along +Z (south) by default
-        // So we only need to rotate around Y axis to match the track
-        // track=0 (north) needs to point -Z, so rotation.y = PI
-        // track=180 (south) needs to point +Z, so rotation.y = 0
-        // Formula: rotation.y = PI - trackRad
+    // Skip rotation for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
+    if (mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
         const trackRad = mesh.userData.track * Math.PI / 180;
-        mesh.rotation.y = Math.PI - trackRad;
-    } else {
-        // Default orientation if no track data (point north)
-        mesh.rotation.y = Math.PI;
+
+        // DEBUG: Log rotation calculation for first few frames
+        if (Math.random() < 0.01) {
+            console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
+        }
+
+        // Geometry has rotateX baked in, only need Y rotation
+        // Testing: negative trackRad
+        mesh.rotation.y = -trackRad;
+    } else if (mesh.userData.noRotate !== true) {
+        // Default orientation if no track data
+        mesh.rotation.y = 0;
     }
+    // If noRotate is true, leave rotation unchanged (0,0,0)
 
     // Reapply highlight if this aircraft is currently hovered on canvas
     if (currentlyHoveredCanvasAircraft === hex) {
@@ -6510,23 +7163,52 @@ function highlightAircraft(hex, highlight) {
         // Store/restore original colors and change aircraft color
         mesh.children.forEach(child => {
             if (child.material) {
+                // Check if this is a shader material (sprites) or standard material (spheres)
+                const isShaderMaterial = child.material.type === 'ShaderMaterial';
+
                 if (highlight) {
-                    // Store original colors
-                    if (!child.userData.originalColor) {
-                        child.userData.originalColor = child.material.color.clone();
-                        child.userData.originalEmissive = child.material.emissive.clone();
+                    if (isShaderMaterial) {
+                        // For sprites with shader material, modify tintColor uniform
+                        if (child.material.uniforms && child.material.uniforms.tintColor) {
+                            if (!child.userData.originalTintColor) {
+                                child.userData.originalTintColor = child.material.uniforms.tintColor.value.clone();
+                            }
+                            child.material.uniforms.tintColor.value.setHex(0xffffff);
+                        }
+                    } else {
+                        // For spheres with standard material
+                        if (!child.userData.originalColor) {
+                            child.userData.originalColor = child.material.color.clone();
+                            // Only store emissive if it exists
+                            if (child.material.emissive) {
+                                child.userData.originalEmissive = child.material.emissive.clone();
+                            }
+                        }
+                        // Change to white
+                        child.material.color.setHex(0xffffff);
+                        // Only modify emissive properties if they exist (sphere mode)
+                        if (child.material.emissive) {
+                            child.material.emissive.setHex(0xffffff);
+                            child.material.emissiveIntensity = 1.0;
+                        }
                     }
-                    // Change to white
-                    child.material.color.setHex(0xffffff);
-                    child.material.emissive.setHex(0xffffff);
-                    child.material.emissiveIntensity = 1.0;
                 } else {
-                    // Restore original colors
-                    if (child.userData.originalColor) {
-                        child.material.color.copy(child.userData.originalColor);
-                        child.material.emissive.copy(child.userData.originalEmissive);
+                    if (isShaderMaterial) {
+                        // Restore sprite tint color
+                        if (child.material.uniforms && child.material.uniforms.tintColor && child.userData.originalTintColor) {
+                            child.material.uniforms.tintColor.value.copy(child.userData.originalTintColor);
+                        }
+                    } else {
+                        // Restore sphere colors
+                        if (child.userData.originalColor) {
+                            child.material.color.copy(child.userData.originalColor);
+                            // Only restore emissive if it exists
+                            if (child.material.emissive && child.userData.originalEmissive) {
+                                child.material.emissive.copy(child.userData.originalEmissive);
+                                child.material.emissiveIntensity = 0.5;
+                            }
+                        }
                     }
-                    child.material.emissiveIntensity = 0.5;
                 }
             }
         });
@@ -6639,8 +7321,16 @@ function updateLabelAppearance(hex, highlighted) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.shadowBlur = 0;
 
-    // Text
+    // Add white border around the label box
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // White border
+    ctx.lineWidth = 3; // Border thickness
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+    // Text with white outline
     ctx.font = 'Bold 28px Arial';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White text outline
+    ctx.lineWidth = 4; // Thick outline
+    ctx.lineJoin = 'round';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -6652,7 +7342,11 @@ function updateLabelAppearance(hex, highlighted) {
     const startY = (canvas.height - totalHeight) / 2 + lineHeight / 2;
 
     lines.forEach((line, index) => {
-        ctx.fillText(line, canvas.width / 2, startY + index * lineHeight);
+        const yPos = startY + index * lineHeight;
+        // Draw outline first
+        ctx.strokeText(line, canvas.width / 2, yPos);
+        // Then fill text
+        ctx.fillText(line, canvas.width / 2, yPos);
     });
 
     sprite.material.map.needsUpdate = true;
@@ -6852,20 +7546,59 @@ function updateMiniRadar(cameraYawDegrees) {
         const color = new THREE.Color(colorValue);
         const dotColor = `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
 
-        // Draw smaller dot (2px radius instead of 3px)
-        ctx.fillStyle = dotColor;
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, Math.PI * 2);
-        ctx.fill();
+        // Always draw aircraft sprites on mini radar if texture is loaded
+        if (spriteTexture && spriteTexture.image && spriteTexture.image.complete) {
+            // Get aircraft heading
+            const heading = ac.track || 0;
 
-        // Add smaller glow for visibility (3px radius instead of 5px)
-        ctx.strokeStyle = dotColor;
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.4;
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+            // Get sprite position (for now, use default twin jet for all)
+            const spritePos = getSpritePosition('jet_twin');
+            const spriteWidth = SPRITE_CONFIG.spriteWidth;
+            const spriteHeight = SPRITE_CONFIG.spriteHeight;
+
+            // Calculate source position in sprite sheet
+            const sourceX = spritePos.col * spriteWidth;
+            const sourceY = spritePos.row * spriteHeight;
+
+            // Save context state for rotation
+            ctx.save();
+
+            // Move to aircraft position and rotate
+            ctx.translate(x, y);
+            ctx.rotate((-heading * Math.PI) / 180); // Negative for correct heading
+
+            // Draw colored background circle first
+            ctx.fillStyle = dotColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw the sprite on top (slightly larger, no tint)
+            const drawSize = 10; // Size on radar (10px square)
+            ctx.drawImage(
+                spriteTexture.image,
+                sourceX, sourceY, spriteWidth, spriteHeight, // source
+                -drawSize/2, -drawSize/2, drawSize, drawSize  // destination (centered)
+            );
+
+            // Restore context
+            ctx.restore();
+        } else {
+            // Fallback to dots if sprites not available
+            ctx.fillStyle = dotColor;
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Add smaller glow for visibility (3px radius instead of 5px)
+            ctx.strokeStyle = dotColor;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
     });
 
     // Restore context
@@ -7175,6 +7908,16 @@ function setupAircraftClick() {
         // Ignore clicks that happened after camera dragging
         if (wasDragging) {
             wasDragging = false;
+            console.log('[Click] Ignoring click due to dragging');
+            return;
+        }
+
+        console.log('[Click] Processing click, hoveredAircraft:', hoveredAircraft);
+
+        // If we're hovering over an aircraft, select it directly (bypass raycasting issues)
+        if (hoveredAircraft) {
+            console.log('[Click] Using hoveredAircraft shortcut:', hoveredAircraft);
+            selectAircraft(hoveredAircraft);
             return;
         }
 
@@ -7224,7 +7967,7 @@ function setupAircraftClick() {
             // Check if we clicked an aircraft label (label group or any of its children)
             for (const [hex, labelGroup] of aircraftLabels.entries()) {
                 if (labelGroup === clickedObject || labelGroup.children.includes(clickedObject)) {
-                    showAircraftDetail(hex);
+                    selectAircraft(hex);  // Use selectAircraft instead of showAircraftDetail
                     return;
                 }
             }
@@ -7236,9 +7979,14 @@ function setupAircraftClick() {
             }
 
             // Find the hex for this aircraft group
+            // Check the clicked object, its parent, and all ancestors
             for (const [hex, mesh] of aircraftMeshes.entries()) {
-                if (mesh === aircraftGroup || mesh.children.includes(clickedObject)) {
-                    showAircraftDetail(hex);
+                if (mesh === aircraftGroup ||
+                    mesh === clickedObject ||
+                    mesh.children.includes(clickedObject) ||
+                    clickedObject.parent === mesh) {
+                    console.log(`[Click] Detected click on aircraft ${hex}, selecting aircraft`);
+                    selectAircraft(hex);  // Use selectAircraft instead of showAircraftDetail
                     break;
                 }
             }

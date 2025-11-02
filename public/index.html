@@ -1495,6 +1495,7 @@
             border: 2px solid var(--accent-primary);
             touch-action: auto; /* Allow normal touch on UI panels */
             overflow: hidden; /* Contain scrolling to body */
+            z-index: 2000; /* Ensure it's above other UI elements */
         }
 
         #aircraft-detail .detail-header {
@@ -3363,11 +3364,13 @@
 
             function loadScript(src) {
                 const script = document.createElement('script');
-                script.src = scriptPath + src;
+                // Add cache-busting timestamp to force fresh load
+                script.src = scriptPath + src + '?v=' + Date.now();
                 document.body.appendChild(script);
             }
 
             loadScript('config.js');
+            loadScript('aircraft-svg-system.js');
             loadScript('app.js');
         })();
     </script>
