@@ -1336,25 +1336,28 @@ function svgShapeToTexture(shapeName, color = '#ffffff', strokeColor = '#000000'
     // Draw the SVG path
     const svgPath = new Path2D(shape.path);
 
-    // Apply styles
-    ctx.fillStyle = color;
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = strokeWidth * (shape.strokeScale || 1) / scale;
+    // Draw white border (consistent thickness across all aircraft)
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = (strokeWidth * 6) / scale; // Fixed thickness, don't scale with strokeScale
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke(svgPath);
 
-    // Draw
+    // Fill the aircraft shape with gray (will be tinted by shader to altitude color)
+    ctx.fillStyle = '#606060'; // Medium gray for tinting
     ctx.fill(svgPath);
-    if (strokeWidth > 0) {
-        ctx.stroke(svgPath);
-    }
 
     // Handle accent (secondary path, if present)
     if (shape.accent) {
         const accentPaths = Array.isArray(shape.accent) ? shape.accent : [shape.accent];
         const accentMult = shape.accentMult || 1;
-        
+
         accentPaths.forEach(accentPath => {
             const accentSvgPath = new Path2D(accentPath);
-            ctx.lineWidth = (strokeWidth * (shape.strokeScale || 1) / scale) * accentMult;
+
+            // Draw white border for accent (consistent thickness)
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = ((strokeWidth * 6) / scale) * accentMult; // Don't scale with strokeScale
             ctx.stroke(accentSvgPath);
         });
     }

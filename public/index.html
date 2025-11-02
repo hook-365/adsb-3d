@@ -1726,6 +1726,44 @@
             box-shadow: 0 0 10px var(--text-accent);
         }
 
+        /* Compass tick marks */
+        #compass-rose .tick {
+            position: absolute;
+            background: var(--text-secondary);
+            transform-origin: center;
+        }
+
+        /* Long ticks for intercardinals (NE, SE, SW, NW) */
+        #compass-rose .tick.long {
+            width: 2px;
+            height: 12px;
+        }
+
+        /* Medium ticks for secondary intercardinals */
+        #compass-rose .tick.medium {
+            width: 1.5px;
+            height: 8px;
+        }
+
+        /* Heading indicator box */
+        #heading-indicator {
+            position: absolute;
+            bottom: 450px;
+            right: 30px;
+            width: 100px;  /* Match compass width */
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid var(--accent-primary-dim);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-accent);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
         /* Mini statistics panel */
         #mini-stats {
             position: absolute;
@@ -2683,7 +2721,7 @@
 
     <div id="aircraft-list" class="collapseable-panel mobile-panel-aligned mobile-compact-padding">
         <div class="panel-header">
-            <span class="controls-title">🛩️ ADS-B 3D</span>
+            <span class="controls-title">🛩️ ADS-B 3D <span id="aircraft-count-header" style="font-size: 0.8em; color: var(--text-secondary);">(0)</span></span>
             <button class="collapse-btn" data-panel="aircraft-list" title="Collapse panel">−</button>
         </div>
         <div class="panel-content">
@@ -2691,6 +2729,10 @@
             <div class="stat">
                 <span class="label">Aircraft:</span>
                 <span class="value" id="aircraft-count">0</span>
+            </div>
+            <div class="stat">
+                <span class="label">With positions:</span>
+                <span class="value" id="aircraft-with-positions">0</span>
             </div>
             <div class="stat">
                 <span class="label">Updated:</span>
@@ -3022,12 +3064,17 @@
     <div class="loading" id="loading">Loading...</div>
 
     <!-- Compass Rose -->
+    <!-- Heading Indicator -->
+    <div id="heading-indicator">000</div>
+
+    <!-- Compass Rose -->
     <div id="compass-rose">
         <div class="direction n">N</div>
         <div class="direction s">S</div>
         <div class="direction e">E</div>
         <div class="direction w">W</div>
         <div class="center-dot"></div>
+        <!-- Tick marks will be added dynamically by JavaScript -->
     </div>
 
     <!-- Mini Radar View -->

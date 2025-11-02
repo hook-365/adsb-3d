@@ -3931,6 +3931,53 @@ async function initializeApp() {
 }
 
 // Initialize Three.js scene
+// Initialize compass tick marks
+function initializeCompassTicks() {
+    const compassRose = document.getElementById('compass-rose');
+    if (!compassRose) return;
+
+    const compassRadius = 50; // 100px diameter / 2
+    const centerX = compassRadius;
+    const centerY = compassRadius;
+
+    // Define tick marks with angles (0° = North)
+    const ticks = [
+        // Long ticks for intercardinals
+        { angle: 45, type: 'long' },   // NE
+        { angle: 135, type: 'long' },  // SE
+        { angle: 225, type: 'long' },  // SW
+        { angle: 315, type: 'long' },  // NW
+        // Medium ticks for secondary intercardinals
+        { angle: 22.5, type: 'medium' },   // NNE
+        { angle: 67.5, type: 'medium' },   // ENE
+        { angle: 112.5, type: 'medium' },  // ESE
+        { angle: 157.5, type: 'medium' },  // SSE
+        { angle: 202.5, type: 'medium' },  // SSW
+        { angle: 247.5, type: 'medium' },  // WSW
+        { angle: 292.5, type: 'medium' },  // WNW
+        { angle: 337.5, type: 'medium' },  // NNW
+    ];
+
+    // Create tick marks
+    ticks.forEach(tick => {
+        const tickDiv = document.createElement('div');
+        tickDiv.className = `tick ${tick.type}`;
+
+        // Calculate position on the edge of the compass
+        const angleRad = (tick.angle - 90) * Math.PI / 180; // -90 to start from top
+        const radius = compassRadius - (tick.type === 'long' ? 6 : 4); // Position near edge
+        const x = centerX + radius * Math.cos(angleRad);
+        const y = centerY + radius * Math.sin(angleRad);
+
+        // Position and rotate the tick
+        tickDiv.style.left = `${x}px`;
+        tickDiv.style.top = `${y}px`;
+        tickDiv.style.transform = `translate(-50%, -50%) rotate(${tick.angle}deg)`;
+
+        compassRose.appendChild(tickDiv);
+    });
+}
+
 function init() {
     const canvas = document.getElementById('canvas');
 
@@ -4032,6 +4079,9 @@ function init() {
 
     // Setup UI controls
     setupUIControls();
+
+    // Initialize compass tick marks
+    initializeCompassTicks();
 
     // Setup aircraft click interaction
     setupAircraftClick();
@@ -5933,9 +5983,14 @@ async function fetchAircraftData() {
         // Show error in UI if repeated failures
         if (fetchErrorCount >= MAX_FETCH_ERRORS) {
             const infoDiv = document.getElementById('aircraft-count');
+            const headerDiv = document.getElementById('aircraft-count-header');
             if (infoDiv) {
                 infoDiv.textContent = 'Connection Error';
                 infoDiv.style.color = '#ff4444';
+            }
+            if (headerDiv) {
+                headerDiv.textContent = '(Error)';
+                headerDiv.style.color = '#ff4444';
             }
         }
     }
@@ -6076,8 +6131,17 @@ function updateAircraft(aircraft) {
             if (CONFIG.highlightMilitary && isMilitary) {
                 mesh.traverse((child) => {
                     if (child.isMesh && child.material) {
-                        child.material.color.setHex(CONFIG.militaryColor);
-                        child.material.emissive.setHex(CONFIG.militaryColor);
+                        // Check if this is a shader material (sprite) or standard material
+                        if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.tintColor) {
+                            // For shader material sprites, update tintColor uniform
+                            child.material.uniforms.tintColor.value.setHex(CONFIG.militaryColor);
+                        } else if (child.material.color) {
+                            // For standard materials (spheres)
+                            child.material.color.setHex(CONFIG.militaryColor);
+                            if (child.material.emissive) {
+                                child.material.emissive.setHex(CONFIG.militaryColor);
+                            }
+                        }
                     }
                 });
 
@@ -6179,12 +6243,12 @@ function createAircraftModel(color, aircraftData = null) {
             console.log(`[SVG] Aircraft ${aircraftData.hex}: type=${typeDesignator}, category=${category}, typeDesc=${typeDescription}, wtc=${wtc}, shape=${shapeName}, scaling=${scaling}`);
         }
 
-        // Generate or get cached texture (in white, so it's reusable)
+        // Generate or get cached texture (gray fill with white border, tinted by shader)
         const texture = window.AircraftSVGSystem.svgShapeToTexture(
             shapeName,
-            '#ffffff',       // White fill (color applied via material)
-            '#000000',       // Black stroke
-            0.5,             // Thin stroke
+            '#ffffff',       // Ignored - SVG uses gray fill
+            '#000000',       // Ignored - SVG uses white border only
+            0.5,             // Stroke width multiplier
             scaling          // Shape-specific scaling
         );
 
@@ -6195,10 +6259,40 @@ function createAircraftModel(color, aircraftData = null) {
             geometry.rotateX(-Math.PI / 2); // Rotate to horizontal
             // After rotateX: plane is horizontal, texture "up" now points +Z (south)
 
-            // Create material with SVG texture and altitude-based color
-            const material = new THREE.MeshBasicMaterial({
-                map: texture,
-                color: new THREE.Color(color),  // Apply altitude color to material
+            // Create shader material that preserves white outline while tinting and glowing the aircraft
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    map: { value: texture },
+                    tintColor: { value: new THREE.Color(color) },
+                    emissiveIntensity: { value: 0.4 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D map;
+                    uniform vec3 tintColor;
+                    uniform float emissiveIntensity;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 texColor = texture2D(map, vUv);
+
+                        // If pixel is white or very bright (border), keep it white
+                        float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
+                        if (brightness > 0.7) {
+                            gl_FragColor = texColor; // Keep white border white
+                        } else {
+                            // Apply tint to darker pixels (the aircraft shape) + emissive glow
+                            vec3 tintedColor = texColor.rgb * tintColor;
+                            vec3 emissiveGlow = tintColor * emissiveIntensity;
+                            gl_FragColor = vec4(tintedColor + emissiveGlow, texColor.a);
+                        }
+                    }
+                `,
                 transparent: true,
                 alphaTest: 0.1,
                 side: THREE.DoubleSide,
@@ -6231,7 +6325,7 @@ function createAircraftModel(color, aircraftData = null) {
             const material = new THREE.MeshPhongMaterial({
                 color: color,
                 emissive: color,
-                emissiveIntensity: 0.5,
+                emissiveIntensity: 0.3,
                 shininess: 100
             });
             const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), material);
@@ -6242,13 +6336,13 @@ function createAircraftModel(color, aircraftData = null) {
     else {
         const material = new THREE.MeshPhongMaterial({
             color: color,
-            emissive: new THREE.Color(0xffffff), // Bright white glow
-            emissiveIntensity: 0.8, // Increased from 0.5 for better visibility
+            emissive: new THREE.Color(color), // Glow with altitude color
+            emissiveIntensity: 0.4, // Subtle glow to enhance visibility
             shininess: 100
         });
 
         // Main aircraft sphere with increased size for better visibility
-        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), material);
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), material);
         group.add(sphere);
     }
 
@@ -6411,21 +6505,15 @@ function createTextLabel(text) {
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     // Add white border around the label box
-    context.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // White border
-    context.lineWidth = 3; // Border thickness
+    context.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White border
+    context.lineWidth = 6; // Thicker border for visibility from distance
     context.strokeRect(0, 0, canvas.width, canvas.height);
 
-    // Add white stroke/outline to text for better visibility
+    // Draw text (no outline - better readability)
     context.font = 'Bold 28px Arial';
-    context.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White text outline
-    context.lineWidth = 4; // Thick outline
-    context.lineJoin = 'round';
+    context.fillStyle = 'white';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.strokeText(text, canvas.width / 2, canvas.height / 2);
-
-    // Fill text in white on top of outline
-    context.fillStyle = 'white';
     context.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -6597,10 +6685,17 @@ function updateAircraftPosition(hex, x, y, z) {
     const color = getAltitudeColor(y);
     mesh.traverse((child) => {
         if (child.isMesh && child.material) {
-            child.material.color.setHex(color);
-            // Only set emissive if the material supports it (sphere mode)
-            if (child.material.emissive) {
-                child.material.emissive.setHex(color);
+            // Check if this is a shader material (sprite with white outline) or standard material
+            if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.tintColor) {
+                // For shader material sprites, update tintColor uniform
+                child.material.uniforms.tintColor.value.setHex(color);
+            } else if (child.material.color) {
+                // For standard materials (spheres), update color directly
+                child.material.color.setHex(color);
+                // Only set emissive if the material supports it (sphere mode)
+                if (child.material.emissive) {
+                    child.material.emissive.setHex(color);
+                }
             }
         }
     });
@@ -6896,9 +6991,9 @@ function getAltitudeColor(altitudeSceneUnits) {
 
     // tar1090 altitude color scale (from config.js)
     // Key waypoints: 2000ft (H=20), 10000ft (H=140), 40000ft (H=300)
-    // All with S=88%, L=44%
-    const saturation = 88;
-    const lightness = 44;
+    // Adjusted S=100%, L=65% (maximum saturation, rich vibrant colors on dark map)
+    const saturation = 100;
+    const lightness = 65;
     let hue;
 
     if (altitudeFeet <= 2000) {
@@ -6919,7 +7014,11 @@ function getAltitudeColor(altitudeSceneUnits) {
 }
 
 function updateUI(data) {
-    document.getElementById('aircraft-count').textContent = data.aircraft?.length || 0;
+    const totalAircraft = data.aircraft?.length || 0;
+
+    // Update both main count and header count
+    document.getElementById('aircraft-count').textContent = totalAircraft;
+    document.getElementById('aircraft-count-header').textContent = `(${totalAircraft})`;
 
     const now = new Date();
     document.getElementById('last-update').textContent = now.toLocaleTimeString();
@@ -6930,6 +7029,9 @@ function updateUI(data) {
 
     // Find highest/fastest/closest BEFORE rendering list
     const validAircraft = (data.aircraft || []).filter(ac => ac.lat && ac.lon && ac.alt_baro);
+
+    // Update aircraft with positions count
+    document.getElementById('aircraft-with-positions').textContent = validAircraft.length;
     let highestHex = null, fastestHex = null, closestHex = null;
 
     if (validAircraft.length > 0) {
@@ -7205,7 +7307,7 @@ function highlightAircraft(hex, highlight) {
                             // Only restore emissive if it exists
                             if (child.material.emissive && child.userData.originalEmissive) {
                                 child.material.emissive.copy(child.userData.originalEmissive);
-                                child.material.emissiveIntensity = 0.5;
+                                child.material.emissiveIntensity = 0.3;
                             }
                         }
                     }
@@ -7322,15 +7424,12 @@ function updateLabelAppearance(hex, highlighted) {
     ctx.shadowBlur = 0;
 
     // Add white border around the label box
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // White border
-    ctx.lineWidth = 3; // Border thickness
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White border
+    ctx.lineWidth = 6; // Thicker border for visibility from distance
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
-    // Text with white outline
+    // Draw text (no outline - better readability)
     ctx.font = 'Bold 28px Arial';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // White text outline
-    ctx.lineWidth = 4; // Thick outline
-    ctx.lineJoin = 'round';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -7343,9 +7442,6 @@ function updateLabelAppearance(hex, highlighted) {
 
     lines.forEach((line, index) => {
         const yPos = startY + index * lineHeight;
-        // Draw outline first
-        ctx.strokeText(line, canvas.width / 2, yPos);
-        // Then fill text
         ctx.fillText(line, canvas.width / 2, yPos);
     });
 
@@ -7662,7 +7758,18 @@ function animate() {
         // Calculate angle from north (-Z axis)
         // atan2 gives us the angle in radians, we convert to degrees
         const yaw = Math.atan2(cameraDirection.x, -cameraDirection.z);
-        const yawDegrees = yaw * 180 / Math.PI;
+        let yawDegrees = yaw * 180 / Math.PI;
+
+        // Normalize to 0-360 range for heading indicator
+        let heading = yawDegrees;
+        if (heading < 0) heading += 360;
+        heading = Math.round(heading) % 360;
+
+        // Update heading indicator (aviation format: 3 digits)
+        const headingIndicator = document.getElementById('heading-indicator');
+        if (headingIndicator) {
+            headingIndicator.textContent = heading.toString().padStart(3, '0');
+        }
 
         // Rotate compass rose opposite to camera direction
         compassRose.style.transform = `rotate(${-yawDegrees}deg)`;
