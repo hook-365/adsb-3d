@@ -1356,6 +1356,7 @@ const RecentTrailsState = {
     enabled: false,
     minutes: 5,              // Default to 5 minutes
     loaded: false,
+    loading: false,          // Prevent concurrent load operations (race condition guard)
     icaos: new Set()         // Track which aircraft have recent trails loaded
 };
 
@@ -2039,20 +2040,61 @@ async function loadHistoricalData() {
     }
 }
 
+/**
+ * Properly dispose of a Three.js geometry with GPU resource cleanup
+ * Prevents memory leaks by clearing attribute arrays before disposal
+ * @param {THREE.BufferGeometry} geometry - The geometry to dispose
+ */
+function disposeGeometry(geometry) {
+    if (!geometry) return;
+
+    // Clear buffer attribute arrays to free GPU memory
+    if (geometry.attributes) {
+        Object.keys(geometry.attributes).forEach(key => {
+            const attr = geometry.attributes[key];
+            if (attr && attr.array) {
+                attr.array = null;
+            }
+        });
+    }
+
+    // Dispose the geometry itself
+    geometry.dispose();
+}
+
+/**
+ * Properly dispose of a Three.js material
+ * @param {THREE.Material} material - The material to dispose
+ */
+function disposeMaterial(material) {
+    if (!material) return;
+
+    // Dispose any textures
+    if (material.map) material.map.dispose();
+    if (material.lightMap) material.lightMap.dispose();
+    if (material.bumpMap) material.bumpMap.dispose();
+    if (material.normalMap) material.normalMap.dispose();
+    if (material.specularMap) material.specularMap.dispose();
+    if (material.envMap) material.envMap.dispose();
+
+    // Dispose the material itself
+    material.dispose();
+}
+
 // Clear all trails from the scene (used when loading recent trails)
 function clearAllTrails() {
     trails.forEach((trail, icao) => {
         // Remove trail line
         if (trail.line) {
             scene.remove(trail.line);
-            if (trail.line.geometry) trail.line.geometry.dispose();
-            if (trail.line.material) trail.line.material.dispose();
+            disposeGeometry(trail.line.geometry);
+            disposeMaterial(trail.line.material);
         }
         // Remove Tron curtain if present
         if (trail.tronCurtain) {
             scene.remove(trail.tronCurtain);
-            if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-            if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+            disposeGeometry(trail.tronCurtain.geometry);
+            disposeMaterial(trail.tronCurtain.material);
         }
     });
     trails.clear();
@@ -2070,8 +2112,8 @@ function clearAllTrails() {
         // console.log(`[RecentTrails] Found ${orphanedCurtains.length} orphaned Tron curtains, removing...`);
         orphanedCurtains.forEach(curtain => {
             scene.remove(curtain);
-            if (curtain.geometry) curtain.geometry.dispose();
-            if (curtain.material) curtain.material.dispose();
+            disposeGeometry(curtain.geometry);
+            disposeMaterial(curtain.material);
         });
     }
 
@@ -2116,13 +2158,13 @@ function cleanupOldTrailPositions() {
                 // All positions removed - remove trail entirely
                 if (trail.line) {
                     scene.remove(trail.line);
-                    if (trail.line.geometry) trail.line.geometry.dispose();
-                    if (trail.line.material) trail.line.material.dispose();
+                    disposeGeometry(trail.line.geometry);
+                    disposeMaterial(trail.line.material);
                 }
                 if (trail.tronCurtain) {
                     scene.remove(trail.tronCurtain);
-                    if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-                    if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+                    disposeGeometry(trail.tronCurtain.geometry);
+                    disposeMaterial(trail.tronCurtain.material);
                 }
                 trails.delete(hex);
             }
@@ -2148,18 +2190,18 @@ function cleanupOldTrailPositions() {
                 // Remove stale trail entirely
                 if (trail.line) {
                     scene.remove(trail.line);
-                    if (trail.line.geometry) trail.line.geometry.dispose();
-                    if (trail.line.material) trail.line.material.dispose();
+                    disposeGeometry(trail.line.geometry);
+                    disposeMaterial(trail.line.material);
                 }
                 if (trail.gapLine) {
                     scene.remove(trail.gapLine);
-                    if (trail.gapLine.geometry) trail.gapLine.geometry.dispose();
-                    if (trail.gapLine.material) trail.gapLine.material.dispose();
+                    disposeGeometry(trail.gapLine.geometry);
+                    disposeMaterial(trail.gapLine.material);
                 }
                 if (trail.tronCurtain) {
                     scene.remove(trail.tronCurtain);
-                    if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-                    if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+                    disposeGeometry(trail.tronCurtain.geometry);
+                    disposeMaterial(trail.tronCurtain.material);
                 }
                 staleTrails.delete(hex);
             }
@@ -2191,15 +2233,15 @@ function rebuildTrailGeometry(hex, trail) {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
     // Dispose old geometry and update
-    if (trail.line.geometry) trail.line.geometry.dispose();
+    disposeGeometry(trail.line.geometry);
     trail.line.geometry = geometry;
 
     // Rebuild Tron curtain if it exists
     if (showTronMode && trail.tronCurtain) {
         // Remove old curtain
         scene.remove(trail.tronCurtain);
-        if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-        if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+        disposeGeometry(trail.tronCurtain.geometry);
+        disposeMaterial(trail.tronCurtain.material);
         trail.tronCurtain = null;
 
         // Rebuild curtain with remaining positions
@@ -2261,6 +2303,12 @@ async function loadRecentTrails() {
         return;
     }
 
+    // Race condition guard: prevent concurrent loads
+    if (RecentTrailsState.loading) {
+        console.log('[RecentTrails] Load already in progress, skipping duplicate request');
+        return;
+    }
+
     // Don't load recent trails when in historical mode with active filters
     // This prevents mixing live current data with historical filtered data
     const altMaxInput = document.getElementById('filter-altitude-max');
@@ -2281,6 +2329,9 @@ async function loadRecentTrails() {
         console.log('[RecentTrails] Skipping - historical mode with active filters detected');
         return;
     }
+
+    // Set loading flag
+    RecentTrailsState.loading = true;
 
     const minutes = RecentTrailsState.minutes;
     const endTime = new Date();
@@ -2338,6 +2389,9 @@ async function loadRecentTrails() {
             statusDiv.innerHTML = `❌ Failed to load recent trails: ${error.message}`;
             statusDiv.className = 'historical-status error';
         }
+    } finally {
+        // Always clear loading flag, even on error
+        RecentTrailsState.loading = false;
     }
 }
 
@@ -3370,38 +3424,32 @@ function clearLiveAircraft() {
     // Remove aircraft meshes (using Map methods)
     aircraftMeshes.forEach(mesh => {
         scene.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) mesh.material.dispose();
+        disposeGeometry(mesh.geometry);
+        disposeMaterial(mesh.material);
     });
     aircraftMeshes.clear();
 
     // Remove aircraft labels
     aircraftLabels.forEach(label => {
         scene.remove(label);
-        if (label.material) {
-            if (label.material.map) label.material.map.dispose();
-            label.material.dispose();
-        }
-        if (label.geometry) label.geometry.dispose();
+        disposeMaterial(label.material);
+        disposeGeometry(label.geometry);
     });
     aircraftLabels.clear();
 
     // Remove military indicators
     militaryIndicators.forEach(icon => {
         scene.remove(icon);
-        if (icon.material) {
-            if (icon.material.map) icon.material.map.dispose();
-            icon.material.dispose();
-        }
-        if (icon.geometry) icon.geometry.dispose();
+        disposeMaterial(icon.material);
+        disposeGeometry(icon.geometry);
     });
     militaryIndicators.clear();
 
     // Remove altitude lines
     altitudeLines.forEach(line => {
         scene.remove(line);
-        if (line.geometry) line.geometry.dispose();
-        if (line.material) line.material.dispose();
+        disposeGeometry(line.geometry);
+        disposeMaterial(line.material);
     });
     altitudeLines.clear();
 
@@ -3410,15 +3458,15 @@ function clearLiveAircraft() {
     trails.forEach(trail => {
         if (trail.line) {
             scene.remove(trail.line);
-            if (trail.line.geometry) trail.line.geometry.dispose();
-            if (trail.line.material) trail.line.material.dispose();
+            disposeGeometry(trail.line.geometry);
+            disposeMaterial(trail.line.material);
             trailsRemoved++;
         }
         // Remove Tron curtain if it exists
         if (trail.tronCurtain) {
             scene.remove(trail.tronCurtain);
-            if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-            if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+            disposeGeometry(trail.tronCurtain.geometry);
+            disposeMaterial(trail.tronCurtain.material);
         }
     });
     trails.clear();
@@ -3428,21 +3476,21 @@ function clearLiveAircraft() {
     staleTrails.forEach(trail => {
         if (trail.line) {
             scene.remove(trail.line);
-            if (trail.line.geometry) trail.line.geometry.dispose();
-            if (trail.line.material) trail.line.material.dispose();
+            disposeGeometry(trail.line.geometry);
+            disposeMaterial(trail.line.material);
             staleTrailsRemoved++;
         }
         // Also remove gap line if it exists
         if (trail.gapLine) {
             scene.remove(trail.gapLine);
-            if (trail.gapLine.geometry) trail.gapLine.geometry.dispose();
-            if (trail.gapLine.material) trail.gapLine.material.dispose();
+            disposeGeometry(trail.gapLine.geometry);
+            disposeMaterial(trail.gapLine.material);
         }
         // Remove Tron curtain if it exists
         if (trail.tronCurtain) {
             scene.remove(trail.tronCurtain);
-            if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-            if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
+            disposeGeometry(trail.tronCurtain.geometry);
+            disposeMaterial(trail.tronCurtain.material);
         }
     });
     staleTrails.clear();
@@ -5109,7 +5157,218 @@ function resetCamera() {
     });
 }
 
+/**
+ * Sanitize HTML to prevent XSS attacks
+ * Escapes HTML special characters that could be used for injection
+ * @param {string} str - The string to sanitize
+ * @returns {string} Sanitized string safe for HTML insertion
+ */
+function sanitizeHTML(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+/**
+ * Safe localStorage wrapper with error handling
+ * Prevents crashes in private browsing mode or when quota is exceeded
+ */
+const SafeStorage = {
+    /**
+     * Safely get an item from localStorage
+     * @param {string} key - The storage key
+     * @param {*} defaultValue - Default value if retrieval fails
+     * @returns {string|null} The stored value or default
+     */
+    getItem(key, defaultValue = null) {
+        try {
+            return localStorage.getItem(key);
+        } catch (e) {
+            console.warn(`[Storage] Failed to read ${key}:`, e.message);
+            return defaultValue;
+        }
+    },
+
+    /**
+     * Safely set an item in localStorage
+     * @param {string} key - The storage key
+     * @param {string} value - The value to store
+     * @returns {boolean} True if successful, false otherwise
+     */
+    setItem(key, value) {
+        try {
+            localStorage.setItem(key, value);
+            return true;
+        } catch (e) {
+            console.warn(`[Storage] Failed to save ${key}:`, e.message);
+            // Common errors: QuotaExceededError in private browsing
+            if (e.name === 'QuotaExceededError') {
+                console.warn('[Storage] Storage quota exceeded. Consider clearing old data.');
+            }
+            return false;
+        }
+    },
+
+    /**
+     * Safely remove an item from localStorage
+     * @param {string} key - The storage key
+     * @returns {boolean} True if successful, false otherwise
+     */
+    removeItem(key) {
+        try {
+            localStorage.removeItem(key);
+            return true;
+        } catch (e) {
+            console.warn(`[Storage] Failed to remove ${key}:`, e.message);
+            return false;
+        }
+    },
+
+    /**
+     * Check if localStorage is available
+     * @returns {boolean} True if localStorage is available
+     */
+    isAvailable() {
+        try {
+            const test = '__storage_test__';
+            localStorage.setItem(test, test);
+            localStorage.removeItem(test);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+};
+
+/**
+ * Setup aircraft search bar with fuzzy matching
+ * Allows users to quickly find aircraft by callsign, ICAO, tail number, or type
+ */
+function setupAircraftSearch() {
+    const searchInput = document.getElementById('aircraft-search');
+    const clearBtn = document.getElementById('aircraft-search-clear');
+
+    if (!searchInput || !clearBtn) {
+        console.warn('[Search] Search elements not found');
+        return;
+    }
+
+    // Show/hide clear button based on input
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+
+        if (query.length > 0) {
+            clearBtn.classList.add('visible');
+        } else {
+            clearBtn.classList.remove('visible');
+        }
+
+        filterAircraftList(query);
+    });
+
+    // Clear button functionality
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearBtn.classList.remove('visible');
+        filterAircraftList('');
+        searchInput.focus();
+    });
+
+    // Clear search on Escape key
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            searchInput.value = '';
+            clearBtn.classList.remove('visible');
+            filterAircraftList('');
+            searchInput.blur();
+        }
+    });
+}
+
+/**
+ * Filter aircraft list based on search query
+ * Uses fuzzy matching for flexible searching
+ * @param {string} query - The search query
+ */
+function filterAircraftList(query) {
+    const aircraftItems = document.querySelectorAll('.aircraft-item');
+
+    if (!query || query.length === 0) {
+        // No query - show all aircraft
+        aircraftItems.forEach(item => {
+            item.classList.remove('search-hidden', 'search-match');
+        });
+        return;
+    }
+
+    const queryLower = query.toLowerCase();
+    let matchCount = 0;
+
+    aircraftItems.forEach(item => {
+        const hex = item.dataset.hex;
+        if (!hex) return;
+
+        // Get aircraft data
+        const aircraft = aircraftData.aircraft?.find(ac => ac.hex?.toLowerCase() === hex.toLowerCase());
+        if (!aircraft) {
+            item.classList.add('search-hidden');
+            item.classList.remove('search-match');
+            return;
+        }
+
+        // Build searchable string from all relevant fields
+        const searchFields = [
+            aircraft.hex,
+            aircraft.flight,
+            aircraft.r,  // registration/tail
+            aircraft.t,  // type
+            aircraft.desc,  // description
+        ].filter(Boolean).map(f => String(f).toLowerCase());
+
+        // Check if any field matches the query (fuzzy match)
+        const matches = searchFields.some(field => {
+            // Exact match
+            if (field.includes(queryLower)) return true;
+
+            // Fuzzy match - allow for typos (simple implementation)
+            // Check if query characters appear in order
+            let queryIndex = 0;
+            for (let i = 0; i < field.length && queryIndex < queryLower.length; i++) {
+                if (field[i] === queryLower[queryIndex]) {
+                    queryIndex++;
+                }
+            }
+            return queryIndex === queryLower.length;
+        });
+
+        if (matches) {
+            item.classList.remove('search-hidden');
+            item.classList.add('search-match');
+            matchCount++;
+        } else {
+            item.classList.add('search-hidden');
+            item.classList.remove('search-match');
+        }
+    });
+
+    // Update aircraft count to reflect filtered results
+    const countEl = document.getElementById('aircraft-count');
+    if (countEl && matchCount < aircraftItems.length) {
+        // Show filtered count
+        countEl.textContent = `${matchCount}/${aircraftItems.length}`;
+        countEl.style.color = 'var(--accent-primary)';
+    } else if (countEl) {
+        // Reset to normal count
+        countEl.textContent = aircraftItems.length;
+        countEl.style.color = '';
+    }
+}
+
 function setupUIControls() {
+    // Aircraft Search Bar
+    setupAircraftSearch();
+
     // Reset camera button
     document.getElementById('reset-camera').addEventListener('click', () => {
         resetCamera();
@@ -7170,8 +7429,9 @@ function updateUI(data) {
             const item = document.createElement('div');
             item.className = 'aircraft-item';
 
-            const callsign = ac.flight?.trim() || ac.hex;
-            const type = ac.t || 'Unknown';
+            // Sanitize external data to prevent XSS
+            const callsign = sanitizeHTML(ac.flight?.trim() || ac.hex);
+            const type = sanitizeHTML(ac.t || 'Unknown');
             const alt = ac.alt_baro ? `${ac.alt_baro.toLocaleString()}ft` : 'N/A';
             const dist = ac.r_dst ? `${ac.r_dst.toFixed(1)}nmi` : 'N/A'; // r_dst is already in nautical miles
             const speed = ac.gs ? `${ac.gs.toFixed(0)}kts` : 'N/A';
@@ -8522,6 +8782,7 @@ async function showAircraftDetail(hex) {
     const panel = document.getElementById('aircraft-detail');
     const callsign = data.flight?.trim() || data.hex || hex;
 
+    // Use textContent (not innerHTML) for callsign to prevent XSS
     document.getElementById('detail-callsign').textContent = callsign;
 
     // Build detail grid
@@ -8542,21 +8803,23 @@ async function showAircraftDetail(hex) {
         details.push({ label: 'Classification', value: militaryLabel });
 
         if (militaryInfo) {
-            if (militaryInfo.tail) details.push({ label: 'Military Tail', value: militaryInfo.tail });
-            if (militaryInfo.type) details.push({ label: 'Military Type', value: militaryInfo.type });
-            if (militaryInfo.description) details.push({ label: 'Description', value: militaryInfo.description });
+            if (militaryInfo.tail) details.push({ label: 'Military Tail', value: sanitizeHTML(militaryInfo.tail) });
+            if (militaryInfo.type) details.push({ label: 'Military Type', value: sanitizeHTML(militaryInfo.type) });
+            if (militaryInfo.description) details.push({ label: 'Description', value: sanitizeHTML(militaryInfo.description) });
         }
     }
 
-    // Aircraft info (like tar1090)
+    // Aircraft info (like tar1090) - sanitize all external data
     if (data.desc) {
         // Show year + description if available (e.g., "2019 BOEING 757-200")
-        const aircraftInfo = data.year ? `${data.year} ${data.desc}` : data.desc;
+        const year = data.year ? sanitizeHTML(String(data.year)) : '';
+        const desc = sanitizeHTML(data.desc);
+        const aircraftInfo = year ? `${year} ${desc}` : desc;
         details.push({ label: 'Aircraft', value: aircraftInfo });
     }
-    if (data.ownOp) details.push({ label: 'Operator', value: data.ownOp });
-    if (data.r) details.push({ label: 'Registration', value: data.r });
-    if (data.t) details.push({ label: 'Type Code', value: data.t });
+    if (data.ownOp) details.push({ label: 'Operator', value: sanitizeHTML(data.ownOp) });
+    if (data.r) details.push({ label: 'Registration', value: sanitizeHTML(data.r) });
+    if (data.t) details.push({ label: 'Type Code', value: sanitizeHTML(data.t) });
 
     // Add route placeholder (will be populated async)
     details.push({ label: 'Route', value: '<span id="route-loading">Loading...</span>' });
