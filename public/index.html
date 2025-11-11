@@ -387,10 +387,7 @@
             border-color: var(--accent-primary);
         }
 
-        .footer-link.coffee-link {
-            font-family: 'Cookie', cursive;
-            font-size: 18px;
-        }
+        /* Coffee link now same size as other footer links */
 
         .footer-separator {
             color: var(--text-secondary);
@@ -428,7 +425,7 @@
             border-radius: 12px;
             padding: 30px 40px;
             max-width: 600px;
-            max-height: 90vh;
+            max-height: calc(100vh - 120px);  /* Account for footer and spacing */
             overflow-y: auto;
             backdrop-filter: blur(20px);
             position: relative;
@@ -1995,6 +1992,28 @@
             grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: var(--spacing-md);
             padding: 0 15px 10px 15px;  /* Content padding (no top since header has bottom) */
+            max-height: 400px;  /* Maximum height before scrolling */
+            overflow-y: auto;  /* Enable vertical scrolling */
+            overflow-x: hidden;  /* No horizontal scroll */
+        }
+
+        /* Custom scrollbar styling for settings */
+        #controls.collapseable-panel .panel-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #controls.collapseable-panel .panel-content::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+        }
+
+        #controls.collapseable-panel .panel-content::-webkit-scrollbar-thumb {
+            background: var(--accent-primary-dim);
+            border-radius: 3px;
+        }
+
+        #controls.collapseable-panel .panel-content::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-primary-hover);
         }
 
         /* Toggle Switch Styles */
@@ -2192,6 +2211,7 @@
 
             #controls.collapseable-panel .panel-content {
                 padding: 0 10px 6px 10px;  /* Content padding for mobile */
+                max-height: 250px;  /* Smaller max height on mobile */
             }
 
             #controls button {
@@ -2327,6 +2347,7 @@
             #about-content,
             #keyboard-help-modal .modal-content {
                 max-width: calc(100vw - 40px);
+                max-height: calc(100vh - 80px);  /* More space on mobile for footer */
                 padding: 20px;
                 margin: 0 20px;
             }
@@ -2586,6 +2607,10 @@
                 padding: 0;  /* No outer padding */
             }
 
+            #controls.collapseable-panel .panel-content {
+                max-height: 200px;  /* Even smaller for very small screens */
+            }
+
             #controls button {
                 padding: 5px 8px;
                 font-size: 9px;
@@ -2640,7 +2665,7 @@
                 <li>Real-time 3D aircraft visualization</li>
                 <li>Altitude-based color gradient (red→orange→green→magenta)</li>
                 <li>Flight path trails with recent history (1-30 min)</li>
-                <li>Military aircraft detection & highlighting</li>
+                <li>Advanced aircraft type filtering</li>
                 <li>Interactive aircraft selection & follow mode</li>
                 <li>Live statistics dashboard</li>
             </ul>
@@ -2649,7 +2674,7 @@
             <ul class="feature-list">
                 <li>Time travel: replay past 6+ days of flights</li>
                 <li>Quick presets: 1, 4, 8, 12, 24 hours or custom range</li>
-                <li>Post-load filters: military, altitude, track length, speed</li>
+                <li>Post-load filters: aircraft type, altitude, track length, speed</li>
                 <li>MLAT altitude smoothing (fixes zero-altitude glitches)</li>
                 <li>Optimized rendering (instanced endpoints)</li>
                 <li>Same altitude colors as live mode</li>
@@ -2675,9 +2700,9 @@
                 Custom Track API with TimescaleDB - 6+ days of position history
             </p>
             <p class="data-source">
-                <strong>Military Aircraft Database:</strong><br>
+                <strong>Aircraft Type Database:</strong><br>
                 <a href="https://github.com/Mictronics/readsb-protobuf" target="_blank" rel="noopener noreferrer">tar1090-db</a> (Mictronics) -
-                Verified military aircraft ICAO codes
+                Comprehensive aircraft type identification
             </p>
             <p class="data-source">
                 <strong>Airport & Runway Data:</strong><br>
@@ -2708,7 +2733,7 @@
                 Note: Ground plane uses flat 2D map tiles - no 3D elevation data.
             </p>
 
-            <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; justify-content: center;">
                 <a href="https://github.com/hook-365/adsb-3d" class="github-link" id="github-link" target="_blank" rel="noopener noreferrer">
                     📦 GitHub Repository
                 </a>
@@ -2756,12 +2781,6 @@
                             <option value="45">45 min</option>
                             <option value="60">1 hour</option>
                         </select>
-                    </label>
-                </div>
-                <div class="historical-input-group" style="margin-top: 8px;">
-                    <label for="enable-tron-mode" style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="enable-tron-mode" style="width: auto; margin: 0;">
-                        <span>Tron mode</span>
                     </label>
                 </div>
                 <div id="recent-trails-status" class="historical-status" style="margin-top: 6px; min-height: 0;"></div>
@@ -2869,13 +2888,6 @@
                     Showing all tracks at once. Click Playback Mode to animate tracks over time.
                 </div>
 
-                <!-- Tron Mode Toggle -->
-                <div class="historical-input-group" style="margin-top: 10px;">
-                    <label for="historical-tron-mode">
-                        <input type="checkbox" id="historical-tron-mode" style="width: auto; margin-right: 5px;">
-                        Tron Mode (altitude curtains)
-                    </label>
-                </div>
             </div>
 
             <!-- Post-Load Filters (shown after data is loaded) -->
@@ -2979,10 +2991,10 @@
         </div>
     </div>
 
-    <div id="controls" class="collapseable-panel">
+    <div id="controls" class="collapseable-panel collapsed">
         <div class="panel-header">
             <span class="controls-title">⚙️ Settings</span>
-            <button class="collapse-btn" data-panel="controls" title="Collapse panel">−</button>
+            <button class="collapse-btn" data-panel="controls" title="Collapse panel">+</button>
         </div>
         <div class="panel-content">
             <!-- Reset Camera Button (action button, not toggle) -->
@@ -3029,6 +3041,21 @@
 
             <div class="toggle-switch-container" id="toggle-trail-fade-container">
                 <span class="toggle-switch-label">Auto-fade Trails</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-sprite-mode-container">
+                <span class="toggle-switch-label">Sprite Mode</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-home-tower-container">
+                <span class="toggle-switch-label">Home Tower</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-tron-mode-container">
+                <span class="toggle-switch-label">Tron Mode</span>
                 <div class="toggle-switch"></div>
             </div>
 

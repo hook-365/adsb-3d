@@ -9,8 +9,32 @@ Real-time and historical 3D visualization of ADS-B aircraft data with 7 visual t
 - **Optional historical mode** with track playback and filtering
 - **Mini radar** always showing live aircraft
 - **Mobile responsive** with touch controls
-- **Military aircraft detection** and Tron mode with vertical curtains
+- **Advanced filtering** and Tron mode with vertical curtains
 - **Shareable URLs** with persistent filters and view state
+
+## Screenshots
+
+### Live Mode
+Real-time aircraft visualization with altitude-based color coding and flight trails.
+
+<img src="Live.png" alt="Live Mode" width="800"/>
+
+### Sprite Mode (Aircraft Shapes)
+Realistic aircraft shapes using tar1090's SVG system for accurate type identification.
+
+<img src="Live-Sprite.png" alt="Sprite Mode with Aircraft Shapes" width="800"/>
+
+### Tron Mode
+Vertical altitude curtains beneath flight trails for dramatic visualization.
+
+<img src="Live-TronMode.png" alt="Tron Mode with Altitude Curtains" width="800"/>
+
+### Historical Mode with Filtering
+Time-travel through past flights with powerful filtering options (altitude, speed, aircraft type, track length).
+
+<img src="Historical-Filter1.png" alt="Historical Mode - Filter Panel" width="800"/>
+
+<img src="Historical-Filter2.png" alt="Historical Mode - Filtered Tracks" width="800"/>
 
 ## Quick Start
 
@@ -149,7 +173,7 @@ docker compose up -d
   - **Background collector**: Polls feeder every 5 seconds, writes positions to DB
   - **REST API**: FastAPI endpoints for historical queries
 - Browser requests historical data and renders playback
-- Features: altitude/speed filtering, military aircraft detection, animated playback
+- Features: altitude/speed filtering, aircraft type filtering, animated playback
 
 ## Storage & Database
 
@@ -176,7 +200,7 @@ docker compose up -d
 **Data Collected** (every 5 seconds):
 - Position (lat/lon), altitude, speed, heading
 - Tail number, aircraft type, operator
-- Military aircraft flagging
+- Aircraft categorization
 - Callsign and squawk code
 
 ## Usage
@@ -197,7 +221,7 @@ docker compose up -d
 ### Historical Mode
 
 - **Time Presets**: 1h, 4h, 8h, 12h, 24h or custom range
-- **Filters**: Altitude (min/max), speed (min/max), military only, minimum positions
+- **Filters**: Altitude (min/max), speed (min/max), aircraft type, minimum positions
 - **Display Modes**: Show all tracks at once, or animated playback
 - **Shareable URLs**: All settings persist in URL for bookmarking/sharing
 
@@ -257,7 +281,7 @@ Browser 3D Viewer
 
 **Track Service Features:**
 - **Collector**: Polls feeder every 5 seconds, stores positions, updates metadata
-- **API**: Time-range queries, filtering, analytics, military aircraft detection
+- **API**: Time-range queries, filtering, analytics, aircraft type detection
 - **Shared pool**: Single asyncpg connection pool (2-20 connections)
 - **Resolution options**: Full detail, 1-min intervals, 5-min intervals
 - **Rate limiting**: 30 requests/min per IP, burst of 10
@@ -298,6 +322,6 @@ MIT License
 
 - **Three.js**: 3D rendering engine
 - **tar1090**: ADS-B altitude color scheme
-- **Mictronics readsb-protobuf**: Military aircraft database (GPL-3.0)
+- **Mictronics readsb-protobuf**: Aircraft type database (GPL-3.0)
 - **sdr-enthusiasts**: Ultrafeeder Docker image
 - **airport-data.com**: Aircraft images

@@ -1022,8 +1022,9 @@ const URLState = {
 
                 // Apply tron mode if specified
                 if (urlParams.tron === '1' || urlParams.tron === 'true') {
-                    const tronCheckbox = document.getElementById('historical-tron-mode');
-                    if (tronCheckbox) tronCheckbox.checked = true;
+                    showTronMode = true;
+                    const tronToggle = document.getElementById('toggle-tron-mode-container');
+                    if (tronToggle) tronToggle.classList.add('active');
                 }
 
                 // Apply filters with validation
@@ -1159,7 +1160,7 @@ const URLState = {
 
             state.display = HistoricalState.displayMode === 'playback' ? 'playback' : 'all';
 
-            if (HistoricalState.tronMode) state.tron = '1';
+            if (showTronMode) state.tron = '1';
 
             // Add filters if set
             const militaryOnly = document.getElementById('filter-military-only');
@@ -1329,7 +1330,6 @@ const HistoricalState = {
     stats: null,             // {unique_aircraft, total_positions, time_span_hours}
     endpointMeshes: [],      // Array of individual endpoint sphere meshes
     displayMode: 'show-all', // 'show-all' or 'playback'
-    tronMode: false,         // Tron mode for historical tracks (altitude curtains)
     settings: {
         startTime: null,
         endTime: null,
@@ -1690,7 +1690,8 @@ let showLabels = true;
 let showAltitudeLines = true;
 let showMiniRadar = true; // Mini radar view (on by default)
 let showCompass = true; // Compass rose (on by default)
-let showTronMode = false; // Tron mode: vertical altitude curtains beneath trails
+let showHomeTower = true; // Home tower marker (on by default)
+let showTronMode = true; // Tron mode: vertical altitude curtains beneath trails (on by default)
 let followMode = false;
 let followedAircraftHex = null;
 let autoFadeTrails = false; // Auto-fade old trail positions
@@ -1702,6 +1703,7 @@ let cameraReturnInProgress = false;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 let currentlyHoveredListItem = null; // Track which aircraft is hovered in the list
+let homeMarkerGroup = null; // Reference to the home tower marker group
 let currentlyHoveredCanvasAircraft = null; // Track which aircraft is hovered on canvas
 
 // Route API cache and rate limiting
@@ -1775,17 +1777,7 @@ function loadSpriteTexture() {
             console.log(`  - Sprite size: ${SPRITE_CONFIG.spriteWidth}x${SPRITE_CONFIG.spriteHeight}`);
             console.log(`  - Grid: ${SPRITE_CONFIG.columns}x${SPRITE_CONFIG.rows}`);
 
-            // Check if user wanted sprite mode enabled
-            const savedSpriteMode = localStorage.getItem('useSpriteMode');
-            if (savedSpriteMode === 'true' && !useSpriteMode) {
-                console.log('[Sprites] Auto-enabling sprite mode from localStorage');
-                useSpriteMode = true;
-                // Clear any aircraft to force re-render with sprites
-                aircraftMeshes.forEach((mesh, hex) => {
-                    removeAircraft(hex);
-                });
-                aircraftMeshes.clear();
-            }
+            // Sprite mode is now loaded during init, no need to reload here
         },
         (progress) => {
             // Optional: log loading progress
@@ -2619,7 +2611,7 @@ function createHistoricalTrack(track) {
         };
 
         // Create Tron curtain if enabled
-        if (HistoricalState.tronMode) {
+        if (showTronMode) {
             updateTronCurtain(trail);
         }
 
@@ -2774,9 +2766,16 @@ function applyHistoricalFilters() {
             if (endpointMesh && !endpointMesh.parent) {
                 scene.add(endpointMesh);
             }
-            // Add Tron curtain if enabled
-            if (trail && trail.tronCurtain && !trail.tronCurtain.parent) {
-                scene.add(trail.tronCurtain);
+            // Add or create Tron curtain if enabled
+            if (showTronMode && trail) {
+                // Create curtain if it doesn't exist
+                if (!trail.tronCurtain && trail.positions.length > 1) {
+                    updateTronCurtain(trail);
+                }
+                // Add to scene if it exists but isn't in scene
+                if (trail.tronCurtain && !trail.tronCurtain.parent) {
+                    scene.add(trail.tronCurtain);
+                }
             }
             visibleCount++;
         } else {
@@ -2787,7 +2786,8 @@ function applyHistoricalFilters() {
             if (endpointMesh && endpointMesh.parent) {
                 scene.remove(endpointMesh);
             }
-            // Remove Tron curtain from scene
+            // Remove Tron curtain from scene but keep the reference
+            // We keep the curtain object so it can be re-added if filters change
             if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
                 scene.remove(trail.tronCurtain);
             }
@@ -3354,43 +3354,7 @@ function setupHistoricalControls() {
         URLState.updateFromCurrentState();
     });
 
-    // Tron Mode toggle
-    const historicalTronToggle = document.getElementById('historical-tron-mode');
-    if (historicalTronToggle) {
-        historicalTronToggle.addEventListener('change', (e) => {
-            HistoricalState.tronMode = e.target.checked;
-            console.log('[Historical Tron] Mode', HistoricalState.tronMode ? 'enabled' : 'disabled');
-
-            // Update URL with current app state
-            URLState.updateFromCurrentState();
-
-            if (HistoricalState.tronMode) {
-                // Create curtains only for visible tracks (those in the scene)
-                let curtainsCreated = 0;
-                HistoricalState.trackMeshes.forEach(({line, trail}) => {
-                    // Only create curtain if the track line is visible (in the scene)
-                    if (line && line.parent && trail && trail.positions.length > 1) {
-                        updateTronCurtain(trail);
-                        curtainsCreated++;
-                    }
-                });
-                console.log(`[Historical Tron] Created ${curtainsCreated} curtains`);
-            } else {
-                // Remove all curtains
-                let curtainsRemoved = 0;
-                HistoricalState.trackMeshes.forEach(({trail}) => {
-                    if (trail && trail.tronCurtain) {
-                        scene.remove(trail.tronCurtain);
-                        if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-                        if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
-                        trail.tronCurtain = null;
-                        curtainsRemoved++;
-                    }
-                });
-                console.log(`[Historical Tron] Removed ${curtainsRemoved} curtains`);
-            }
-        });
-    }
+    // Tron mode is now handled by the unified toggle in Settings panel
 }
 
 // Clear all live aircraft from scene
@@ -3723,12 +3687,9 @@ function setupRecentTrailsListeners() {
 
 // Setup event listener for Tron mode toggle
 function setupTronModeListener() {
-    const checkbox = document.getElementById('enable-tron-mode');
-
-    if (!checkbox) {
-        // console.log('[TronMode] UI element not found, skipping listener setup');
-        return;
-    }
+    // Tron mode is now handled via the unified toggle in Settings panel
+    // This function is kept for compatibility but no longer used
+    return;
 
     // Checkbox: Enable/disable Tron mode curtains
     checkbox.addEventListener('change', (e) => {
@@ -3875,17 +3836,55 @@ async function initializeApp() {
         }
     }
 
-    // Load sprite mode preference (secret testing feature)
-    // But DON'T enable it yet - wait for texture to load
+    // Load sprite mode preference
     const savedSpriteMode = localStorage.getItem('useSpriteMode');
-    let wantsSpriteMode = false;
     if (savedSpriteMode !== null) {
-        wantsSpriteMode = savedSpriteMode === 'true';
-        if (wantsSpriteMode) {
-            console.log('[Sprites] Will enable sprite mode after texture loads');
-            // Don't set useSpriteMode=true yet!
+        useSpriteMode = savedSpriteMode === 'true';
+        if (useSpriteMode) {
+            console.log('[Sprites] Sprite mode enabled from preferences');
         }
     }
+    // Always sync toggle state with the actual value
+    const spriteModeToggle = document.getElementById('toggle-sprite-mode-container');
+    if (spriteModeToggle) {
+        if (useSpriteMode) {
+            spriteModeToggle.classList.add('active');
+        } else {
+            spriteModeToggle.classList.remove('active');
+        }
+    }
+
+    // Load home tower preference
+    const savedHomeTower = localStorage.getItem('showHomeTower');
+    if (savedHomeTower !== null) {
+        showHomeTower = savedHomeTower === 'true';
+    }
+    // Always sync toggle state with the actual value
+    const homeTowerToggle = document.getElementById('toggle-home-tower-container');
+    if (homeTowerToggle) {
+        if (showHomeTower) {
+            homeTowerToggle.classList.add('active');
+        } else {
+            homeTowerToggle.classList.remove('active');
+        }
+    }
+    console.log(`[HomeTower] Initialized: ${showHomeTower ? 'Visible' : 'Hidden'}, Saved preference: ${savedHomeTower}`)
+
+    // Load Tron mode preference
+    const savedTronMode = localStorage.getItem('showTronMode');
+    if (savedTronMode !== null) {
+        showTronMode = savedTronMode === 'true';
+    }
+    // Always sync toggle state with the actual value
+    const tronModeToggle = document.getElementById('toggle-tron-mode-container');
+    if (tronModeToggle) {
+        if (showTronMode) {
+            tronModeToggle.classList.add('active');
+        } else {
+            tronModeToggle.classList.remove('active');
+        }
+    }
+    console.log(`[TronMode] Initialized: ${showTronMode ? 'Enabled' : 'Disabled'}, Saved preference: ${savedTronMode}`)
 
     // Load trail fade preferences
     const savedAutoFade = localStorage.getItem('autoFadeTrails');
@@ -4037,7 +4036,7 @@ function init() {
     }
 
     // Add home location marker - radio tower with beacon
-    const homeMarkerGroup = new THREE.Group();
+    homeMarkerGroup = new THREE.Group();
 
     // Tower base (theme color)
     const baseMaterial = new THREE.MeshPhongMaterial({ color: CONFIG.towerBase });
@@ -4066,6 +4065,8 @@ function init() {
     beacon.userData.isBeacon = true;
     homeMarkerGroup.add(beacon);
 
+    // Set visibility based on setting
+    homeMarkerGroup.visible = showHomeTower;
     scene.add(homeMarkerGroup);
 
     // Store beacon reference for pulsing animation
@@ -5178,6 +5179,113 @@ function setupUIControls() {
         // Save preference
         localStorage.setItem('autoFadeTrails', autoFadeTrails);
         console.log(`[TrailFade] Auto-fade ${autoFadeTrails ? 'enabled' : 'disabled'}`);
+    });
+
+    // Sprite mode toggle
+    document.getElementById('toggle-sprite-mode-container').addEventListener('click', (e) => {
+        useSpriteMode = !useSpriteMode;
+        e.currentTarget.classList.toggle('active');
+
+        // Save preference
+        localStorage.setItem('useSpriteMode', useSpriteMode);
+
+        // Clear all aircraft to force re-render with new mode
+        aircraftMeshes.forEach((mesh, hex) => {
+            removeAircraft(hex);
+        });
+        aircraftMeshes.clear();
+
+        console.log(`[Sprites] Mode switched to: ${useSpriteMode ? 'sprites' : 'spheres'}`);
+    });
+
+    // Home tower toggle
+    document.getElementById('toggle-home-tower-container').addEventListener('click', (e) => {
+        showHomeTower = !showHomeTower;
+        e.currentTarget.classList.toggle('active');
+
+        // Update visibility
+        if (homeMarkerGroup) {
+            homeMarkerGroup.visible = showHomeTower;
+        }
+
+        // Save preference
+        localStorage.setItem('showHomeTower', showHomeTower);
+        console.log(`[HomeTower] ${showHomeTower ? 'Visible' : 'Hidden'}`);
+    });
+
+    // Tron mode toggle
+    document.getElementById('toggle-tron-mode-container').addEventListener('click', (e) => {
+        showTronMode = !showTronMode;
+        e.currentTarget.classList.toggle('active');
+
+        // Save preference
+        localStorage.setItem('showTronMode', showTronMode);
+        console.log(`[TronMode] ${showTronMode ? 'Enabled' : 'Disabled'}`);
+
+        if (showTronMode) {
+            // Create curtains for all existing trails (live mode)
+            trails.forEach(trail => {
+                if (trail.positions.length >= 2) {
+                    updateTronCurtain(trail);
+                }
+            });
+            staleTrails.forEach(trail => {
+                if (trail.positions.length >= 2) {
+                    updateTronCurtain(trail);
+                }
+            });
+
+            // Create curtains for visible historical tracks
+            if (currentMode === 'historical' && HistoricalState.trackMeshes.size > 0) {
+                let curtainsCreated = 0;
+                HistoricalState.trackMeshes.forEach(({line, trail}) => {
+                    // Only create curtain if the track is visible (in the scene)
+                    if (line && line.parent && trail && trail.positions.length > 1) {
+                        updateTronCurtain(trail);
+                        curtainsCreated++;
+                    }
+                });
+                console.log(`[TronMode] Created ${curtainsCreated} historical curtains`);
+            }
+        } else {
+            // Remove all Tron curtains and dispose of resources
+            const curtainsToRemove = [];
+            scene.traverse((child) => {
+                if (child.userData.isTronCurtain) {
+                    curtainsToRemove.push(child);
+                }
+            });
+
+            curtainsToRemove.forEach(curtain => {
+                scene.remove(curtain);
+                if (curtain.geometry) curtain.geometry.dispose();
+                if (curtain.material) curtain.material.dispose();
+            });
+
+            // Clear curtain references from trails
+            trails.forEach(trail => {
+                if (trail.tronCurtain) {
+                    trail.tronCurtain = null;
+                }
+            });
+            staleTrails.forEach(trail => {
+                if (trail.tronCurtain) {
+                    trail.tronCurtain = null;
+                }
+            });
+
+            // Clear curtain references from historical tracks
+            HistoricalState.trackMeshes.forEach(({trail}) => {
+                if (trail && trail.tronCurtain) {
+                    trail.tronCurtain = null;
+                }
+            });
+
+            console.log(`[TronMode] Removed ${curtainsToRemove.length} curtains`);
+        }
+
+        // Update URL to reflect state
+        URLState.updateFromCurrentState();
 
         // Check for conflict with preload time
         validateFadePreloadConflict();
@@ -8317,9 +8425,9 @@ function checkUrlParameters() {
     if (tronMode === '1' || tronMode === 'true') {
         // console.log('[URL] Enabling Tron mode from URL parameter');
         showTronMode = true;
-        const checkbox = document.getElementById('enable-tron-mode');
-        if (checkbox) {
-            checkbox.checked = true;
+        const tronToggle = document.getElementById('toggle-tron-mode-container');
+        if (tronToggle) {
+            tronToggle.classList.add('active');
         }
         // Don't create curtains here - they will be created when trails are loaded/updated
         // Creating them here causes doubles when historical trails are loaded
