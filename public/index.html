@@ -1060,6 +1060,71 @@
             color: var(--badge-stat-text);
         }
 
+        /* Aircraft Search Bar */
+        .aircraft-search-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        #aircraft-search {
+            width: 100%;
+            padding: 8px 30px 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+
+        #aircraft-search:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 2px var(--accent-primary-dim);
+        }
+
+        #aircraft-search::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        .search-clear-btn {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.2s ease, color 0.2s ease;
+            pointer-events: none;
+        }
+
+        .search-clear-btn.visible {
+            opacity: 0.6;
+            pointer-events: auto;
+        }
+
+        .search-clear-btn.visible:hover {
+            opacity: 1;
+            color: var(--text-primary);
+        }
+
+        .aircraft-item.search-hidden {
+            display: none;
+        }
+
+        .aircraft-item.search-match {
+            background: var(--accent-primary-dim);
+            border-left: 3px solid var(--accent-primary);
+        }
+
         #controls {
             position: absolute;
             bottom: 100px;  /* Higher to clear footer with altitude chart */
@@ -2788,6 +2853,19 @@
 
             <div style="border-top: 1px solid rgba(74, 158, 255, 0.2); margin: 8px 0 10px 0;"></div>
             <div class="section-label" style="margin-bottom: 10px;">Nearby Aircraft</div>
+
+            <!-- Aircraft Search Bar -->
+            <div class="aircraft-search-container">
+                <input
+                    type="text"
+                    id="aircraft-search"
+                    placeholder="🔍 Search by callsign, ICAO, tail..."
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+                <button id="aircraft-search-clear" class="search-clear-btn" title="Clear search">✕</button>
+            </div>
+
             <div id="aircraft-items"></div>
         </div>
     </div>
