@@ -716,11 +716,8 @@ function applyTheme(themeName) {
     });
 
     // Save preference to localStorage
-    try {
-        localStorage.setItem('adsb3d-theme', themeName);
+    if (SafeStorage.setItem('adsb3d-theme', themeName)) {
         console.log(`[Theme] Saved preference: ${themeName}`);
-    } catch (e) {
-        console.warn('[Theme] Could not save to localStorage:', e);
     }
 
     // Trigger scene updates if scene exists (for dynamic theme switching)
@@ -770,13 +767,9 @@ function updateSceneColors() {
  * @returns {string} Theme name
  */
 function getCurrentTheme() {
-    try {
-        const saved = localStorage.getItem('adsb3d-theme');
-        if (saved && THEMES[saved]) {
-            return saved;
-        }
-    } catch (e) {
-        console.warn('[Theme] Could not read from localStorage:', e);
+    const saved = SafeStorage.getItem('adsb3d-theme');
+    if (saved && THEMES[saved]) {
+        return saved;
     }
     return 'modern'; // Default theme
 }
@@ -1186,7 +1179,7 @@ const URLState = {
         if (showTronMode) state.tron = '1';
 
         // Add current theme
-        const currentTheme = localStorage.getItem('selectedTheme');
+        const currentTheme = SafeStorage.getItem('selectedTheme');
         if (currentTheme && currentTheme !== 'modern') state.theme = currentTheme;
 
         // Add selected aircraft
@@ -1584,7 +1577,7 @@ async function loadMilitaryDatabase() {
 
     try {
         // Check localStorage cache first
-        const cached = localStorage.getItem(CACHE_KEY);
+        const cached = SafeStorage.getItem(CACHE_KEY);
         if (cached) {
             try {
                 const { data, timestamp } = JSON.parse(cached);
@@ -1646,7 +1639,7 @@ async function fetchAndCacheMilitaryDatabase() {
 
         // Cache for 24 hours
         try {
-            localStorage.setItem('military_aircraft_db', JSON.stringify({
+            SafeStorage.setItem('military_aircraft_db', JSON.stringify({
                 data: newMilitaryDb,
                 timestamp: Date.now()
             }));
@@ -3873,7 +3866,7 @@ async function initializeApp() {
     setupThemeUI();
 
     // Step 5: Load saved preferences
-    const savedRadar = localStorage.getItem('showMiniRadar');
+    const savedRadar = SafeStorage.getItem('showMiniRadar');
     if (savedRadar !== null) {
         showMiniRadar = savedRadar === 'true';
         const toggleContainer = document.getElementById('toggle-mini-radar-container');
@@ -3885,7 +3878,7 @@ async function initializeApp() {
     }
 
     // Load sprite mode preference
-    const savedSpriteMode = localStorage.getItem('useSpriteMode');
+    const savedSpriteMode = SafeStorage.getItem('useSpriteMode');
     if (savedSpriteMode !== null) {
         useSpriteMode = savedSpriteMode === 'true';
         if (useSpriteMode) {
@@ -3903,7 +3896,7 @@ async function initializeApp() {
     }
 
     // Load home tower preference
-    const savedHomeTower = localStorage.getItem('showHomeTower');
+    const savedHomeTower = SafeStorage.getItem('showHomeTower');
     if (savedHomeTower !== null) {
         showHomeTower = savedHomeTower === 'true';
     }
@@ -3919,7 +3912,7 @@ async function initializeApp() {
     console.log(`[HomeTower] Initialized: ${showHomeTower ? 'Visible' : 'Hidden'}, Saved preference: ${savedHomeTower}`)
 
     // Load Tron mode preference
-    const savedTronMode = localStorage.getItem('showTronMode');
+    const savedTronMode = SafeStorage.getItem('showTronMode');
     if (savedTronMode !== null) {
         showTronMode = savedTronMode === 'true';
     }
@@ -3935,7 +3928,7 @@ async function initializeApp() {
     console.log(`[TronMode] Initialized: ${showTronMode ? 'Enabled' : 'Disabled'}, Saved preference: ${savedTronMode}`)
 
     // Load trail fade preferences
-    const savedAutoFade = localStorage.getItem('autoFadeTrails');
+    const savedAutoFade = SafeStorage.getItem('autoFadeTrails');
     if (savedAutoFade !== null) {
         autoFadeTrails = savedAutoFade === 'true';
         const toggleContainer = document.getElementById('toggle-trail-fade-container');
@@ -3946,7 +3939,7 @@ async function initializeApp() {
         }
     }
 
-    const savedFadeTime = localStorage.getItem('trailFadeTime');
+    const savedFadeTime = SafeStorage.getItem('trailFadeTime');
     if (savedFadeTime !== null) {
         trailFadeTime = parseInt(savedFadeTime);
         const fadeTimeSelect = document.getElementById('trail-fade-time');
@@ -3954,7 +3947,7 @@ async function initializeApp() {
     }
 
     // Load compass preference
-    const savedCompass = localStorage.getItem('showCompass');
+    const savedCompass = SafeStorage.getItem('showCompass');
     if (savedCompass !== null) {
         showCompass = savedCompass === 'true';
         const toggleContainer = document.getElementById('toggle-compass-container');
@@ -5412,7 +5405,7 @@ function setupUIControls() {
             miniRadar.style.display = showMiniRadar ? 'flex' : 'none';
         }
         // Save preference
-        localStorage.setItem('showMiniRadar', showMiniRadar);
+        SafeStorage.setItem('showMiniRadar', showMiniRadar);
     });
 
     // Compass rose toggle
@@ -5424,7 +5417,7 @@ function setupUIControls() {
             compass.style.display = showCompass ? 'block' : 'none';
         }
         // Save preference
-        localStorage.setItem('showCompass', showCompass);
+        SafeStorage.setItem('showCompass', showCompass);
     });
 
     // Auto-fade trails toggle
@@ -5436,7 +5429,7 @@ function setupUIControls() {
             fadeSelector.style.display = autoFadeTrails ? 'block' : 'none';
         }
         // Save preference
-        localStorage.setItem('autoFadeTrails', autoFadeTrails);
+        SafeStorage.setItem('autoFadeTrails', autoFadeTrails);
         console.log(`[TrailFade] Auto-fade ${autoFadeTrails ? 'enabled' : 'disabled'}`);
     });
 
@@ -5446,7 +5439,7 @@ function setupUIControls() {
         e.currentTarget.classList.toggle('active');
 
         // Save preference
-        localStorage.setItem('useSpriteMode', useSpriteMode);
+        SafeStorage.setItem('useSpriteMode', useSpriteMode);
 
         // Clear all aircraft to force re-render with new mode
         aircraftMeshes.forEach((mesh, hex) => {
@@ -5468,7 +5461,7 @@ function setupUIControls() {
         }
 
         // Save preference
-        localStorage.setItem('showHomeTower', showHomeTower);
+        SafeStorage.setItem('showHomeTower', showHomeTower);
         console.log(`[HomeTower] ${showHomeTower ? 'Visible' : 'Hidden'}`);
     });
 
@@ -5478,7 +5471,7 @@ function setupUIControls() {
         e.currentTarget.classList.toggle('active');
 
         // Save preference
-        localStorage.setItem('showTronMode', showTronMode);
+        SafeStorage.setItem('showTronMode', showTronMode);
         console.log(`[TronMode] ${showTronMode ? 'Enabled' : 'Disabled'}`);
 
         if (showTronMode) {
@@ -5553,7 +5546,7 @@ function setupUIControls() {
     // Trail fade time dropdown
     document.getElementById('trail-fade-time').addEventListener('change', (e) => {
         trailFadeTime = parseInt(e.target.value);
-        localStorage.setItem('trailFadeTime', trailFadeTime);
+        SafeStorage.setItem('trailFadeTime', trailFadeTime);
         console.log(`[TrailFade] Fade time set to ${trailFadeTime === 0 ? 'Never' : trailFadeTime / 60 + ' minutes'}`);
 
         // Check for conflict with preload time
@@ -5698,7 +5691,7 @@ function setupCollapseablePanels() {
     const isMobile = window.innerWidth <= 768;
 
     // Load saved collapse states from localStorage
-    const savedStates = JSON.parse(localStorage.getItem('panelCollapseStates') || '{}');
+    const savedStates = JSON.parse(SafeStorage.getItem('panelCollapseStates') || '{}');
 
     // Handle old-style collapse buttons
     collapseButtons.forEach(btn => {
@@ -5747,9 +5740,9 @@ function setupCollapseablePanels() {
                 }, 150); // Half of 0.3s transition
 
                 // Save state to localStorage
-                const states = JSON.parse(localStorage.getItem('panelCollapseStates') || '{}');
+                const states = JSON.parse(SafeStorage.getItem('panelCollapseStates') || '{}');
                 states[panelId] = panel.classList.contains('collapsed');
-                localStorage.setItem('panelCollapseStates', JSON.stringify(states));
+                SafeStorage.setItem('panelCollapseStates', JSON.stringify(states));
             });
 
             console.log('[Collapse] Event listener attached for panel:', panelId);
@@ -5796,9 +5789,9 @@ function setupCollapseablePanels() {
                 }, 150); // Half of 0.3s transition
 
                 // Save state to localStorage
-                const states = JSON.parse(localStorage.getItem('panelCollapseStates') || '{}');
+                const states = JSON.parse(SafeStorage.getItem('panelCollapseStates') || '{}');
                 states[panelId] = panel.classList.contains('collapsed');
-                localStorage.setItem('panelCollapseStates', JSON.stringify(states));
+                SafeStorage.setItem('panelCollapseStates', JSON.stringify(states));
             });
         }
     });
@@ -5885,7 +5878,7 @@ function setupKeyboardShortcuts() {
                     }
 
                     useSpriteMode = !useSpriteMode;
-                    localStorage.setItem('useSpriteMode', useSpriteMode);
+                    SafeStorage.setItem('useSpriteMode', useSpriteMode);
 
                     console.log(`[SVG Aircraft] Mode now: ${useSpriteMode ? 'aircraft shapes' : 'spheres'}`);
                     console.log(`[SVG Aircraft] Clearing ${aircraftMeshes.size} aircraft for re-render`);
@@ -6107,7 +6100,7 @@ function showAircraftShapeReference() {
 // Route cache management
 function getRouteCache() {
     try {
-        const cached = localStorage.getItem(ROUTE_CACHE_KEY);
+        const cached = SafeStorage.getItem(ROUTE_CACHE_KEY);
         return cached ? JSON.parse(cached) : {};
     } catch (e) {
         console.warn('Failed to read route cache:', e);
@@ -6117,7 +6110,7 @@ function getRouteCache() {
 
 function setRouteCache(cache) {
     try {
-        localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(cache));
+        SafeStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(cache));
     } catch (e) {
         console.warn('Failed to write route cache:', e);
     }

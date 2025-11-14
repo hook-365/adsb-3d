@@ -819,6 +819,402 @@ async def get_stats_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/stats/rarity")
+async def get_rarity_stats():
+    """Get aircraft rarity statistics based on total sightings"""
+    query = """
+        SELECT
+            COUNT(*) FILTER (WHERE total_sightings <= 10) as extremely_rare,
+            COUNT(*) FILTER (WHERE total_sightings > 10 AND total_sightings <= 50) as very_rare,
+            COUNT(*) FILTER (WHERE total_sightings > 50 AND total_sightings <= 100) as rare,
+            COUNT(*) FILTER (WHERE total_sightings > 100 AND total_sightings <= 500) as uncommon,
+            COUNT(*) FILTER (WHERE total_sightings > 500 AND total_sightings <= 1000) as common,
+            COUNT(*) FILTER (WHERE total_sightings > 1000) as very_common,
+            COUNT(*) as total_aircraft
+        FROM aircraft_metadata
+    """
+
+    # Get examples for each category
+    examples_query = """
+        SELECT icao, registration, aircraft_type, type_description, total_sightings,
+               CASE
+                   WHEN total_sightings <= 10 THEN 'extremely_rare'
+                   WHEN total_sightings <= 50 THEN 'very_rare'
+                   WHEN total_sightings <= 100 THEN 'rare'
+                   WHEN total_sightings <= 500 THEN 'uncommon'
+                   WHEN total_sightings <= 1000 THEN 'common'
+                   ELSE 'very_common'
+               END as category
+        FROM aircraft_metadata
+        ORDER BY total_sightings
+        LIMIT 200
+    """
+
+    try:
+        async with db_pool.acquire() as conn:
+            stats = await conn.fetchrow(query)
+            examples = await conn.fetch(examples_query)
+
+        # Group examples by category
+        by_category = {}
+        for ex in examples:
+            cat = ex['category']
+            if cat not in by_category:
+                by_category[cat] = []
+            if len(by_category[cat]) < 10:  # Max 10 examples per category
+                by_category[cat].append({
+                    'icao': ex['icao'],
+                    'registration': ex['registration'],
+                    'aircraft_type': ex['aircraft_type'],
+                    'type_description': ex['type_description'],
+                    'sightings': ex['total_sightings']
+                })
+
+        return {
+            'summary': {
+                'extremely_rare': stats['extremely_rare'],
+                'very_rare': stats['very_rare'],
+                'rare': stats['rare'],
+                'uncommon': stats['uncommon'],
+                'common': stats['common'],
+                'very_common': stats['very_common'],
+                'total': stats['total_aircraft']
+            },
+            'examples': by_category
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching rarity stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/aircraft-types")
+async def get_aircraft_type_stats(limit: int = Query(50, le=200)):
+    """Get statistics by aircraft type"""
+    query = """
+        SELECT
+            aircraft_type,
+            type_description,
+            COUNT(*) as aircraft_count,
+            SUM(total_sightings) as total_sightings,
+            AVG(total_sightings) as avg_sightings_per_aircraft,
+            COUNT(*) FILTER (WHERE is_military = true) as military_count
+        FROM aircraft_metadata
+        WHERE aircraft_type IS NOT NULL
+        GROUP BY aircraft_type, type_description
+        ORDER BY aircraft_count DESC
+        LIMIT $1
+    """
+
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(query, limit)
+
+        return [
+            {
+                'type': row['aircraft_type'],
+                'description': row['type_description'],
+                'aircraft_count': row['aircraft_count'],
+                'total_sightings': row['total_sightings'],
+                'avg_sightings': round(float(row['avg_sightings_per_aircraft']), 1),
+                'military_count': row['military_count']
+            }
+            for row in rows
+        ]
+
+    except Exception as e:
+        logger.error(f"Error fetching aircraft type stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/military")
+async def get_military_stats():
+    """Get military aircraft statistics"""
+    summary_query = """
+        SELECT
+            COUNT(*) FILTER (WHERE is_military = true) as military_aircraft,
+            COUNT(*) FILTER (WHERE is_military = false) as civilian_aircraft,
+            COUNT(*) as total_aircraft
+        FROM aircraft_metadata
+    """
+
+    top_military_query = """
+        SELECT icao, registration, aircraft_type, type_description, total_sightings, last_seen
+        FROM aircraft_metadata
+        WHERE is_military = true
+        ORDER BY total_sightings DESC
+        LIMIT 20
+    """
+
+    try:
+        async with db_pool.acquire() as conn:
+            summary = await conn.fetchrow(summary_query)
+            top_military = await conn.fetch(top_military_query)
+
+        return {
+            'summary': {
+                'military': summary['military_aircraft'],
+                'civilian': summary['civilian_aircraft'],
+                'total': summary['total_aircraft'],
+                'military_percentage': round(100.0 * summary['military_aircraft'] / summary['total_aircraft'], 2) if summary['total_aircraft'] > 0 else 0
+            },
+            'top_military': [
+                {
+                    'icao': row['icao'],
+                    'registration': row['registration'],
+                    'type': row['aircraft_type'],
+                    'description': row['type_description'],
+                    'sightings': row['total_sightings'],
+                    'last_seen': row['last_seen'].isoformat()
+                }
+                for row in top_military
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching military stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/records")
+async def get_records(days: int = Query(30, ge=1, le=365)):
+    """Get altitude and speed records"""
+    start = datetime.now(timezone.utc) - timedelta(days=days)
+
+    query = """
+        WITH ranked_positions AS (
+            SELECT
+                p.*,
+                m.registration,
+                m.aircraft_type,
+                m.type_description,
+                ROW_NUMBER() OVER (PARTITION BY 'altitude' ORDER BY p.alt_baro DESC NULLS LAST) as alt_rank,
+                ROW_NUMBER() OVER (PARTITION BY 'speed' ORDER BY p.gs DESC NULLS LAST) as speed_rank
+            FROM aircraft_positions p
+            LEFT JOIN aircraft_metadata m ON p.icao = m.icao
+            WHERE p.time >= $1
+              AND (p.alt_baro IS NOT NULL OR p.gs IS NOT NULL)
+        )
+        SELECT * FROM (
+            SELECT 'highest_altitude' as record_type, icao, registration, aircraft_type, type_description,
+                   alt_baro as value, time, flight
+            FROM ranked_positions WHERE alt_rank = 1
+            UNION ALL
+            SELECT 'fastest_groundspeed' as record_type, icao, registration, aircraft_type, type_description,
+                   gs as value, time, flight
+            FROM ranked_positions WHERE speed_rank = 1
+        ) records
+    """
+
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(query, start)
+
+        records = {}
+        for row in rows:
+            records[row['record_type']] = {
+                'icao': row['icao'],
+                'registration': row['registration'],
+                'type': row['aircraft_type'],
+                'description': row['type_description'],
+                'value': float(row['value']) if row['value'] else None,
+                'unit': 'feet' if row['record_type'] == 'highest_altitude' else 'knots',
+                'time': row['time'].isoformat(),
+                'flight': row['flight']
+            }
+
+        return {
+            'period_days': days,
+            'records': records
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching records: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/time-analysis")
+async def get_time_analysis(days: int = Query(7, ge=1, le=90)):
+    """Get time-of-day and day-of-week patterns"""
+    start = datetime.now(timezone.utc) - timedelta(days=days)
+
+    hourly_query = """
+        SELECT
+            EXTRACT(HOUR FROM time) as hour,
+            COUNT(DISTINCT icao) as unique_aircraft,
+            COUNT(*) as positions
+        FROM aircraft_positions
+        WHERE time >= $1
+        GROUP BY EXTRACT(HOUR FROM time)
+        ORDER BY hour
+    """
+
+    daily_query = """
+        SELECT
+            TO_CHAR(time, 'Day') as day_name,
+            EXTRACT(DOW FROM time) as day_num,
+            COUNT(DISTINCT icao) as unique_aircraft,
+            COUNT(*) as positions
+        FROM aircraft_positions
+        WHERE time >= $1
+        GROUP BY TO_CHAR(time, 'Day'), EXTRACT(DOW FROM time)
+        ORDER BY day_num
+    """
+
+    try:
+        async with db_pool.acquire() as conn:
+            hourly = await conn.fetch(hourly_query, start)
+            daily = await conn.fetch(daily_query, start)
+
+        return {
+            'period_days': days,
+            'by_hour': [
+                {
+                    'hour': int(row['hour']),
+                    'unique_aircraft': row['unique_aircraft'],
+                    'positions': row['positions']
+                }
+                for row in hourly
+            ],
+            'by_day_of_week': [
+                {
+                    'day': row['day_name'].strip(),
+                    'day_num': int(row['day_num']),
+                    'unique_aircraft': row['unique_aircraft'],
+                    'positions': row['positions']
+                }
+                for row in daily
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching time analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stats/database")
+async def get_database_stats():
+    """Get database size and health statistics"""
+    queries = {
+        'total_size': """
+            SELECT pg_size_pretty(pg_database_size(current_database())) as size
+        """,
+        'table_sizes': """
+            SELECT
+                schemaname,
+                tablename,
+                pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
+                pg_total_relation_size(schemaname||'.'||tablename) as size_bytes
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY size_bytes DESC
+        """,
+        'compression_stats': """
+            SELECT
+                hypertable_name,
+                compression_enabled,
+                (SELECT COUNT(*) FROM timescaledb_information.chunks WHERE hypertable_name = h.hypertable_name) as total_chunks,
+                (SELECT COUNT(*) FROM timescaledb_information.chunks WHERE hypertable_name = h.hypertable_name AND is_compressed = true) as compressed_chunks
+            FROM timescaledb_information.hypertables h
+            WHERE hypertable_name = 'aircraft_positions'
+        """,
+        'row_counts': """
+            SELECT
+                'aircraft_positions' as table_name,
+                COUNT(*) as row_count
+            FROM aircraft_positions
+            UNION ALL
+            SELECT
+                'aircraft_metadata' as table_name,
+                COUNT(*) as row_count
+            FROM aircraft_metadata
+        """
+    }
+
+    try:
+        async with db_pool.acquire() as conn:
+            total_size = await conn.fetchrow(queries['total_size'])
+            table_sizes = await conn.fetch(queries['table_sizes'])
+            compression = await conn.fetchrow(queries['compression_stats'])
+            row_counts = await conn.fetch(queries['row_counts'])
+
+        return {
+            'database_size': total_size['size'],
+            'tables': [
+                {
+                    'schema': row['schemaname'],
+                    'table': row['tablename'],
+                    'size': row['size']
+                }
+                for row in table_sizes
+            ],
+            'compression': {
+                'enabled': compression['compression_enabled'],
+                'total_chunks': compression['total_chunks'],
+                'compressed_chunks': compression['compressed_chunks'],
+                'compression_ratio': round(100.0 * compression['compressed_chunks'] / compression['total_chunks'], 1) if compression['total_chunks'] > 0 else 0
+            },
+            'row_counts': {row['table_name']: row['row_count'] for row in row_counts}
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching database stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/query")
+async def custom_query(
+    sql: str = Query(..., description="SQL query to execute (SELECT only)"),
+    limit: int = Query(100, le=1000, description="Maximum rows to return")
+):
+    """
+    Execute a custom SQL query (SELECT only, read-only).
+
+    **WARNING**: This endpoint is for LAN use only. Queries are limited to SELECT statements.
+    """
+    # Security: Only allow SELECT queries
+    sql_upper = sql.strip().upper()
+    if not sql_upper.startswith('SELECT'):
+        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+
+    # Block dangerous keywords
+    dangerous = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE']
+    for keyword in dangerous:
+        if keyword in sql_upper:
+            raise HTTPException(status_code=400, detail=f"Keyword '{keyword}' is not allowed")
+
+    # Add LIMIT if not present
+    if 'LIMIT' not in sql_upper:
+        sql = f"{sql.rstrip(';')} LIMIT {limit}"
+
+    try:
+        async with db_pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+
+        # Convert to list of dicts
+        results = []
+        for row in rows:
+            result = {}
+            for key in row.keys():
+                value = row[key]
+                # Convert datetime to ISO string
+                if isinstance(value, datetime):
+                    result[key] = value.isoformat()
+                else:
+                    result[key] = value
+            results.append(result)
+
+        return {
+            'query': sql,
+            'row_count': len(results),
+            'results': results
+        }
+
+    except Exception as e:
+        logger.error(f"Error executing custom query: {e}")
+        raise HTTPException(status_code=400, detail=f"Query error: {str(e)}")
+
+
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
