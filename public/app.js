@@ -4056,7 +4056,12 @@ async function initializeApp() {
             homeTowerToggle.classList.remove('active');
         }
     }
-    console.log(`[HomeTower] Initialized: ${showHomeTower ? 'Visible' : 'Hidden'}, Saved preference: ${savedHomeTower}`)
+    // CRITICAL: Update homeMarkerGroup visibility after loading preference
+    // (homeMarkerGroup was created in init() before preference was loaded)
+    if (homeMarkerGroup) {
+        homeMarkerGroup.visible = showHomeTower;
+    }
+    console.log(`[HomeTower] Initialized: ${showHomeTower ? 'Visible' : 'Hidden'}, Saved preference: ${savedHomeTower}, Visibility updated: ${homeMarkerGroup?.visible}`)
 
     // Load Tron mode preference
     const savedTronMode = SafeStorage.getItem('showTronMode');
