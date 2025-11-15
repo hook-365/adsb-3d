@@ -1652,6 +1652,107 @@ async function fetchAndCacheMilitaryDatabase() {
     }
 }
 
+/**
+ * Calculate signal quality and data completeness for an aircraft
+ * Returns opacity value (0.3-1.0) and quality assessment
+ * @param {Object} ac - Aircraft data object
+ * @returns {Object} {opacity: number, quality: string, issues: string[]}
+ */
+function getSignalQuality(ac) {
+    const issues = [];
+    let qualityScore = 100; // Start at 100%
+
+    // Check RSSI signal strength (typical range: -20 to -40 dBm)
+    if (ac.rssi !== undefined) {
+        if (ac.rssi < -38) {
+            qualityScore -= 15; // Very weak signal
+            issues.push('Weak signal');
+        } else if (ac.rssi < -35) {
+            qualityScore -= 5; // Moderately weak
+        }
+    } else {
+        qualityScore -= 10; // No RSSI data
+        issues.push('No signal data');
+    }
+
+    // Check data freshness - seen (seconds since last message)
+    if (ac.seen > 30) {
+        qualityScore -= 30; // Very stale
+        issues.push('Stale data (>30s)');
+    } else if (ac.seen > 10) {
+        qualityScore -= 15; // Getting stale
+        issues.push('Old data (>10s)');
+    } else if (ac.seen > 5) {
+        qualityScore -= 5; // Slightly stale
+    }
+
+    // Check position freshness - seen_pos
+    if (ac.seen_pos !== undefined && ac.seen_pos > 30) {
+        qualityScore -= 20; // Very old position
+        issues.push('Old position (>30s)');
+    } else if (ac.seen_pos !== undefined && ac.seen_pos > 10) {
+        qualityScore -= 10; // Old position
+    }
+
+    // Check if using MLAT (multilateration) - less accurate
+    if (ac.mlat && ac.mlat.length > 0) {
+        qualityScore -= 10;
+        issues.push('MLAT position');
+    }
+
+    // Check if using TIS-B (rebroadcast) - indirect data
+    if (ac.tisb && ac.tisb.length > 0) {
+        qualityScore -= 15;
+        issues.push('TIS-B data');
+    }
+
+    // Check message count - low count means poor reception
+    if (ac.messages !== undefined && ac.messages < 100) {
+        qualityScore -= 10;
+        issues.push('Low message count');
+    }
+
+    // Check for missing critical data
+    if (!ac.alt_baro && ac.alt_baro !== 0) {
+        qualityScore -= 15;
+        issues.push('No altitude');
+    }
+    if (!ac.gs && ac.gs !== 0) {
+        qualityScore -= 10;
+        issues.push('No ground speed');
+    }
+    if (!ac.track && ac.track !== 0) {
+        qualityScore -= 5;
+        issues.push('No heading');
+    }
+
+    // Navigation Integrity Category (NIC) - 0-11, higher is better
+    if (ac.nic !== undefined && ac.nic < 6) {
+        qualityScore -= 10;
+        issues.push('Low accuracy');
+    }
+
+    // Calculate opacity based on quality score
+    qualityScore = Math.max(0, Math.min(100, qualityScore));
+    const opacity = 0.3 + (qualityScore / 100) * 0.7; // Range: 0.3 to 1.0
+
+    // Determine quality label
+    let quality = 'Good';
+    if (qualityScore < 40) quality = 'Poor';
+    else if (qualityScore < 60) quality = 'Fair';
+    else if (qualityScore < 80) quality = 'Moderate';
+
+    return {
+        opacity: opacity,
+        quality: quality,
+        score: qualityScore,
+        issues: issues,
+        rssi: ac.rssi,
+        seen: ac.seen,
+        seen_pos: ac.seen_pos
+    };
+}
+
 // Check if aircraft is military using tar1090-db database
 function isMilitaryAircraft(hex) {
     if (!hex || !militaryDatabaseLoaded) return false;
@@ -6528,12 +6629,28 @@ function updateAircraft(aircraft) {
             const isMilitary = isMilitaryAircraft(ac.hex);
             const militaryInfo = isMilitary ? getMilitaryInfo(ac.hex) : null;
 
+            // Calculate updated signal quality
+            const signalQuality = getSignalQuality(ac);
+
             // Update aircraft data BEFORE updateAircraftPosition so vertical indicator has current baro_rate
             mesh.userData = ac;
             mesh.userData.isVeryLow = isVeryLow; // Preserve isVeryLow flag
             mesh.userData.isMilitary = isMilitary; // Update military status
             mesh.userData.militaryInfo = militaryInfo; // Update military info
             mesh.userData.lastValidAltitude = altitude; // Store for altitude smoothing
+            mesh.userData.signalQuality = signalQuality; // Update signal quality
+
+            // Update opacity based on signal quality
+            mesh.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    // Update opacity for ghost-like effect on poor signals
+                    child.material.opacity = signalQuality.opacity;
+                    if (signalQuality.score < 40) {
+                        // Extra transparent for very poor signals
+                        child.material.opacity = Math.min(child.material.opacity, 0.4);
+                    }
+                }
+            });
 
             // Update sprite rotation if in sprite mode and heading changed
             if (useSpriteMode && ac.track !== undefined) {
@@ -6801,6 +6918,9 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
         if (child.userData.noRotate) noRotate = true;
     });
 
+    // Calculate signal quality and apply opacity
+    const signalQuality = getSignalQuality(aircraftData);
+
     mesh.userData = aircraftData;
     mesh.userData.isMLAT = isMLAT;
     mesh.userData.isVeryLow = isVeryLow;
@@ -6809,6 +6929,7 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     mesh.userData.lastValidAltitude = y; // Store for altitude smoothing
     mesh.userData.isSprite = isSprite; // Copy from child for rotation logic
     mesh.userData.noRotate = noRotate; // Copy from child for rotation logic
+    mesh.userData.signalQuality = signalQuality; // Store signal quality for detail display
 
     // Apply initial rotation to the GROUP (not the child plane)
     // Geometry already has rotateX baked in, making it horizontal with nose pointing +Z (south)
@@ -6824,18 +6945,24 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     // For noRotate shapes, leave rotation at 0
 
     // DEBUG: Log aircraft creation with detailed info
-    console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, isSprite=${isSprite}, rotation.y=${mesh.rotation.y.toFixed(3)} (${(mesh.rotation.y * 180 / Math.PI).toFixed(1)}°)`);
+    console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
 
-    // Add visual indicator for MLAT aircraft (wireframe overlay)
-    if (isMLAT) {
-        mesh.traverse((child) => {
-            if (child.isMesh && child.material) {
-                // Make MLAT aircraft slightly transparent to distinguish them
-                child.material.transparent = true;
-                child.material.opacity = 0.7;
+    // Apply opacity based on signal quality - makes poor signal aircraft "ghost-like"
+    mesh.traverse((child) => {
+        if (child.isMesh && child.material) {
+            // Clone material to avoid affecting other aircraft
+            child.material = child.material.clone();
+            child.material.transparent = true;
+            child.material.opacity = signalQuality.opacity;
+
+            // Add subtle wireframe for very poor signals
+            if (signalQuality.score < 40) {
+                child.material.wireframe = false; // Don't use wireframe, too confusing
+                // Instead, make them extra transparent
+                child.material.opacity = Math.min(child.material.opacity, 0.4);
             }
-        });
-    }
+        }
+    });
 
     scene.add(mesh);
     aircraftMeshes.set(hex, mesh);
@@ -8866,6 +8993,37 @@ async function showAircraftDetail(hex) {
     const details = [];
 
     // Add MLAT status at the top if applicable
+    // Signal Quality Information
+    const signalQuality = mesh.userData.signalQuality || getSignalQuality(data);
+    if (signalQuality) {
+        // Create quality badge with color based on score
+        let qualityColor = '#4caf50'; // Green for good
+        if (signalQuality.score < 40) qualityColor = '#f44336'; // Red for poor
+        else if (signalQuality.score < 60) qualityColor = '#ff9800'; // Orange for fair
+        else if (signalQuality.score < 80) qualityColor = '#ffc107'; // Yellow for moderate
+
+        const qualityBadge = `<span style="background: ${qualityColor}; padding: 2px 6px; border-radius: 3px; color: white;">${signalQuality.quality} (${signalQuality.score}%)</span>`;
+        details.push({ label: 'Signal Quality', value: qualityBadge });
+
+        // Add RSSI if available
+        if (signalQuality.rssi !== undefined) {
+            const rssiColor = signalQuality.rssi < -38 ? '#ff9800' : '#4caf50';
+            details.push({ label: 'Signal Strength', value: `<span style="color: ${rssiColor}">${signalQuality.rssi.toFixed(1)} dBm</span>` });
+        }
+
+        // Add data age
+        if (signalQuality.seen !== undefined) {
+            const seenColor = signalQuality.seen > 10 ? '#ff9800' : '#4caf50';
+            details.push({ label: 'Data Age', value: `<span style="color: ${seenColor}">${signalQuality.seen.toFixed(1)}s ago</span>` });
+        }
+
+        // Add any issues as a note
+        if (signalQuality.issues && signalQuality.issues.length > 0) {
+            const issuesText = signalQuality.issues.join(', ');
+            details.push({ label: 'Data Issues', value: `<span style="color: #ff9800; font-size: 11px">${issuesText}</span>` });
+        }
+    }
+
     const isMLAT = data.mlat && data.mlat.length > 0;
     if (isMLAT) {
         details.push({ label: 'Position Source', value: `<span style="background: #ff6600; padding: 2px 6px; border-radius: 3px; color: white;">MLAT</span>` });
