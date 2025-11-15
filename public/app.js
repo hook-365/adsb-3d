@@ -4877,6 +4877,12 @@ function setupTouchControls(canvas) {
     let touchMoved = false;
     let wasTouchDragging = false;
 
+    // Add long-press and double-tap support
+    let longPressTimer = null;
+    let lastTapTime = 0;
+    const LONG_PRESS_TIME = 500; // milliseconds
+    const DOUBLE_TAP_TIME = 300; // milliseconds
+
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         touchStartPositions = Array.from(e.touches).map(touch => ({
@@ -4887,9 +4893,31 @@ function setupTouchControls(canvas) {
         touchMoved = false;
 
         if (e.touches.length === 1) {
-            // Single touch - prepare for rotation
+            // Single touch - prepare for rotation and long-press detection
             isDragging = true;
             syncCameraAnglesFromPosition();
+
+            // Start long-press timer
+            longPressTimer = setTimeout(() => {
+                // Long-press detected - show aircraft context menu
+                const touch = e.touches[0];
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+
+                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+
+                if (intersects.length > 0) {
+                    // Found an aircraft - show context menu
+                    showAircraftContextMenu(touch.clientX, touch.clientY, intersects[0]);
+                    navigator.vibrate?.(50); // Haptic feedback if supported
+                }
+
+                longPressTimer = null;
+            }, LONG_PRESS_TIME);
 
             // Unlock follow mode if active
             if (followMode && followLocked) {
@@ -4899,6 +4927,12 @@ function setupTouchControls(canvas) {
         } else if (e.touches.length === 2) {
             // Two finger touch - prepare for pinch/zoom
             isDragging = false;
+
+            // Cancel long-press when switching to two fingers
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
@@ -4925,6 +4959,12 @@ function setupTouchControls(canvas) {
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             if (distance > 10) {  // 10px threshold for tap vs drag
                 touchMoved = true;
+
+                // Cancel long-press if user moves finger
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
             }
         }
 
@@ -4979,12 +5019,30 @@ function setupTouchControls(canvas) {
     canvas.addEventListener('touchend', (e) => {
         e.preventDefault();
 
+        // Clear long-press timer if active
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+
         // Capture drag state before resetting
         wasTouchDragging = touchMoved;
 
         // Detect tap (quick touch without movement)
         const touchDuration = Date.now() - touchStartTime;
         const wasTap = !wasTouchDragging && touchDuration < 300 && touchStartPositions.length === 1;
+
+        // Check for double-tap to reset camera
+        const currentTime = Date.now();
+        if (wasTap && currentTime - lastTapTime < DOUBLE_TAP_TIME && currentTime - lastTapTime > 0) {
+            // Double-tap detected - reset camera
+            resetCamera();
+            navigator.vibrate?.(100); // Haptic feedback
+            lastTapTime = 0; // Reset to prevent triple tap
+            return; // Don't process as single tap
+        } else if (wasTap) {
+            lastTapTime = currentTime;
+        }
 
         if (wasTap && e.changedTouches.length > 0) {
             // This was a tap - perform aircraft selection
@@ -8587,67 +8645,8 @@ function setupMobileTouchUX() {
     if (!isMobile) return; // Only on mobile
 
     // Long-press detection for aircraft
-    let longPressTimer = null;
-    let longPressTarget = null;
-    const LONG_PRESS_TIME = 500; // milliseconds
-
-    canvas.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-            longPressTimer = setTimeout(() => {
-                // Long-press detected
-                const touch = e.touches[0];
-                const raycaster = new THREE.Raycaster();
-                const mouse = new THREE.Vector2();
-
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
-
-                if (intersects.length > 0) {
-                    // Found an aircraft - show context menu
-                    showAircraftContextMenu(touch.clientX, touch.clientY, intersects[0]);
-                    navigator.vibrate?.(50); // Haptic feedback if supported
-                }
-
-                longPressTimer = null;
-            }, LONG_PRESS_TIME);
-        }
-    });
-
-    canvas.addEventListener('touchend', () => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-    });
-
-    canvas.addEventListener('touchmove', () => {
-        // Cancel long-press if user moves finger
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-    });
-
-    // Double-tap to reset camera to home
-    let lastTap = 0;
-    canvas.addEventListener('touchend', (e) => {
-        const now = Date.now();
-        const timeSinceLastTap = now - lastTap;
-
-        if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
-            // Double-tap detected
-            e.preventDefault();
-            resetCamera();
-            navigator.vibrate?.(100); // Haptic feedback
-        }
-
-        lastTap = now;
-    });
-
-    console.log('[Mobile] Touch UX enhancements enabled');
+    // Removed duplicate touch handlers - now integrated into setupTouchControls()
+    console.log('[Mobile] Touch UX enhancements enabled via unified handler');
 }
 
 /**

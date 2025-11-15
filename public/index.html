@@ -2280,9 +2280,10 @@
             }
 
             #controls button {
-                padding: 5px 8px;  /* Match mode button size */
-                font-size: 10px;
-                margin: 0 2px;
+                padding: 12px 8px;  /* Increased for 44px minimum touch target */
+                font-size: 11px;    /* Slightly larger for readability */
+                margin: 2px 2px;
+                min-height: 44px;   /* Ensure minimum touch target */
             }
 
             /* Collapse panels by default on mobile */
@@ -2654,16 +2655,20 @@
                 left: auto !important;
                 right: 10px !important;
                 padding: 8px !important;
-                max-width: 180px;
+                max-width: calc(100vw - 30px);  /* Use available width minus margins */
+                min-width: 220px;  /* Ensure minimum readable width */
             }
 
             #aircraft-list {
                 /* Positioning handled by .mobile-panel-aligned utility class (480px) */
+                max-width: calc(100vw - 30px) !important;
+                min-width: 220px !important;
             }
 
             #mini-stats {
                 left: 10px;
-                max-width: 180px;
+                max-width: calc(50vw - 20px);  /* Half screen for stats */
+                min-width: 160px;
                 bottom: 110px;
             }
 
@@ -2684,25 +2689,29 @@
 
         /* Touch-friendly tap targets */
         @media (hover: none) and (pointer: coarse) {
-            /* Increase tap target sizes for touch devices */
+            /* Ensure 44px minimum tap target sizes for touch devices (WCAG AA) */
             .collapse-btn {
-                width: 32px;
-                height: 32px;
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
             }
 
             #controls button {
-                padding: 10px 14px;
-                margin: 0 3px;
+                padding: 12px 14px;
+                margin: 2px 3px;
+                min-height: 44px;
+                font-size: 12px;
             }
 
             .aircraft-item {
-                padding: 10px;
+                padding: 12px;
                 margin: 6px 0;
+                min-height: 44px;
             }
 
             .close-btn {
-                width: 36px;
-                height: 36px;
+                width: 44px;
+                height: 44px;
                 font-size: 24px;
             }
         }
