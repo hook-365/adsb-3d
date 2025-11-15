@@ -974,6 +974,28 @@ const URLState = {
                             presetRadio.checked = true;
                             const customRange = document.getElementById('custom-time-range');
                             if (customRange) customRange.style.display = 'none';
+                            console.log(`[URL State] Selected preset: Last ${urlParams.preset} hour(s)`);
+
+                            // Also populate the date/time inputs with the calculated range
+                            const calculateTimeRange = (hours) => {
+                                const end = new Date();
+                                const start = new Date(end.getTime() - (hours * 60 * 60 * 1000));
+                                return { startTime: start, endTime: end };
+                            };
+
+                            const range = calculateTimeRange(parseInt(urlParams.preset));
+                            const startTimeInput = document.getElementById('start-time');
+                            const endTimeInput = document.getElementById('end-time');
+                            if (startTimeInput) {
+                                startTimeInput.value = formatForDatetimeInput(range.startTime.toISOString());
+                            }
+                            if (endTimeInput) {
+                                endTimeInput.value = formatForDatetimeInput(range.endTime.toISOString());
+                            }
+
+                            // Update HistoricalState with the calculated times
+                            HistoricalState.settings.startTime = range.startTime;
+                            HistoricalState.settings.endTime = range.endTime;
                         }
                     } else {
                         console.warn('[URL State] Invalid preset value:', urlParams.preset, '- using custom');
@@ -989,10 +1011,34 @@ const URLState = {
                 }
 
                 // Populate custom time fields (correct IDs: start-time and end-time)
+                // Need to format dates properly for datetime-local inputs
                 const startTimeInput = document.getElementById('start-time');
                 const endTimeInput = document.getElementById('end-time');
-                if (startTimeInput) startTimeInput.value = urlParams.start;
-                if (endTimeInput) endTimeInput.value = urlParams.end;
+
+                // Helper to format date for datetime-local input (YYYY-MM-DDTHH:mm)
+                const formatForDatetimeInput = (dateStr) => {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    if (isNaN(date.getTime())) return '';
+
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}`;
+                };
+
+                if (startTimeInput && urlParams.start) {
+                    const formattedStart = formatForDatetimeInput(urlParams.start);
+                    startTimeInput.value = formattedStart;
+                    console.log('[URL State] Set start time input to:', formattedStart, 'from URL:', urlParams.start);
+                }
+                if (endTimeInput && urlParams.end) {
+                    const formattedEnd = formatForDatetimeInput(urlParams.end);
+                    endTimeInput.value = formattedEnd;
+                    console.log('[URL State] Set end time input to:', formattedEnd, 'from URL:', urlParams.end);
+                }
 
                 // CRITICAL: Also update HistoricalState directly since setting the preset radio
                 // may have triggered the change event which calculates times from NOW
