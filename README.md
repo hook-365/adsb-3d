@@ -71,14 +71,13 @@ Access at: `http://your-server:8086`
 
 Real-time + historical track playback and analysis.
 
-**.env:**
+**.env file (optional):**
 ```bash
 LATITUDE=45.0000
 LONGITUDE=-90.0000
 ALTITUDE=1000
 LOCATION_NAME=My Station
 FEEDER_URL=http://ultrafeeder
-TIMESCALEDB_PASSWORD=your_secure_password_here
 ```
 
 **docker-compose.yml:**
@@ -89,11 +88,11 @@ services:
     container_name: adsb-3d
     restart: unless-stopped
     environment:
-      - LATITUDE=${LATITUDE}
-      - LONGITUDE=${LONGITUDE}
-      - ALTITUDE=${ALTITUDE}
-      - LOCATION_NAME=${LOCATION_NAME}
-      - FEEDER_URL=${FEEDER_URL}
+      - LATITUDE=45.0000
+      - LONGITUDE=-90.0000
+      - ALTITUDE=1000
+      - LOCATION_NAME=My Station
+      - FEEDER_URL=http://ultrafeeder
       - ENABLE_HISTORICAL=true
     ports:
       - "8086:80"
@@ -105,12 +104,12 @@ services:
     container_name: track-service
     restart: unless-stopped
     environment:
-      - FEEDER_URL=${FEEDER_URL}
+      - FEEDER_URL=http://ultrafeeder
       - DB_HOST=timescaledb-adsb
       - DB_PORT=5432
       - DB_NAME=adsb_tracks
       - DB_USER=adsb
-      - DB_PASSWORD=${TIMESCALEDB_PASSWORD}
+      - DB_PASSWORD=your_secure_password_here
       - COLLECTION_INTERVAL=5
     ports:
       - "8087:8000"
@@ -124,17 +123,12 @@ services:
     environment:
       - POSTGRES_DB=adsb_tracks
       - POSTGRES_USER=adsb
-      - POSTGRES_PASSWORD=${TIMESCALEDB_PASSWORD}
+      - POSTGRES_PASSWORD=your_secure_password_here
     volumes:
-      # Option A: Named volume (Docker-managed)
       - timescaledb-data:/var/lib/postgresql/data
-      # Option B: Bind mount (choose your path)
-      # - ./timescaledb/data:/var/lib/postgresql/data
-      # - /path/to/data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
 
-# Define named volume (if using Option A)
 volumes:
   timescaledb-data:
 ```

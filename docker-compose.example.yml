@@ -1,32 +1,26 @@
 # ADS-B 3D Viewer - Deployment Example
 #
-# Choose one of the deployment options below:
-#
 # Option 1: Live-Only Mode (Simple)
-#   - Real-time aircraft visualization only
-#   - No database required
-#   - Use only the adsb-3d service
+#   - Use only the adsb-3d service below
+#   - Set ENABLE_HISTORICAL=false
 #
 # Option 2: Full Historical Stack
-#   - Real-time + historical track playback
-#   - Requires TimescaleDB and Track Service
-#   - Uncomment timescaledb-adsb and track-service
-#   - Create .env file with TIMESCALEDB_PASSWORD
+#   - Uncomment track-service and timescaledb-adsb
+#   - Set ENABLE_HISTORICAL=true
+#   - Uncomment volumes section
+#   - Change DB_PASSWORD to a secure password
 
 services:
-  # ===================================================================
-  # ADS-B 3D Viewer - Web Interface
-  # ===================================================================
   adsb-3d:
     image: ghcr.io/hook-365/adsb-3d:latest
     container_name: adsb-3d
     restart: unless-stopped
     environment:
-      - LATITUDE=45.0000              # Your latitude
-      - LONGITUDE=-90.0000            # Your longitude
-      - ALTITUDE=1000                 # Your altitude (feet MSL)
-      - LOCATION_NAME=My Station      # Display name
-      - FEEDER_URL=http://ultrafeeder # Your ADS-B feeder URL
+      - LATITUDE=45.0000
+      - LONGITUDE=-90.0000
+      - ALTITUDE=1000
+      - LOCATION_NAME=My Station
+      - FEEDER_URL=http://ultrafeeder
       - ENABLE_HISTORICAL=false       # Set to true for historical mode
     ports:
       - "8086:80"
@@ -34,29 +28,24 @@ services:
     # depends_on:
     #   - track-service
 
-  # ===================================================================
-  # OPTIONAL: Full Historical Stack (uncomment services below)
-  # ===================================================================
-
-  # Track Service - Combined Collector + API
+  # Uncomment for historical mode:
   # track-service:
   #   image: ghcr.io/hook-365/adsb-track-service:latest
   #   container_name: track-service
   #   restart: unless-stopped
   #   environment:
-  #     - FEEDER_URL=${FEEDER_URL}
+  #     - FEEDER_URL=http://ultrafeeder
   #     - DB_HOST=timescaledb-adsb
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
   #     - DB_USER=adsb
-  #     - DB_PASSWORD=${TIMESCALEDB_PASSWORD}
+  #     - DB_PASSWORD=your_secure_password_here
   #     - COLLECTION_INTERVAL=5
   #   ports:
   #     - "8087:8000"
   #   depends_on:
   #     - timescaledb-adsb
 
-  # TimescaleDB - Time-series database for aircraft tracks
   # timescaledb-adsb:
   #   image: timescale/timescaledb:latest-pg16
   #   container_name: timescaledb-adsb
@@ -64,27 +53,12 @@ services:
   #   environment:
   #     - POSTGRES_DB=adsb_tracks
   #     - POSTGRES_USER=adsb
-  #     - POSTGRES_PASSWORD=${TIMESCALEDB_PASSWORD}
+  #     - POSTGRES_PASSWORD=your_secure_password_here
   #   volumes:
-  #     # Option A: Named volume (Docker-managed)
   #     - timescaledb-data:/var/lib/postgresql/data
-  #     # Option B: Bind mount (uncomment and choose your path)
-  #     # - ./timescaledb/data:/var/lib/postgresql/data
-  #     # - /mnt/storage/timescaledb:/var/lib/postgresql/data
   #   ports:
   #     - "5433:5432"
 
-# Define named volume (if using Option A)
+# Uncomment for historical mode:
 # volumes:
 #   timescaledb-data:
-
-# ===================================================================
-# DATA STORAGE
-# ===================================================================
-# Historical tracks are stored in: ./timescaledb/data/
-# Backup this directory regularly!
-#
-# Typical disk usage:
-#   - Light traffic (10-20 aircraft): ~100MB/day
-#   - Moderate traffic (50-100 aircraft): ~500MB/day
-#   - Heavy traffic (200+ aircraft): ~2GB/day
