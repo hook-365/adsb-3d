@@ -8927,31 +8927,44 @@ async function showAircraftDetail(hex) {
     panel.style.display = 'block';
 
     // Show and configure the detail panel Follow button
+    // Only show in live mode or historical playback mode (not in historical show-all)
     const detailFollowBtn = document.getElementById('detail-follow-btn');
     if (detailFollowBtn) {
-        detailFollowBtn.style.display = 'block';
-        detailFollowBtn.onclick = () => {
-            // Use focusOnAircraft to zoom and follow
-            focusOnAircraft(hex);
-            detailFollowBtn.textContent = '✓ Following';
-            detailFollowBtn.style.background = '#28a745';
-            console.log(`[Follow] Now following aircraft ${hex}`);
-        };
+        // Hide follow button in historical "show all" mode - there's nothing to follow
+        const shouldShowFollow = currentMode === 'live' ||
+                                (currentMode === 'historical' && HistoricalState.displayMode === 'playback');
 
-        // Update button state if already following
-        if (followMode && followedAircraftHex === hex) {
-            detailFollowBtn.textContent = '✓ Following';
-            detailFollowBtn.style.background = '#28a745';
+        if (shouldShowFollow) {
+            detailFollowBtn.style.display = 'block';
+            detailFollowBtn.onclick = () => {
+                // Use focusOnAircraft to zoom and follow
+                focusOnAircraft(hex);
+                detailFollowBtn.textContent = '✓ Following';
+                detailFollowBtn.style.background = '#28a745';
+                console.log(`[Follow] Now following aircraft ${hex}`);
+            };
+
+            // Update button state if already following
+            if (followMode && followedAircraftHex === hex) {
+                detailFollowBtn.textContent = '✓ Following';
+                detailFollowBtn.style.background = '#28a745';
+            } else {
+                detailFollowBtn.textContent = '📍 Follow Aircraft';
+                detailFollowBtn.style.background = 'var(--accent-primary)';
+            }
         } else {
-            detailFollowBtn.textContent = '📍 Follow Aircraft';
-            detailFollowBtn.style.background = 'var(--accent-primary)';
+            // Hide button in historical "show all" mode
+            detailFollowBtn.style.display = 'none';
         }
     }
 
     // Show follow button when aircraft is selected (if it exists)
+    // Only in modes where following makes sense
     const followBtn = document.getElementById('toggle-follow');
     if (followBtn) {
-        followBtn.style.display = 'inline-block';
+        const shouldShowFollow = currentMode === 'live' ||
+                                (currentMode === 'historical' && HistoricalState.displayMode === 'playback');
+        followBtn.style.display = shouldShowFollow ? 'inline-block' : 'none';
     }
 
     selectedAircraft = hex;
