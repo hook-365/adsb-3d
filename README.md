@@ -42,36 +42,7 @@ Time-travel through past flights with powerful filtering options (altitude, spee
 
 Real-time aircraft visualization with no database.
 
-**docker-compose.yml:**
-```yaml
-services:
-  adsb-3d:
-    image: ghcr.io/hook-365/adsb-3d:latest
-    container_name: adsb-3d
-    restart: unless-stopped
-    environment:
-      - LATITUDE=45.0000
-      - LONGITUDE=-90.0000
-      - ALTITUDE=1000
-      - LOCATION_NAME=My Station
-      - FEEDER_URL=http://ultrafeeder
-      - ENABLE_HISTORICAL=false
-    ports:
-      - "8086:80"
-```
-
-Deploy:
-```bash
-docker compose up -d
-```
-
-Access at: `http://your-server:8086`
-
-### Option 2: Full Historical Stack
-
-Real-time + historical track playback and analysis.
-
-**.env file (optional):**
+**.env:**
 ```bash
 LATITUDE=45.0000
 LONGITUDE=-90.0000
@@ -88,11 +59,50 @@ services:
     container_name: adsb-3d
     restart: unless-stopped
     environment:
-      - LATITUDE=45.0000
-      - LONGITUDE=-90.0000
-      - ALTITUDE=1000
-      - LOCATION_NAME=My Station
-      - FEEDER_URL=http://ultrafeeder
+      - LATITUDE=${LATITUDE}
+      - LONGITUDE=${LONGITUDE}
+      - ALTITUDE=${ALTITUDE}
+      - LOCATION_NAME=${LOCATION_NAME}
+      - FEEDER_URL=${FEEDER_URL}
+      - ENABLE_HISTORICAL=false
+    ports:
+      - "8086:80"
+```
+
+Deploy:
+```bash
+docker compose up -d
+```
+
+Access at: `http://your-server:8086`
+
+### Option 2: Full Historical Stack
+
+Real-time + historical track playback and analysis.
+
+**.env:**
+```bash
+LATITUDE=45.0000
+LONGITUDE=-90.0000
+ALTITUDE=1000
+LOCATION_NAME=My Station
+FEEDER_URL=http://ultrafeeder
+TIMESCALEDB_PASSWORD=your_secure_password_here
+```
+
+**docker-compose.yml:**
+```yaml
+services:
+  adsb-3d:
+    image: ghcr.io/hook-365/adsb-3d:latest
+    container_name: adsb-3d
+    restart: unless-stopped
+    environment:
+      - LATITUDE=${LATITUDE}
+      - LONGITUDE=${LONGITUDE}
+      - ALTITUDE=${ALTITUDE}
+      - LOCATION_NAME=${LOCATION_NAME}
+      - FEEDER_URL=${FEEDER_URL}
       - ENABLE_HISTORICAL=true
     ports:
       - "8086:80"
@@ -104,12 +114,12 @@ services:
     container_name: track-service
     restart: unless-stopped
     environment:
-      - FEEDER_URL=http://ultrafeeder
+      - FEEDER_URL=${FEEDER_URL}
       - DB_HOST=timescaledb-adsb
       - DB_PORT=5432
       - DB_NAME=adsb_tracks
       - DB_USER=adsb
-      - DB_PASSWORD=your_secure_password_here
+      - DB_PASSWORD=${TIMESCALEDB_PASSWORD}
       - COLLECTION_INTERVAL=5
     ports:
       - "8087:8000"
@@ -123,7 +133,7 @@ services:
     environment:
       - POSTGRES_DB=adsb_tracks
       - POSTGRES_USER=adsb
-      - POSTGRES_PASSWORD=your_secure_password_here
+      - POSTGRES_PASSWORD=${TIMESCALEDB_PASSWORD}
     volumes:
       - timescaledb-data:/var/lib/postgresql/data
     ports:
