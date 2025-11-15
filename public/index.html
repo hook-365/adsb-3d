@@ -3090,9 +3090,69 @@
             <!-- Themes Button -->
             <button id="show-themes" class="action-btn">🎨 Themes</button>
 
-            <!-- Toggle Switches -->
+            <!-- Toggle Switches (Reordered for better UX) -->
+            <div class="toggle-switch-container active" id="toggle-sprite-mode-container">
+                <span class="toggle-switch-label">Sprite Mode</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container" id="toggle-home-tower-container">
+                <span class="toggle-switch-label">Home Tower</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-mini-radar-container">
+                <span class="toggle-switch-label">Mini Radar</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-compass-container">
+                <span class="toggle-switch-label">Compass</span>
+                <div class="toggle-switch"></div>
+            </div>
+
             <div class="toggle-switch-container active" id="toggle-trails-container">
                 <span class="toggle-switch-label">Trails</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container" id="toggle-trail-fade-container">
+                <span class="toggle-switch-label">Auto-fade Trails</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <!-- Trail Fade Time Selector (shown when auto-fade is enabled) -->
+            <div id="trail-fade-time-selector" style="display: none; margin-top: 8px; margin-bottom: 12px;">
+                <label for="trail-fade-time" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Fade after:</label>
+                <select id="trail-fade-time" style="width: 100%; padding: 6px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--panel-border); border-radius: var(--input-radius); font-size: 12px;">
+                    <option value="0">Never</option>
+                    <option value="60">1 minute</option>
+                    <option value="120">2 minutes</option>
+                    <option value="180">3 minutes</option>
+                    <option value="240">4 minutes</option>
+                    <option value="300">5 minutes</option>
+                    <option value="360">6 minutes</option>
+                    <option value="420">7 minutes</option>
+                    <option value="480">8 minutes</option>
+                    <option value="540">9 minutes</option>
+                    <option value="600">10 minutes</option>
+                    <option value="900">15 minutes</option>
+                    <option value="1200">20 minutes</option>
+                    <option value="1500">25 minutes</option>
+                    <option value="1800">30 minutes</option>
+                    <option value="2400">40 minutes</option>
+                    <option value="3000">50 minutes</option>
+                    <option value="3600" selected>60 minutes (1 hour)</option>
+                </select>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-altitude-lines-container">
+                <span class="toggle-switch-label">Alt Lines</span>
+                <div class="toggle-switch"></div>
+            </div>
+
+            <div class="toggle-switch-container active" id="toggle-tron-mode-container">
+                <span class="toggle-switch-label">Tron Mode</span>
                 <div class="toggle-switch"></div>
             </div>
 
@@ -3109,52 +3169,6 @@
             <div class="toggle-switch-container active" id="toggle-runways-container">
                 <span class="toggle-switch-label">Runways</span>
                 <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-altitude-lines-container">
-                <span class="toggle-switch-label">Alt Lines</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-mini-radar-container">
-                <span class="toggle-switch-label">Mini Radar</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-compass-container">
-                <span class="toggle-switch-label">Compass</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container" id="toggle-trail-fade-container">
-                <span class="toggle-switch-label">Auto-fade Trails</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-sprite-mode-container">
-                <span class="toggle-switch-label">Sprite Mode</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container" id="toggle-home-tower-container">
-                <span class="toggle-switch-label">Home Tower</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-tron-mode-container">
-                <span class="toggle-switch-label">Tron Mode</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <!-- Trail Fade Time Selector (shown when auto-fade is enabled) -->
-            <div id="trail-fade-time-selector" style="display: none; margin-top: 8px;">
-                <label for="trail-fade-time" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Fade after:</label>
-                <select id="trail-fade-time" style="width: 100%; padding: 6px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--panel-border); border-radius: var(--input-radius); font-size: 12px;">
-                    <option value="1800">30 minutes</option>
-                    <option value="3600" selected>1 hour</option>
-                    <option value="7200">2 hours</option>
-                    <option value="0">Never</option>
-                </select>
             </div>
 
             <!-- Keyboard Help Button -->
