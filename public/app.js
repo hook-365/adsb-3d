@@ -5014,7 +5014,6 @@ function setupTouchControls(canvas) {
                 if (intersects.length > 0) {
                     // Found an aircraft - show context menu
                     showAircraftContextMenu(touch.clientX, touch.clientY, intersects[0]);
-                    navigator.vibrate?.(50); // Haptic feedback if supported
                 }
 
                 longPressTimer = null;
@@ -5138,7 +5137,6 @@ function setupTouchControls(canvas) {
         if (wasTap && currentTime - lastTapTime < DOUBLE_TAP_TIME && currentTime - lastTapTime > 0) {
             // Double-tap detected - reset camera
             resetCamera();
-            navigator.vibrate?.(100); // Haptic feedback
             lastTapTime = 0; // Reset to prevent triple tap
             return; // Don't process as single tap
         } else if (wasTap) {
