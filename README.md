@@ -2,7 +2,7 @@
 
 Real-time and historical 3D visualization of ADS-B aircraft data with 7 visual themes and interactive controls.
 
-**Compatible with any ADS-B receiver running tar1090, readsb, dump1090, or ultrafeeder** - works with local setups or public feeds.
+**Compatible with any ADS-B receiver running tar1090, readsb, dump1090, or ultrafeeder** - point it at your local receiver or any feed that exposes the `/data/aircraft.json` endpoint.
 
 ## Features
 
