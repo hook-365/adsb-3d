@@ -837,16 +837,22 @@ function setupModeToggle() {
 
     if (!modeHeader || !modeIndicator || !liveContent || !historicalContent) return;
 
-    modeHeader.addEventListener('click', () => {
+    modeHeader.addEventListener('click', async () => {
         if (SidebarState.currentMode === 'live') {
-            // Switch to historical
+            // Switch to historical mode (call existing function)
+            await switchToHistoricalMode();
+
+            // Update sidebar UI
             SidebarState.currentMode = 'historical';
             modeIndicator.textContent = '🕐 HISTORICAL MODE';
             modeHeader.classList.add('historical');
             liveContent.style.display = 'none';
             historicalContent.style.display = 'flex';
         } else {
-            // Switch to live
+            // Switch to live mode (call existing function)
+            await switchToLiveMode();
+
+            // Update sidebar UI
             SidebarState.currentMode = 'live';
             modeIndicator.textContent = '🔴 LIVE MODE';
             modeHeader.classList.remove('historical');

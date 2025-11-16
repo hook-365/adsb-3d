@@ -2112,7 +2112,7 @@
         }
 
         .sidebar.collapsed {
-            transform: translateX(calc(100% - 40px));
+            transform: translateX(100%);
         }
 
         /* Resize Handle */
@@ -3201,7 +3201,7 @@
 
             <!-- Historical Mode Content -->
             <div id="sidebar-historical-content" class="sidebar-mode-content" style="display: none;">
-                <!-- Time Range -->
+                <!-- Time Range & Load -->
                 <div class="sidebar-section">
                     <div class="sidebar-section-label">Time Range</div>
                     <select id="sidebar-time-preset" class="sidebar-select">
@@ -3210,92 +3210,9 @@
                         <option value="8">Last 8 hours</option>
                         <option value="12">Last 12 hours</option>
                         <option value="24">Last 24 hours</option>
-                        <option value="custom">Custom Range</option>
                     </select>
-                    <div id="sidebar-custom-range" style="display: none; margin-top: 10px;">
-                        <label>Start:</label>
-                        <input type="datetime-local" id="sidebar-start-time" class="sidebar-input">
-                        <label style="margin-top: 5px;">End:</label>
-                        <input type="datetime-local" id="sidebar-end-time" class="sidebar-input">
-                    </div>
-                </div>
-
-                <div class="sidebar-divider"></div>
-
-                <!-- Filters -->
-                <div class="sidebar-section">
-                    <div class="sidebar-section-label">Filters</div>
-                    <label>Altitude (ft):</label>
-                    <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-                        <input type="number" id="sidebar-alt-min" placeholder="Min" class="sidebar-input">
-                        <input type="number" id="sidebar-alt-max" placeholder="Max" class="sidebar-input">
-                    </div>
-                    <label>Speed (kts):</label>
-                    <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-                        <input type="number" id="sidebar-speed-min" placeholder="Min" class="sidebar-input">
-                        <input type="number" id="sidebar-speed-max" placeholder="Max" class="sidebar-input">
-                    </div>
-                    <label>Aircraft Type:</label>
-                    <select id="sidebar-aircraft-type" class="sidebar-select">
-                        <option value="all">All Aircraft</option>
-                        <option value="military">Military Only</option>
-                        <option value="civilian">Civilian Only</option>
-                    </select>
-                </div>
-
-                <div class="sidebar-divider"></div>
-
-                <!-- Visualization Mode -->
-                <div class="sidebar-section">
-                    <div class="sidebar-section-label">Visualization</div>
-                    <div class="sidebar-radio-group">
-                        <label class="sidebar-radio-label">
-                            <input type="radio" name="vis-mode" value="tracks" checked>
-                            <span>Tracks</span>
-                        </label>
-                        <label class="sidebar-radio-label">
-                            <input type="radio" name="vis-mode" value="heatmap">
-                            <span>Heat Map</span>
-                        </label>
-                        <label class="sidebar-radio-label">
-                            <input type="radio" name="vis-mode" value="both">
-                            <span>Both</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="sidebar-divider"></div>
-
-                <!-- Playback Controls -->
-                <div class="sidebar-section">
-                    <div class="sidebar-section-label">Playback</div>
-                    <div class="sidebar-radio-group">
-                        <label class="sidebar-radio-label">
-                            <input type="radio" name="playback-mode" value="all" checked>
-                            <span>Show All</span>
-                        </label>
-                        <label class="sidebar-radio-label">
-                            <input type="radio" name="playback-mode" value="animated">
-                            <span>Animated</span>
-                        </label>
-                    </div>
-                    <div id="sidebar-playback-controls" style="display: none; margin-top: 10px;">
-                        <button id="sidebar-play-btn" class="sidebar-button">▶ Play</button>
-                        <select id="sidebar-playback-speed" class="sidebar-select" style="margin-top: 8px;">
-                            <option value="1">1x Speed</option>
-                            <option value="2">2x Speed</option>
-                            <option value="5">5x Speed</option>
-                            <option value="10">10x Speed</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="sidebar-divider"></div>
-
-                <!-- Results & Load Button -->
-                <div class="sidebar-section">
-                    <div id="sidebar-results-info" class="sidebar-info">Ready to load tracks</div>
-                    <button id="sidebar-load-tracks" class="sidebar-button sidebar-button-primary">Load Tracks</button>
+                    <button id="sidebar-load-tracks" class="sidebar-button sidebar-button-primary" style="margin-top: 10px;">Load Tracks</button>
+                    <div id="sidebar-results-info" class="sidebar-info" style="margin-top: 8px;">Ready to load</div>
                 </div>
             </div>
 
@@ -3306,8 +3223,8 @@
                 </button>
                 <div class="sidebar-footer-content" id="sidebar-footer-content">
                     <!-- Mini radar and compass will be moved here -->
-                    <div id="sidebar-mini-radar-container">
-                        <!-- Placeholder for mini radar -->
+                    <div id="sidebar-mini-radar-container" style="padding: 10px; text-align: center; color: var(--text-secondary); font-size: 11px;">
+                        Mini Radar/Compass (coming soon)
                     </div>
                 </div>
             </div>
