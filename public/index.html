@@ -2299,26 +2299,30 @@
             overflow-x: hidden;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
         }
 
         .sidebar-aircraft-item {
             background: rgba(255, 255, 255, 0.05);
             padding: 10px;
             border-radius: var(--button-radius);
-            border: 1px solid transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             cursor: pointer;
             transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         .sidebar-aircraft-item:hover {
             background: rgba(255, 255, 255, 0.1);
             border-color: var(--accent-primary);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transform: translateX(-2px);
         }
 
         .sidebar-aircraft-item.selected {
             background: var(--accent-primary-dim);
             border-color: var(--accent-primary);
+            box-shadow: 0 4px 12px var(--accent-primary-glow);
         }
 
         /* Sidebar Sections */
