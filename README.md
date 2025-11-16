@@ -337,7 +337,7 @@ MIT License
 ## Credits
 
 - **Three.js**: 3D rendering engine
-- **tar1090**: ADS-B altitude color scheme
+- **tar1090**: ADS-B altitude color scheme and aircraft SVG sprites
 - **Mictronics readsb-protobuf**: Aircraft type database (GPL-3.0)
 - **sdr-enthusiasts**: Ultrafeeder Docker image
 - **airport-data.com**: Aircraft images
