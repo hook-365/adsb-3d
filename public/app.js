@@ -921,6 +921,33 @@ function updateSidebarAircraftList(data) {
     if (positionedElem) positionedElem.textContent = positionedAircraft;
     if (updateElem) updateElem.textContent = new Date().toLocaleTimeString();
 
+    // Find highest/fastest/closest aircraft for badges
+    let highestHex = null, fastestHex = null, closestHex = null;
+
+    if (validAircraft.length > 0) {
+        // Find highest
+        const highest = validAircraft.reduce((max, ac) => (ac.alt_baro > max.alt_baro) ? ac : max);
+        highestHex = highest.hex;
+
+        // Find fastest
+        const withSpeed = validAircraft.filter(ac => ac.gs);
+        if (withSpeed.length > 0) {
+            const fastest = withSpeed.reduce((max, ac) => (ac.gs > max.gs) ? ac : max);
+            fastestHex = fastest.hex;
+        }
+
+        // Find closest
+        const withDistance = validAircraft.filter(ac => ac.r_dst || ac.distance);
+        if (withDistance.length > 0) {
+            const closest = withDistance.reduce((min, ac) => {
+                const dist = ac.r_dst || ac.distance || 999;
+                const minDist = min.r_dst || min.distance || 999;
+                return dist < minDist ? ac : min;
+            });
+            closestHex = closest.hex;
+        }
+    }
+
     // Build aircraft list sorted by distance
     const sortedAircraft = validAircraft
         .sort((a, b) => (a.distance || 0) - (b.distance || 0));
@@ -943,11 +970,49 @@ function updateSidebarAircraftList(data) {
         const speed = ac.gs ? `${Math.round(ac.gs)}kts` : 'N/A';
         const distance = ac.distance ? `${ac.distance.toFixed(1)}km` : '';
 
+        // Add vertical rate indicator
+        let verticalIndicator = '';
+        const verticalRate = ac.baro_rate ?? ac.geom_rate;
+        if (verticalRate) {
+            if (verticalRate > 64) {
+                verticalIndicator = ' ▲';
+            } else if (verticalRate < -64) {
+                verticalIndicator = ' ▼';
+            }
+        }
+
+        // Build badges
+        let badges = '';
+        const isMilitary = isMilitaryAircraft(ac.hex);
+        const isMLAT = ac.mlat && ac.mlat.length > 0;
+
+        // Military badge (red) - highest priority
+        if (isMilitary) {
+            badges += '<span class="badge badge-military">🛡️ MIL</span>';
+        }
+
+        // MLAT badge (orange) - if not military
+        if (!isMilitary && isMLAT) {
+            badges += '<span class="badge badge-mlat">MLAT</span>';
+        }
+
+        // Stats badges (blue)
+        if (ac.hex === highestHex) {
+            badges += '<span class="badge badge-stat">HIGHEST</span>';
+        }
+        if (ac.hex === fastestHex) {
+            badges += '<span class="badge badge-stat">FASTEST</span>';
+        }
+        if (ac.hex === closestHex) {
+            badges += '<span class="badge badge-stat">CLOSEST</span>';
+        }
+
         item.innerHTML = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <strong style="color: var(--text-accent);">${callsign}</strong>
+                <strong style="color: var(--text-accent);">${callsign}${verticalIndicator}</strong>
                 <span style="color: var(--text-secondary); font-size: 11px;">${distance}</span>
             </div>
+            <div style="margin-bottom: 4px;">${badges}</div>
             <div style="display: flex; gap: 15px; font-size: 11px; color: var(--text-secondary);">
                 <span>Alt: ${altitude}</span>
                 <span>Spd: ${speed}</span>
