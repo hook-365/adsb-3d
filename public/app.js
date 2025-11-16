@@ -903,6 +903,7 @@ function setupSearchBar() {
 /**
  * Update aircraft list in sidebar
  */
+let lastAircraftSet = new Set();
 function updateSidebarAircraftList(data) {
     const listContainer = document.getElementById('sidebar-aircraft-list');
     const countElem = document.getElementById('sidebar-aircraft-count');
@@ -920,6 +921,27 @@ function updateSidebarAircraftList(data) {
     if (countElem) countElem.textContent = totalAircraft;
     if (positionedElem) positionedElem.textContent = positionedAircraft;
     if (updateElem) updateElem.textContent = new Date().toLocaleTimeString();
+
+    // Check if aircraft set has changed (to prevent unnecessary rebuilds)
+    const currentAircraftSet = new Set(validAircraft.map(ac => ac.hex));
+    const hasChanges = currentAircraftSet.size !== lastAircraftSet.size ||
+        ![...currentAircraftSet].every(hex => lastAircraftSet.has(hex));
+
+    // Only rebuild list if aircraft set has changed
+    if (!hasChanges) {
+        // Just update selected state without rebuilding
+        const items = listContainer.querySelectorAll('.sidebar-aircraft-item');
+        items.forEach(item => {
+            if (item.dataset.hex === selectedAircraft) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+        return;
+    }
+
+    lastAircraftSet = currentAircraftSet;
 
     // Find highest/fastest/closest aircraft for badges
     let highestHex = null, fastestHex = null, closestHex = null;
