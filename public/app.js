@@ -1008,12 +1008,12 @@ function updateSidebarAircraftList(data) {
         }
 
         item.innerHTML = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <strong style="color: var(--text-accent);">${callsign}${verticalIndicator}</strong>
-                <span style="color: var(--text-secondary); font-size: 11px;">${distance}</span>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <strong style="color: var(--text-accent); font-size: 13px;">${callsign}${verticalIndicator}</strong>
+                <span style="color: var(--text-secondary); font-size: 10px;">${distance}</span>
             </div>
-            <div style="margin-bottom: 4px;">${badges}</div>
-            <div style="display: flex; gap: 15px; font-size: 11px; color: var(--text-secondary);">
+            <div style="margin-bottom: 3px;">${badges}</div>
+            <div style="display: flex; gap: 12px; font-size: 10px; color: var(--text-secondary);">
                 <span>Alt: ${altitude}</span>
                 <span>Spd: ${speed}</span>
             </div>
