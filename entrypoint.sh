@@ -64,22 +64,27 @@ else
     echo "Historical mode enabled - Track Service will be auto-detected at /api/health"
 fi
 
-# Parse FEEDER_URL to extract hostname for nginx
+# Parse FEEDER_URL to extract full base URL for nginx
 # Supports:
 #   - FEEDER_URL=http://192.168.1.50:8080
 #   - FEEDER_URL=http://ultrafeeder
 #   - FEEDER_URL=https://adsb.example.com
+#   - FEEDER_URL=http://skymon.ruskowski.de/tar1090  (preserves /tar1090 path)
 # Falls back to FEEDER_HOST for backward compatibility
 if [ -n "${FEEDER_URL}" ]; then
-    # Extract hostname from URL (remove http://, https://, and any port/path)
-    export FEEDER_HOST=$(echo "${FEEDER_URL}" | sed -e 's|^https\?://||' -e 's|/.*||')
-    echo "Using feeder URL: ${FEEDER_URL} (extracted host: ${FEEDER_HOST})"
+    # Remove protocol prefix but preserve hostname, port, and path
+    export FEEDER_HOST=$(echo "${FEEDER_URL}" | sed -e 's|^https\?://||')
+    # Extract just the hostname (no port, no path) for Host header
+    export FEEDER_HOSTNAME=$(echo "${FEEDER_HOST}" | sed -e 's|:.*||' -e 's|/.*||')
+    echo "Using feeder URL: ${FEEDER_URL} (nginx upstream: ${FEEDER_HOST}, hostname: ${FEEDER_HOSTNAME})"
 elif [ -n "${FEEDER_HOST}" ]; then
     # Backward compatibility: use FEEDER_HOST directly
-    echo "Using feeder host (legacy): ${FEEDER_HOST}"
+    export FEEDER_HOSTNAME=$(echo "${FEEDER_HOST}" | sed -e 's|:.*||' -e 's|/.*||')
+    echo "Using feeder host (legacy): ${FEEDER_HOST} (hostname: ${FEEDER_HOSTNAME})"
 else
     # Default fallback
     export FEEDER_HOST=ultrafeeder
+    export FEEDER_HOSTNAME=ultrafeeder
     echo "Using default feeder host: ${FEEDER_HOST}"
 fi
 
@@ -88,7 +93,7 @@ export TRACK_API_HOST=${TRACK_API_HOST:-track-service:8000}
 echo "Track Service host for proxy: ${TRACK_API_HOST}"
 
 # Replace environment variables in nginx config
-envsubst '${FEEDER_HOST} ${TRACK_API_HOST}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
+envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
 mv /etc/nginx/conf.d/default.conf.tmp /etc/nginx/conf.d/default.conf
 
 # Start nginx

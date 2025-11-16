@@ -77,7 +77,7 @@ const CONFIG = {
     distanceRingIntervals: [92.6, 185.2, 277.8], // 50, 100, 150 nautical miles in km
     distanceRingLabels: ['50 nmi', '100 nmi', '150 nmi'], // Labels for distance rings
     mapZoomLevel: 8, // OSM zoom level for ground texture (7-12, lower = wider area)
-    mapTileGridSize: 9, // Load NxN grid of tiles (increased from 5 for better coverage)
+    mapTileGridSize: 13, // Load NxN grid of tiles (13x13 = ~600km for large-area feeders)
     showAirports: true, // Show airport markers
     showRunways: true, // Show runway overlays
     airportMaxDistance: 200, // km - load airports within this radius
@@ -4971,7 +4971,7 @@ function init() {
         60,
         window.innerWidth / window.innerHeight,
         0.1,
-        5000  // Increased from 1000 to allow more zoom out
+        10000  // Far plane - support large-area feeders (600km+ coverage)
     );
     // Start facing north (-Z direction) at an angle
     // Camera south of origin (positive Z) looking toward north (negative Z)
@@ -5805,7 +5805,8 @@ function setupMouseControls() {
         }
 
         const oldDistance = cameraDistance;
-        cameraDistance = Math.max(20, Math.min(600, cameraDistance + e.deltaY * 0.1));
+        // Zoom limits: 10 (close-up) to 1200 (wide view for large-area feeders)
+        cameraDistance = Math.max(10, Math.min(1200, cameraDistance + e.deltaY * 0.1));
 
         // Update camera only if not in locked follow mode
         if (!followMode || !followLocked) {
@@ -5948,10 +5949,11 @@ function setupTouchControls(canvas) {
                 // So we divide by scale
                 const newDistance = initialCameraDistance / scale;
 
-                // Apply zoom with same limits as desktop (600 units max)
+                // Apply zoom with same limits as desktop
                 // When hitting the max, clamp to max instead of resetting
                 const oldCameraDistance = cameraDistance;
-                cameraDistance = Math.max(20, Math.min(600, newDistance));
+                // Pinch zoom limits: 10 (close) to 1200 (far) - supports large-area feeders
+                cameraDistance = Math.max(10, Math.min(1200, newDistance));
 
                 // Debug logging disabled after fixing zoom issues
                 // console.log(`[Mobile Zoom] Pinch - scale: ${scale.toFixed(2)}, old: ${oldCameraDistance.toFixed(0)}, new: ${cameraDistance.toFixed(0)}, initial: ${initialCameraDistance.toFixed(0)}`);
