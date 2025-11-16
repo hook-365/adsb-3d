@@ -703,8 +703,6 @@ const SidebarState = {
     width: 320,
     currentMode: 'live', // 'live' or 'historical'
     footerVisible: true,
-    aircraftData: new Map(), // hex -> aircraft object
-    selectedAircraft: null,
 
     // Load from localStorage
     load() {
@@ -905,25 +903,26 @@ function setupSearchBar() {
 /**
  * Update aircraft list in sidebar
  */
-function updateSidebarAircraftList() {
+function updateSidebarAircraftList(data) {
     const listContainer = document.getElementById('sidebar-aircraft-list');
     const countElem = document.getElementById('sidebar-aircraft-count');
     const positionedElem = document.getElementById('sidebar-aircraft-positioned');
     const updateElem = document.getElementById('sidebar-last-update');
 
     if (!listContainer) return;
+    if (!data || !data.aircraft) return;
 
-    // Update stats
-    const totalAircraft = aircraftData.size;
-    const positionedAircraft = Array.from(aircraftData.values()).filter(ac => ac.lat && ac.lon).length;
+    // Update stats using raw aircraft data
+    const totalAircraft = data.aircraft.length;
+    const validAircraft = data.aircraft.filter(ac => ac.lat && ac.lon && ac.alt_baro);
+    const positionedAircraft = validAircraft.length;
 
     if (countElem) countElem.textContent = totalAircraft;
     if (positionedElem) positionedElem.textContent = positionedAircraft;
     if (updateElem) updateElem.textContent = new Date().toLocaleTimeString();
 
-    // Build aircraft list
-    const sortedAircraft = Array.from(aircraftData.values())
-        .filter(ac => ac.lat && ac.lon)
+    // Build aircraft list sorted by distance
+    const sortedAircraft = validAircraft
         .sort((a, b) => (a.distance || 0) - (b.distance || 0));
 
     // Clear existing list
@@ -972,7 +971,8 @@ function updateAircraftListFilter(query) {
 
     items.forEach(item => {
         const hex = item.dataset.hex;
-        const aircraft = aircraftData.get(hex);
+        const mesh = aircraftMeshes.get(hex);
+        const aircraft = mesh ? mesh.userData : null;
 
         if (!aircraft) {
             item.style.display = 'none';
@@ -7893,7 +7893,7 @@ async function fetchAircraftData() {
         if (currentMode === 'live') {
             updateAircraft(data.aircraft || []);
             updateUI(data);
-            updateSidebarAircraftList();
+            updateSidebarAircraftList(data);
         }
     } catch (error) {
         fetchErrorCount++;
