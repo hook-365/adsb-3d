@@ -1170,14 +1170,15 @@
         /* Live Statistics Panel */
         #stats-panel {
             position: fixed;
-            bottom: 10px;
-            left: 10px;
+            top: 580px;  /* Below settings panel */
+            right: 10px;
             z-index: 1000;
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
             border-radius: var(--panel-radius);
             padding: var(--panel-padding);
             backdrop-filter: var(--panel-blur);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             min-width: 200px;
             max-width: 280px;
             font-size: var(--font-size-base);
@@ -2752,9 +2753,9 @@
 
             /* Stats panel mobile positioning */
             #stats-panel {
-                left: 10px;
-                bottom: auto;
-                top: 200px; /* Below info panel on mobile */
+                right: 10px;
+                left: auto;
+                top: 140px; /* Below mode buttons on mobile */
                 max-width: calc(100vw - 30px);
                 font-size: 10px;
             }

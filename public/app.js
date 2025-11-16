@@ -807,6 +807,7 @@ const URLState = {
             // Display settings
             tron: params.get('tron'), // Tron mode ('1' or null)
             display: params.get('display'), // Display mode ('all' or 'playback')
+            vizmode: params.get('vizmode'), // Visualization mode ('tracks', 'heatmap', or 'both')
             theme: params.get('theme'), // Theme name
 
             // Live mode toggles
@@ -1146,6 +1147,26 @@ const URLState = {
                                 const playbackBtn = document.getElementById('display-mode-playback');
                                 if (playbackBtn) playbackBtn.click();
                             }
+
+                            // Apply visualization mode (tracks/heatmap/both)
+                            if (urlParams.vizmode) {
+                                const vizModeRadio = document.querySelector(`input[name="display-mode"][value="${urlParams.vizmode}"]`);
+                                if (vizModeRadio) {
+                                    vizModeRadio.checked = true;
+                                    HistoricalState.heatmapMode = urlParams.vizmode;
+                                    console.log(`[URL State] Applied visualization mode: ${urlParams.vizmode}`);
+
+                                    // Trigger mode change to show/hide heatmap
+                                    if (urlParams.vizmode === 'heatmap') {
+                                        clearAllHistoricalTracks();
+                                        generateFlightCorridors();
+                                    } else if (urlParams.vizmode === 'both') {
+                                        generateFlightCorridors();
+                                    } else if (urlParams.vizmode === 'tracks') {
+                                        clearFlightCorridors();
+                                    }
+                                }
+                            }
                         }, 1000);
                     }, 500);
                 }
@@ -1198,6 +1219,11 @@ const URLState = {
             if (selectedPreset) state.preset = selectedPreset.value;
 
             state.display = HistoricalState.displayMode === 'playback' ? 'playback' : 'all';
+
+            // Add visualization mode (tracks/heatmap/both)
+            if (HistoricalState.heatmapMode && HistoricalState.heatmapMode !== 'tracks') {
+                state.vizmode = HistoricalState.heatmapMode;
+            }
 
             if (showTronMode) state.tron = '1';
 
@@ -1371,7 +1397,7 @@ const HistoricalState = {
     displayMode: 'show-all', // 'show-all' or 'playback'
     heatmapMode: 'tracks',   // 'tracks', 'heatmap', or 'both'
     heatmapMeshes: [],       // Array of THREE.Mesh for heat map cells
-    heatmapGridSize: 150,    // Grid resolution (150x150 cells)
+    heatmapGridSize: 20,     // Grid resolution (20x20 cells = 400 total, better aggregation)
     settings: {
         startTime: null,
         endTime: null,
@@ -2364,23 +2390,30 @@ async function loadHistoricalData() {
         // Store stats for display
         HistoricalState.stats = data.stats || { unique_aircraft: 0, total_positions: 0 };
 
-        // Render the tracks
+        // Always render BOTH tracks and heat map, then show/hide based on mode
+        console.log('[Historical] Rendering tracks...');
         renderHistoricalTracks();
-
-        // Apply filters immediately to show tracks (defaults show all)
-        console.log('[Historical] Auto-applying filters to display tracks...');
-        console.log('[Historical] trackMeshes size before filter:', HistoricalState.trackMeshes.size);
-        console.log('[Historical] Scene children count:', scene.children.length);
-
-        // Check if lines are actually in the scene
-        let linesInScene = 0;
-        scene.children.forEach(child => {
-            if (child.type === 'Line') linesInScene++;
-        });
-        console.log('[Historical] Line objects in scene:', linesInScene);
-
         applyHistoricalFilters();
-        console.log('[Historical] Tracks should now be visible on the map');
+        console.log('[Historical] Tracks rendered and filtered');
+
+        console.log('[Historical] Generating heat map...');
+        generateFlightCorridors();
+        console.log('[Historical] Heat map generated');
+
+        // Now apply visibility based on current mode
+        const vizMode = HistoricalState.heatmapMode || 'tracks';
+        console.log(`[Historical] Applying visualization mode: ${vizMode}`);
+
+        if (vizMode === 'tracks') {
+            showHistoricalTracks(true);
+            setHeatMapVisibility(false);
+        } else if (vizMode === 'heatmap') {
+            showHistoricalTracks(false);
+            setHeatMapVisibility(true);
+        } else if (vizMode === 'both') {
+            showHistoricalTracks(true);
+            setHeatMapVisibility(true);
+        }
 
         // Update URL with current app state for shareable links
         URLState.updateFromCurrentState();
@@ -3075,15 +3108,34 @@ function createHistoricalTrack(track) {
 }
 
 /**
- * Generate heat map visualization from historical tracks
- * Creates a grid overlay showing aircraft traffic density
+ * Generate flight corridor visualization from historical tracks
+ * Creates glowing tubes along actual flight paths showing traffic density
  * @returns {void}
  */
-function generateHeatMap() {
-    console.log('[HeatMap] Generating heat map visualization');
+function generateFlightCorridors() {
+    console.log('[HeatMap] Generating grid-based heat map with absolute thresholds');
 
-    // Clear existing heat map
-    clearHeatMap();
+    // Show funny loading message
+    const statusDiv = document.getElementById('historical-status');
+    if (statusDiv) {
+        const funnyMessages = [
+            '🔥 Calculating airplane spaghetti density...',
+            '🌡️ Measuring sky congestion temperature...',
+            '✈️ Counting how many planes tried to occupy the same spot...',
+            '🧮 Computing flight path chaos coefficient...',
+            '🎨 Mixing flight path colors in 3D blender...',
+            '📐 Triangulating aerial traffic jams...',
+            '🌈 Generating pretty colored clouds from boring data...',
+            '🔬 Analyzing airspace overcrowding syndrome...',
+            '🎯 Finding the busiest spot in the sky...',
+            '🌀 Swirling flight paths into volumetric fog...'
+        ];
+        const randomMessage = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+        statusDiv.innerHTML = `<div class="spinner"></div><span>${randomMessage}</span>`;
+        statusDiv.className = 'historical-status loading';
+    }
+
+    clearFlightCorridors();
 
     if (!HistoricalState.tracks || HistoricalState.tracks.length === 0) {
         console.log('[HeatMap] No tracks available');
@@ -3092,98 +3144,252 @@ function generateHeatMap() {
 
     const startTime = performance.now();
 
-    // Determine grid bounds from CONFIG.viewDistance
-    const gridSize = HistoricalState.heatmapGridSize;
-    const viewDistance = CONFIG.viewDistance * 1000; // Convert km to meters
-    const cellSize = (viewDistance * 2) / gridSize;  // Size of each grid cell
+    // Step 1: Build spatial density map (count UNIQUE aircraft per cell, not positions)
+    const gridSize = 8;  // 8 scene units (~8km) for density sampling
+    const densityMap = new Map();  // Map of gridKey -> Set<hex>
 
-    // Initialize density grid
-    const densityGrid = new Map(); // key: "x,z" -> count
-
-    // Aggregate all aircraft positions into grid cells
-    let totalPositions = 0;
     HistoricalState.tracks.forEach(track => {
         if (!track.positions || track.positions.length === 0) return;
+
+        const aircraftHex = track.hex || track.icao || 'unknown';  // Unique aircraft ID
 
         track.positions.forEach(pos => {
             const lat = pos.lat || pos.latitude;
             const lon = pos.lon || pos.longitude;
+            const alt = pos.alt || pos.altitude;
 
-            if (lat == null || lon == null) return;
+            if (lat == null || lon == null || alt == null) return;
 
-            // Convert to scene coordinates
             const scenePos = latLonToXZ(lat, lon);
+            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+            const y = Math.max(1.0, altitude);
 
-            // Determine grid cell (snap to grid)
-            const gridX = Math.floor((scenePos.x + viewDistance) / cellSize);
-            const gridZ = Math.floor((scenePos.z + viewDistance) / cellSize);
+            // Snap to grid for density counting
+            const gridX = Math.floor(scenePos.x / gridSize);
+            const gridY = Math.floor(y / gridSize);
+            const gridZ = Math.floor(scenePos.z / gridSize);
+            const gridKey = `${gridX},${gridY},${gridZ}`;
 
-            // Ensure within bounds
-            if (gridX < 0 || gridX >= gridSize || gridZ < 0 || gridZ >= gridSize) return;
-
-            // Increment density count for this cell
-            const cellKey = `${gridX},${gridZ}`;
-            densityGrid.set(cellKey, (densityGrid.get(cellKey) || 0) + 1);
-            totalPositions++;
+            // Add unique aircraft to this cell's set
+            if (!densityMap.has(gridKey)) {
+                densityMap.set(gridKey, new Set());
+            }
+            densityMap.get(gridKey).add(aircraftHex);
         });
     });
 
-    if (densityGrid.size === 0) {
-        console.log('[HeatMap] No positions to visualize');
-        return;
-    }
+    console.log(`[HeatMap] Density map: ${densityMap.size} cells with unique aircraft counts`);
 
-    // Find max density for color scaling
-    let maxDensity = 0;
-    densityGrid.forEach(count => {
-        if (count > maxDensity) maxDensity = count;
-    });
+    // Step 2: Create particles along actual flight paths
+    const positions = [];
+    const colors = [];
+    const sizes = [];
+    let particleCount = 0;
 
-    console.log(`[HeatMap] Grid cells: ${densityGrid.size}, Max density: ${maxDensity}, Total positions: ${totalPositions}`);
+    HistoricalState.tracks.forEach(track => {
+        if (!track.positions || track.positions.length === 0) return;
 
-    // Create meshes for each populated grid cell
-    const geometry = new THREE.PlaneGeometry(cellSize, cellSize);
-    geometry.rotateX(-Math.PI / 2); // Lay flat on ground
+        // Sample every Nth position along path
+        const sampleInterval = Math.max(3, Math.floor(track.positions.length / 50));
 
-    densityGrid.forEach((count, cellKey) => {
-        const [gridX, gridZ] = cellKey.split(',').map(Number);
+        track.positions.forEach((pos, index) => {
+            if (index % sampleInterval !== 0) return;
 
-        // Calculate cell center position
-        const x = (gridX * cellSize) - viewDistance + (cellSize / 2);
-        const z = (gridZ * cellSize) - viewDistance + (cellSize / 2);
+            const lat = pos.lat || pos.latitude;
+            const lon = pos.lon || pos.longitude;
+            const alt = pos.alt || pos.altitude;
 
-        // Calculate color based on density (blue → green → yellow → red)
-        const normalizedDensity = count / maxDensity; // 0 to 1
-        const color = getDensityColor(normalizedDensity);
+            if (lat == null || lon == null || alt == null) return;
 
-        // Calculate opacity (50% to 90% based on density)
-        const opacity = 0.5 + (normalizedDensity * 0.4);
+            const scenePos = latLonToXZ(lat, lon);
+            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+            const y = Math.max(1.0, altitude);
 
-        // Create mesh
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: opacity,
-            side: THREE.DoubleSide,
-            depthWrite: false  // Prevent z-fighting with ground
+            // Look up UNIQUE AIRCRAFT count at this position
+            const gridX = Math.floor(scenePos.x / gridSize);
+            const gridY = Math.floor(y / gridSize);
+            const gridZ = Math.floor(scenePos.z / gridSize);
+            const gridKey = `${gridX},${gridY},${gridZ}`;
+            const aircraftSet = densityMap.get(gridKey);
+            const uniqueAircraft = aircraftSet ? aircraftSet.size : 1;
+
+            // ABSOLUTE THRESHOLDS based on unique aircraft count
+            // This prevents single flights from appearing "hot"
+            let normalizedDensity;
+            let color;
+
+            if (uniqueAircraft === 1) {
+                // Single aircraft: invisible
+                return;  // Skip rendering - too isolated
+            } else if (uniqueAircraft < 4) {
+                // 2-3 aircraft: Light traffic, blue
+                normalizedDensity = 0.2 + ((uniqueAircraft - 2) / 2) * 0.2;  // 0.2-0.4
+                const t = (normalizedDensity - 0.2) / 0.2;
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0x004488),  // Dark blue
+                    new THREE.Color(0x0088ff),  // Blue
+                    t
+                );
+            } else if (uniqueAircraft < 8) {
+                // 4-7 aircraft: Moderate traffic, cyan-green
+                normalizedDensity = 0.4 + ((uniqueAircraft - 4) / 4) * 0.25;  // 0.4-0.65
+                const t = (normalizedDensity - 0.4) / 0.25;
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0x0088ff),  // Blue
+                    new THREE.Color(0x00ff88),  // Cyan-green
+                    t
+                );
+            } else if (uniqueAircraft < 15) {
+                // 8-14 aircraft: High traffic, yellow
+                normalizedDensity = 0.65 + ((uniqueAircraft - 8) / 7) * 0.2;  // 0.65-0.85
+                const t = (normalizedDensity - 0.65) / 0.2;
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0x00ff88),  // Cyan-green
+                    new THREE.Color(0xffff00),  // Yellow
+                    t
+                );
+            } else {
+                // 15+ aircraft: Very high traffic, red
+                normalizedDensity = 0.85 + Math.min(0.15, (uniqueAircraft - 15) / 30);  // 0.85-1.0
+                const t = (normalizedDensity - 0.85) / 0.15;
+                color = new THREE.Color().lerpColors(
+                    new THREE.Color(0xffff00),  // Yellow
+                    new THREE.Color(0xff0000),  // Red
+                    t
+                );
+            }
+
+            // Add small random offset
+            const offsetX = (Math.random() - 0.5) * 2.0;
+            const offsetY = (Math.random() - 0.5) * 1.0;
+            const offsetZ = (Math.random() - 0.5) * 2.0;
+
+            positions.push(scenePos.x + offsetX, y + offsetY, scenePos.z + offsetZ);
+            colors.push(color.r, color.g, color.b);
+
+            // Particle size based on density
+            const baseSize = 20.0 + normalizedDensity * 80.0;  // 20-100 scene units
+            const sizeVariation = (Math.random() - 0.5) * 20.0;
+            sizes.push(baseSize + sizeVariation);
+
+            particleCount++;
         });
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(x, 0.1, z); // Slightly above ground
-
-        // Store metadata
-        mesh.userData = {
-            isHeatMapCell: true,
-            density: count,
-            normalizedDensity: normalizedDensity
-        };
-
-        scene.add(mesh);
-        HistoricalState.heatmapMeshes.push(mesh);
     });
+
+    // Create BufferGeometry with attributes
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+
+    // Custom shader material for soft glowing particles
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            baseOpacity: { value: 0.5 }  // Increased since we're using normal blending now
+        },
+        vertexShader: `
+            attribute float size;
+            varying vec3 vColor;
+
+            void main() {
+                vColor = color;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (300.0 / -mvPosition.z);  // Size attenuation
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `,
+        fragmentShader: `
+            uniform float baseOpacity;
+            varying vec3 vColor;
+
+            void main() {
+                // Calculate distance from center of point
+                vec2 center = gl_PointCoord - vec2(0.5);
+                float dist = length(center);
+
+                // Very soft circular gradient for fog-like blending
+                float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+
+                // Apply softer power curve for more gradual falloff
+                alpha = pow(alpha, 2.5);
+
+                // Multiply by base opacity
+                alpha *= baseOpacity;
+
+                // Output color with radial alpha falloff
+                gl_FragColor = vec4(vColor, alpha);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.NormalBlending,  // Normal blending preserves color better
+        vertexColors: true  // This tells Three.js to auto-provide 'color' attribute
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    particles.renderOrder = 50;  // Render before aircraft
+    particles.userData = { isHeatMapParticles: true };
+
+    scene.add(particles);
+    HistoricalState.heatmapMeshes.push(particles);
 
     const elapsed = (performance.now() - startTime).toFixed(2);
-    console.log(`[HeatMap] Created ${HistoricalState.heatmapMeshes.length} heat map cells in ${elapsed}ms`);
+    console.log(`[HeatMap] ========================================`);
+    console.log(`[HeatMap] Unique aircraft heat map: ${particleCount} particles in ${elapsed}ms`);
+    console.log(`[HeatMap] Grid size: ${gridSize} scene units (~${gridSize}km)`);
+    console.log(`[HeatMap] Color based on UNIQUE AIRCRAFT per cell:`);
+    console.log(`[HeatMap]   Invisible      = 1 aircraft (single flight)`);
+    console.log(`[HeatMap]   🔵 BLUE        = 2-3 aircraft (light traffic)`);
+    console.log(`[HeatMap]   🟢 GREEN       = 4-7 aircraft (moderate traffic)`);
+    console.log(`[HeatMap]   🟡 YELLOW      = 8-14 aircraft (high traffic)`);
+    console.log(`[HeatMap]   🔴 RED         = 15+ aircraft (very high traffic)`);
+    console.log(`[HeatMap] Particle size: 20-100 units (scales with density)`);
+    console.log(`[HeatMap] ========================================`);
+
+    // Update status with completion message
+    if (statusDiv) {
+        statusDiv.innerHTML = `✓ Heat map ready! ${particleCount.toLocaleString()} particles generated in ${elapsed}ms`;
+        statusDiv.className = 'historical-status success';
+    }
+}
+
+/**
+ * Simplify corridor path by averaging nearby points
+ * @param {THREE.Vector3[]} points - Array of 3D points
+ * @param {number} groupDistance - Distance threshold for grouping points (in scene units)
+ * @returns {THREE.Vector3[]} Simplified array of points
+ */
+function simplifyCorridorPath(points, groupDistance) {
+    if (points.length === 0) return [];
+
+    const simplified = [];
+    const used = new Set();
+
+    for (let i = 0; i < points.length; i++) {
+        if (used.has(i)) continue;
+
+        const group = [points[i]];
+        used.add(i);
+
+        // Find all nearby points
+        for (let j = i + 1; j < points.length; j++) {
+            if (used.has(j)) continue;
+
+            const dist = points[i].distanceTo(points[j]);
+            if (dist < groupDistance) {
+                group.push(points[j]);
+                used.add(j);
+            }
+        }
+
+        // Average the group to create a single point
+        const avgPoint = new THREE.Vector3();
+        group.forEach(p => avgPoint.add(p));
+        avgPoint.divideScalar(group.length);
+        simplified.push(avgPoint);
+    }
+
+    return simplified;
 }
 
 /**
@@ -3193,40 +3399,45 @@ function generateHeatMap() {
  * @returns {number} Three.js hex color
  */
 function getDensityColor(normalizedDensity) {
-    // Color scale: Blue (240°) → Cyan (180°) → Green (120°) → Yellow (60°) → Red (0°)
-    // Similar to altitude colors but different range
+    // Simplified color scale with MAXIMUM contrast for visibility
+    // Blue (low) → Green (medium) → Yellow → Orange → Red (high)
+    // Using pure, vibrant colors that are easy to distinguish
 
-    if (normalizedDensity <= 0.25) {
-        // Blue to Cyan (240° to 180°)
-        const hue = 240 - (normalizedDensity / 0.25) * 60;
-        return hslToRgb(hue / 360, 0.8, 0.5);
-    } else if (normalizedDensity <= 0.5) {
-        // Cyan to Green (180° to 120°)
-        const hue = 180 - ((normalizedDensity - 0.25) / 0.25) * 60;
-        return hslToRgb(hue / 360, 0.8, 0.5);
-    } else if (normalizedDensity <= 0.75) {
-        // Green to Yellow (120° to 60°)
-        const hue = 120 - ((normalizedDensity - 0.5) / 0.25) * 60;
-        return hslToRgb(hue / 360, 0.8, 0.5);
+    if (normalizedDensity <= 0.2) {
+        // Deep Blue (very low density)
+        return 0x0000FF;  // Pure blue
+    } else if (normalizedDensity <= 0.4) {
+        // Cyan to Green (low-medium density)
+        return 0x00FFFF;  // Pure cyan
+    } else if (normalizedDensity <= 0.6) {
+        // Green (medium density)
+        return 0x00FF00;  // Pure green
+    } else if (normalizedDensity <= 0.8) {
+        // Yellow to Orange (medium-high density)
+        return 0xFFFF00;  // Pure yellow
     } else {
-        // Yellow to Red (60° to 0°)
-        const hue = 60 - ((normalizedDensity - 0.75) / 0.25) * 60;
-        return hslToRgb(hue / 360, 0.8, 0.5);
+        // Red (high density)
+        return 0xFF0000;  // Pure red
     }
 }
 
 /**
- * Clear all heat map meshes from scene
+ * Clear all flight corridor meshes from scene
  * @returns {void}
  */
-function clearHeatMap() {
+function clearFlightCorridors() {
     HistoricalState.heatmapMeshes.forEach(mesh => {
         scene.remove(mesh);
         if (mesh.geometry) mesh.geometry.dispose();
         if (mesh.material) mesh.material.dispose();
     });
     HistoricalState.heatmapMeshes = [];
-    console.log('[HeatMap] Cleared heat map');
+    console.log('[Corridors] Cleared flight corridors');
+}
+
+// Alias for backward compatibility
+function clearHeatMap() {
+    clearFlightCorridors();
 }
 
 /**
@@ -4068,13 +4279,13 @@ function setupHistoricalControls() {
                     break;
 
                 case 'heatmap':
-                    // Hide tracks, show heat map
+                    // Hide tracks, show flight corridors
                     showHistoricalTracks(false);
                     setHeatMapVisibility(true);
 
-                    // Generate heat map if not already created
+                    // Generate flight corridors if not already created
                     if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateHeatMap();
+                        generateFlightCorridors();
                     }
                     break;
 
@@ -4083,12 +4294,15 @@ function setupHistoricalControls() {
                     showHistoricalTracks(true);
                     setHeatMapVisibility(true);
 
-                    // Generate heat map if not already created
+                    // Generate flight corridors if not already created
                     if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateHeatMap();
+                        generateFlightCorridors();
                     }
                     break;
             }
+
+            // Update URL with visualization mode
+            URLState.updateFromCurrentState();
         });
     });
 
@@ -6489,6 +6703,12 @@ function setupUIControls() {
             });
 
             console.log(`[AltitudeScale] Historical tracks updated successfully`);
+        }
+
+        // Regenerate flight corridors if they exist and are visible
+        if (currentMode === 'historical' && HistoricalState.heatmapMeshes.length > 0) {
+            console.log(`[AltitudeScale] Regenerating flight corridors with new scale ${newScale}x`);
+            generateFlightCorridors(); // Will clear old meshes and create new ones with correct altitude
         }
     });
 
