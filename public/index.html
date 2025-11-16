@@ -1822,7 +1822,7 @@
         /* Heading indicator box */
         #heading-indicator {
             position: absolute;
-            bottom: 450px;
+            bottom: calc(340px + 110px);  /* Compass bottom (340px) + offset (110px) - scales together */
             right: 30px;
             width: 100px;  /* Match compass width */
             background: rgba(0, 0, 0, 0.85);
