@@ -1369,6 +1369,9 @@ const HistoricalState = {
     stats: null,             // {unique_aircraft, total_positions, time_span_hours}
     endpointMeshes: [],      // Array of individual endpoint sphere meshes
     displayMode: 'show-all', // 'show-all' or 'playback'
+    heatmapMode: 'tracks',   // 'tracks', 'heatmap', or 'both'
+    heatmapMeshes: [],       // Array of THREE.Mesh for heat map cells
+    heatmapGridSize: 150,    // Grid resolution (150x150 cells)
     settings: {
         startTime: null,
         endTime: null,
@@ -1398,6 +1401,97 @@ const RecentTrailsState = {
     loading: false,          // Prevent concurrent load operations (race condition guard)
     icaos: new Set()         // Track which aircraft have recent trails loaded
 };
+
+// Trail color mode: 'altitude' or 'speed'
+let trailColorMode = 'altitude';
+
+// ============================================================================
+// LIVE STATISTICS STATE
+// ============================================================================
+
+/**
+ * @typedef {Object} AircraftStats
+ * @property {string} hex - Aircraft hex code
+ * @property {string} tail - Tail number or callsign
+ * @property {number} altitude - Altitude in feet
+ */
+
+const StatsState = {
+    // Real-time stats (reset every frame)
+    currentCount: 0,
+    militaryCount: 0,
+    highestAircraft: null,  // { hex, tail, altitude }
+    lowestAircraft: null,   // { hex, tail, altitude }
+    totalAltitude: 0,       // For average calculation
+
+    // Daily stats (persistent)
+    uniqueToday: new Set(), // Set of hex codes seen today
+    lastResetDate: null,    // UTC date string for midnight check
+
+    // Panel state
+    isVisible: true
+};
+
+/**
+ * Get current UTC date as YYYY-MM-DD string
+ * @returns {string} UTC date string
+ */
+function getCurrentUTCDate() {
+    const now = new Date();
+    return now.toISOString().split('T')[0];
+}
+
+/**
+ * Check if we need to reset daily stats (new UTC day)
+ * @returns {void}
+ */
+function checkDailyReset() {
+    const currentDate = getCurrentUTCDate();
+
+    if (StatsState.lastResetDate !== currentDate) {
+        console.log(`[Stats] New day detected (${currentDate}), resetting daily stats`);
+        StatsState.uniqueToday.clear();
+        StatsState.lastResetDate = currentDate;
+        SafeStorage.setItem('statsResetDate', currentDate);
+        SafeStorage.setItem('statsUniqueToday', JSON.stringify([]));
+    }
+}
+
+/**
+ * Save unique today set to localStorage
+ * @returns {void}
+ */
+function saveUniqueToday() {
+    const hexArray = Array.from(StatsState.uniqueToday);
+    SafeStorage.setItem('statsUniqueToday', JSON.stringify(hexArray));
+}
+
+/**
+ * Load daily stats from localStorage
+ * @returns {void}
+ */
+function loadDailyStats() {
+    const savedDate = SafeStorage.getItem('statsResetDate');
+    const savedUnique = SafeStorage.getItem('statsUniqueToday');
+
+    if (savedDate && savedUnique) {
+        StatsState.lastResetDate = savedDate;
+        try {
+            const hexArray = JSON.parse(savedUnique);
+            StatsState.uniqueToday = new Set(hexArray);
+        } catch (e) {
+            console.error('[Stats] Failed to parse saved unique aircraft', e);
+            StatsState.uniqueToday = new Set();
+        }
+    }
+
+    // Check if reset needed
+    checkDailyReset();
+}
+
+// ============================================================================
+// END LIVE STATISTICS STATE
+// ============================================================================
 
 // ============================================================================
 // END HISTORICAL MODE DATA STRUCTURES
@@ -1809,6 +1903,134 @@ function isMilitaryAircraft(hex) {
 function getMilitaryInfo(hex) {
     if (!hex || !militaryDatabaseLoaded) return null;
     return militaryDatabase[hex.toUpperCase()] || null;
+}
+
+/**
+ * @typedef {Object} AircraftSpec
+ * @property {number} cruise - Cruise speed in knots
+ * @property {number} maxAlt - Maximum altitude in feet
+ * @property {number} range - Range in nautical miles
+ */
+
+/**
+ * Aircraft type specifications database
+ * Data source: Various aviation references, manufacturer specs
+ * @type {Object.<string, {cruise: number, maxAlt: number, range: number}>}
+ */
+const AIRCRAFT_TYPE_SPECS = {
+    // === Commercial Jets (Airbus) ===
+    'A319': { cruise: 447, maxAlt: 39000, range: 3700 },
+    'A320': { cruise: 450, maxAlt: 39000, range: 3300 },
+    'A321': { cruise: 450, maxAlt: 39000, range: 3200 },
+    'A20N': { cruise: 450, maxAlt: 39800, range: 3500 },  // A320neo
+    'A21N': { cruise: 450, maxAlt: 39800, range: 4000 },  // A321neo
+    'A332': { cruise: 470, maxAlt: 42650, range: 7200 },  // A330-200
+    'A333': { cruise: 470, maxAlt: 41450, range: 6350 },  // A330-300
+    'A339': { cruise: 470, maxAlt: 41100, range: 7200 },  // A330-900neo
+    'A359': { cruise: 488, maxAlt: 43100, range: 8100 },  // A350-900
+    'A35K': { cruise: 488, maxAlt: 43100, range: 9700 },  // A350-1000
+    'A388': { cruise: 490, maxAlt: 43000, range: 8000 },  // A380
+
+    // === Commercial Jets (Boeing) ===
+    'B737': { cruise: 450, maxAlt: 41000, range: 3000 },  // Generic 737
+    'B738': { cruise: 453, maxAlt: 41000, range: 3115 },  // 737-800
+    'B739': { cruise: 453, maxAlt: 41000, range: 3235 },  // 737-900
+    'B37M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 7
+    'B38M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 8
+    'B39M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 9
+    'B3JM': { cruise: 453, maxAlt: 41000, range: 3700 },  // 737 MAX 10
+    'B752': { cruise: 459, maxAlt: 42000, range: 3900 },  // 757-200
+    'B753': { cruise: 459, maxAlt: 42000, range: 3395 },  // 757-300
+    'B762': { cruise: 470, maxAlt: 43100, range: 6385 },  // 767-200
+    'B763': { cruise: 470, maxAlt: 43100, range: 5990 },  // 767-300
+    'B764': { cruise: 470, maxAlt: 43100, range: 5625 },  // 767-400
+    'B772': { cruise: 490, maxAlt: 43100, range: 7730 },  // 777-200
+    'B773': { cruise: 490, maxAlt: 43100, range: 7370 },  // 777-300
+    'B77W': { cruise: 490, maxAlt: 43100, range: 8555 },  // 777-300ER
+    'B77L': { cruise: 490, maxAlt: 43100, range: 8700 },  // 777-200LR
+    'B788': { cruise: 488, maxAlt: 43000, range: 7355 },  // 787-8
+    'B789': { cruise: 488, maxAlt: 43000, range: 7635 },  // 787-9
+    'B78J': { cruise: 488, maxAlt: 43000, range: 6430 },  // 787-10
+    'B748': { cruise: 493, maxAlt: 43100, range: 8000 },  // 747-8
+
+    // === Regional Jets (Bombardier/Airbus Canada) ===
+    'CRJ2': { cruise: 450, maxAlt: 41000, range: 1700 },  // CRJ-200
+    'CRJ7': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-700
+    'CRJ9': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-900
+    'CRJX': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-1000
+    'BCS1': { cruise: 447, maxAlt: 41000, range: 3400 },  // A220-100 (CS100)
+    'BCS3': { cruise: 447, maxAlt: 41000, range: 3350 },  // A220-300 (CS300)
+
+    // === Regional Jets (Embraer) ===
+    'E170': { cruise: 447, maxAlt: 41000, range: 2150 },  // E170
+    'E175': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175
+    'E75L': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175 (long wing)
+    'E75S': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175 (short wing)
+    'E190': { cruise: 470, maxAlt: 41000, range: 2400 },  // E190
+    'E195': { cruise: 470, maxAlt: 41000, range: 2300 },  // E195
+    'E290': { cruise: 470, maxAlt: 41000, range: 2600 },  // E190-E2
+    'E295': { cruise: 470, maxAlt: 41000, range: 2600 },  // E195-E2
+
+    // === Turboprops ===
+    'AT72': { cruise: 276, maxAlt: 25000, range: 900 },   // ATR 72
+    'AT75': { cruise: 276, maxAlt: 25000, range: 950 },   // ATR 72-600
+    'AT76': { cruise: 276, maxAlt: 25000, range: 950 },   // ATR 72-600
+    'DH8D': { cruise: 360, maxAlt: 25000, range: 1200 },  // Dash 8 Q400
+
+    // === Business Jets ===
+    'C25C': { cruise: 460, maxAlt: 51000, range: 2000 },  // Citation CJ4
+    'C56X': { cruise: 528, maxAlt: 51000, range: 3450 },  // Citation Excel
+    'C680': { cruise: 538, maxAlt: 51000, range: 3400 },  // Citation Sovereign
+    'CL60': { cruise: 459, maxAlt: 51000, range: 3200 },  // Challenger 600
+    'GLF4': { cruise: 488, maxAlt: 51000, range: 4220 },  // Gulfstream IV
+    'GLF5': { cruise: 516, maxAlt: 51000, range: 6500 },  // Gulfstream V
+    'GLF6': { cruise: 516, maxAlt: 51000, range: 6500 },  // Gulfstream 650
+    'GLEX': { cruise: 488, maxAlt: 51000, range: 4000 },  // Bombardier Global Express
+    'FA7X': { cruise: 488, maxAlt: 51000, range: 5950 },  // Dassault Falcon 7X
+    'FA50': { cruise: 540, maxAlt: 51000, range: 3350 },  // Dassault Falcon 50
+
+    // === General Aviation ===
+    'C152': { cruise: 107, maxAlt: 14700, range: 415 },   // Cessna 152
+    'C172': { cruise: 122, maxAlt: 14000, range: 640 },   // Cessna 172
+    'C182': { cruise: 145, maxAlt: 18100, range: 915 },   // Cessna 182
+    'C206': { cruise: 151, maxAlt: 16500, range: 840 },   // Cessna 206
+    'C208': { cruise: 186, maxAlt: 25000, range: 1070 },  // Cessna Caravan
+    'P28A': { cruise: 113, maxAlt: 11000, range: 460 },   // Piper PA-28 Cherokee
+    'PA46': { cruise: 225, maxAlt: 25000, range: 1300 },  // Piper Malibu
+    'SR22': { cruise: 183, maxAlt: 17500, range: 1200 },  // Cirrus SR22
+
+    // === Military (Common Types) ===
+    'F16': { cruise: 570, maxAlt: 50000, range: 2280 },   // F-16 Fighting Falcon
+    'F18': { cruise: 570, maxAlt: 50000, range: 1250 },   // F/A-18 Hornet
+    'F35': { cruise: 570, maxAlt: 50000, range: 1200 },   // F-35 Lightning II
+    'A10': { cruise: 340, maxAlt: 45000, range: 800 },    // A-10 Thunderbolt II
+    'C130': { cruise: 336, maxAlt: 33000, range: 2360 },  // C-130 Hercules
+    'C17': { cruise: 450, maxAlt: 45000, range: 2400 },   // C-17 Globemaster III
+    'C5': { cruise: 518, maxAlt: 42000, range: 5200 },    // C-5 Galaxy
+    'KC135': { cruise: 530, maxAlt: 50000, range: 1500 }, // KC-135 Stratotanker
+    'KC10': { cruise: 493, maxAlt: 42000, range: 4400 },  // KC-10 Extender
+    'P8': { cruise: 490, maxAlt: 41000, range: 1200 },    // P-8 Poseidon
+
+    // === Cargo ===
+    'MD11': { cruise: 482, maxAlt: 42000, range: 6800 },  // MD-11
+    'B744': { cruise: 493, maxAlt: 45000, range: 7670 },  // 747-400
+    'B74S': { cruise: 493, maxAlt: 43100, range: 4400 },  // 747-400SF (cargo)
+};
+
+/**
+ * Get aircraft performance specifications
+ * @param {string} typeCode - ICAO type designator (e.g., 'B738', 'A320')
+ * @returns {{cruise: number, maxAlt: number, range: number} | null} Specs or null if unknown
+ */
+function getAircraftSpecs(typeCode) {
+    if (!typeCode || typeof typeCode !== 'string') {
+        return null;
+    }
+
+    // Convert to uppercase for case-insensitive lookup
+    const normalizedType = typeCode.trim().toUpperCase();
+
+    return AIRCRAFT_TYPE_SPECS[normalizedType] || null;
 }
 
 // Set page title dynamically based on location name (if provided)
@@ -2363,8 +2585,15 @@ function rebuildTrailGeometry(hex, trail) {
 
     trail.positions.forEach(pos => {
         positions.push(pos.x, pos.y, pos.z);
-        const color = getAltitudeColor(pos.y);
-        const rgb = new THREE.Color(color);
+
+        // Use color based on current trail color mode
+        let colorValue;
+        if (trailColorMode === 'speed') {
+            colorValue = getSpeedColor(pos.groundSpeed || 0);
+        } else {
+            colorValue = getAltitudeColor(pos.y);
+        }
+        const rgb = new THREE.Color(colorValue);
         colors.push(rgb.r, rgb.g, rgb.b);
     });
 
@@ -2585,11 +2814,13 @@ function addRecentTrailsToLiveMode(tracks) {
 
             // Add position to trail (with same minimum altitude as live mode)
             const posTimestamp = pos.timestamp ? new Date(pos.timestamp).getTime() : Date.now();
+            const groundSpeed = pos.speed || pos.gs || 0;
             trail.positions.push({
                 x: posXZ.x,
                 y: Math.max(1.0, altitude),
                 z: posXZ.z,
                 altFeet: alt,
+                groundSpeed: groundSpeed,
                 timestamp: posTimestamp
             });
         });
@@ -2626,11 +2857,17 @@ function addRecentTrailsToLiveMode(tracks) {
                 positions[i * 3 + 1] = pos.y;
                 positions[i * 3 + 2] = pos.z;
 
-                // Get color for this altitude
-                const altColor = new THREE.Color(getAltitudeColor(pos.y));
-                colors[i * 3] = altColor.r;
-                colors[i * 3 + 1] = altColor.g;
-                colors[i * 3 + 2] = altColor.b;
+                // Get color based on current trail color mode
+                let colorValue;
+                if (trailColorMode === 'speed') {
+                    colorValue = getSpeedColor(pos.groundSpeed || 0);
+                } else {
+                    colorValue = getAltitudeColor(pos.y);
+                }
+                const trailColor = new THREE.Color(colorValue);
+                colors[i * 3] = trailColor.r;
+                colors[i * 3 + 1] = trailColor.g;
+                colors[i * 3 + 2] = trailColor.b;
             });
 
             trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -2705,6 +2942,7 @@ function createHistoricalTrack(track) {
         const lat = pos.lat || pos.latitude;
         const lon = pos.lon || pos.longitude;
         const alt = pos.alt || pos.altitude || 0;
+        const speed = pos.speed || pos.gs || 0;
 
         // Use the same coordinate conversion as live mode (latLonToXZ function)
         const posXZ = latLonToXZ(lat, lon);
@@ -2715,8 +2953,15 @@ function createHistoricalTrack(track) {
 
         points.push(new THREE.Vector3(posXZ.x, y, posXZ.z));
 
-        // Get color for this altitude (pass scene units, not feet!)
-        const colorValue = isMilitary ? CONFIG.militaryColor : getAltitudeColor(y);
+        // Get color based on current mode (altitude or speed)
+        let colorValue;
+        if (isMilitary) {
+            colorValue = CONFIG.militaryColor;
+        } else if (trailColorMode === 'speed') {
+            colorValue = getSpeedColor(speed);
+        } else {
+            colorValue = getAltitudeColor(y);
+        }
         const color = new THREE.Color(colorValue);
         colors.push(color.r, color.g, color.b);
     });
@@ -2804,6 +3049,7 @@ function createHistoricalTrack(track) {
                 y: p.y,
                 z: p.z,
                 altFeet: smoothedPositions[i].alt || smoothedPositions[i].altitude || 0,
+                groundSpeed: smoothedPositions[i].speed || smoothedPositions[i].gs || 0,
                 timestamp: smoothedPositions[i].time ? new Date(smoothedPositions[i].time).getTime() : null
             })),
             tronCurtain: null  // Will be populated by updateTronCurtain
@@ -2826,6 +3072,193 @@ function createHistoricalTrack(track) {
     } else {
         console.log(`[Historical] Not enough points to create line (${points.length})`);
     }
+}
+
+/**
+ * Generate heat map visualization from historical tracks
+ * Creates a grid overlay showing aircraft traffic density
+ * @returns {void}
+ */
+function generateHeatMap() {
+    console.log('[HeatMap] Generating heat map visualization');
+
+    // Clear existing heat map
+    clearHeatMap();
+
+    if (!HistoricalState.tracks || HistoricalState.tracks.length === 0) {
+        console.log('[HeatMap] No tracks available');
+        return;
+    }
+
+    const startTime = performance.now();
+
+    // Determine grid bounds from CONFIG.viewDistance
+    const gridSize = HistoricalState.heatmapGridSize;
+    const viewDistance = CONFIG.viewDistance * 1000; // Convert km to meters
+    const cellSize = (viewDistance * 2) / gridSize;  // Size of each grid cell
+
+    // Initialize density grid
+    const densityGrid = new Map(); // key: "x,z" -> count
+
+    // Aggregate all aircraft positions into grid cells
+    let totalPositions = 0;
+    HistoricalState.tracks.forEach(track => {
+        if (!track.positions || track.positions.length === 0) return;
+
+        track.positions.forEach(pos => {
+            const lat = pos.lat || pos.latitude;
+            const lon = pos.lon || pos.longitude;
+
+            if (lat == null || lon == null) return;
+
+            // Convert to scene coordinates
+            const scenePos = latLonToXZ(lat, lon);
+
+            // Determine grid cell (snap to grid)
+            const gridX = Math.floor((scenePos.x + viewDistance) / cellSize);
+            const gridZ = Math.floor((scenePos.z + viewDistance) / cellSize);
+
+            // Ensure within bounds
+            if (gridX < 0 || gridX >= gridSize || gridZ < 0 || gridZ >= gridSize) return;
+
+            // Increment density count for this cell
+            const cellKey = `${gridX},${gridZ}`;
+            densityGrid.set(cellKey, (densityGrid.get(cellKey) || 0) + 1);
+            totalPositions++;
+        });
+    });
+
+    if (densityGrid.size === 0) {
+        console.log('[HeatMap] No positions to visualize');
+        return;
+    }
+
+    // Find max density for color scaling
+    let maxDensity = 0;
+    densityGrid.forEach(count => {
+        if (count > maxDensity) maxDensity = count;
+    });
+
+    console.log(`[HeatMap] Grid cells: ${densityGrid.size}, Max density: ${maxDensity}, Total positions: ${totalPositions}`);
+
+    // Create meshes for each populated grid cell
+    const geometry = new THREE.PlaneGeometry(cellSize, cellSize);
+    geometry.rotateX(-Math.PI / 2); // Lay flat on ground
+
+    densityGrid.forEach((count, cellKey) => {
+        const [gridX, gridZ] = cellKey.split(',').map(Number);
+
+        // Calculate cell center position
+        const x = (gridX * cellSize) - viewDistance + (cellSize / 2);
+        const z = (gridZ * cellSize) - viewDistance + (cellSize / 2);
+
+        // Calculate color based on density (blue → green → yellow → red)
+        const normalizedDensity = count / maxDensity; // 0 to 1
+        const color = getDensityColor(normalizedDensity);
+
+        // Calculate opacity (50% to 90% based on density)
+        const opacity = 0.5 + (normalizedDensity * 0.4);
+
+        // Create mesh
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: opacity,
+            side: THREE.DoubleSide,
+            depthWrite: false  // Prevent z-fighting with ground
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(x, 0.1, z); // Slightly above ground
+
+        // Store metadata
+        mesh.userData = {
+            isHeatMapCell: true,
+            density: count,
+            normalizedDensity: normalizedDensity
+        };
+
+        scene.add(mesh);
+        HistoricalState.heatmapMeshes.push(mesh);
+    });
+
+    const elapsed = (performance.now() - startTime).toFixed(2);
+    console.log(`[HeatMap] Created ${HistoricalState.heatmapMeshes.length} heat map cells in ${elapsed}ms`);
+}
+
+/**
+ * Get color for heat map based on density
+ * Blue (low) → Green → Yellow → Red (high)
+ * @param {number} normalizedDensity - Value from 0 to 1 (0 = low, 1 = high)
+ * @returns {number} Three.js hex color
+ */
+function getDensityColor(normalizedDensity) {
+    // Color scale: Blue (240°) → Cyan (180°) → Green (120°) → Yellow (60°) → Red (0°)
+    // Similar to altitude colors but different range
+
+    if (normalizedDensity <= 0.25) {
+        // Blue to Cyan (240° to 180°)
+        const hue = 240 - (normalizedDensity / 0.25) * 60;
+        return hslToRgb(hue / 360, 0.8, 0.5);
+    } else if (normalizedDensity <= 0.5) {
+        // Cyan to Green (180° to 120°)
+        const hue = 180 - ((normalizedDensity - 0.25) / 0.25) * 60;
+        return hslToRgb(hue / 360, 0.8, 0.5);
+    } else if (normalizedDensity <= 0.75) {
+        // Green to Yellow (120° to 60°)
+        const hue = 120 - ((normalizedDensity - 0.5) / 0.25) * 60;
+        return hslToRgb(hue / 360, 0.8, 0.5);
+    } else {
+        // Yellow to Red (60° to 0°)
+        const hue = 60 - ((normalizedDensity - 0.75) / 0.25) * 60;
+        return hslToRgb(hue / 360, 0.8, 0.5);
+    }
+}
+
+/**
+ * Clear all heat map meshes from scene
+ * @returns {void}
+ */
+function clearHeatMap() {
+    HistoricalState.heatmapMeshes.forEach(mesh => {
+        scene.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) mesh.material.dispose();
+    });
+    HistoricalState.heatmapMeshes = [];
+    console.log('[HeatMap] Cleared heat map');
+}
+
+/**
+ * Show or hide all historical track lines
+ * @param {boolean} visible - Whether tracks should be visible
+ * @returns {void}
+ */
+function showHistoricalTracks(visible) {
+    HistoricalState.trackMeshes.forEach(({line}) => {
+        if (line) line.visible = visible;
+    });
+
+    // Also handle endpoint spheres
+    if (HistoricalState.endpointMeshes) {
+        HistoricalState.endpointMeshes.forEach(mesh => {
+            mesh.visible = visible;
+        });
+    }
+
+    console.log(`[HeatMap] Historical tracks visible: ${visible}`);
+}
+
+/**
+ * Show or hide heat map visualization
+ * @param {boolean} visible - Whether heat map should be visible
+ * @returns {void}
+ */
+function setHeatMapVisibility(visible) {
+    HistoricalState.heatmapMeshes.forEach(mesh => {
+        mesh.visible = visible;
+    });
+    console.log(`[HeatMap] Heat map visible: ${visible}`);
 }
 
 // Clear all historical tracks from scene
@@ -2866,6 +3299,9 @@ function clearHistoricalTracks() {
 
     HistoricalState.trackMeshes.clear();
     HistoricalState.tracks = [];
+
+    // Clear heat map
+    clearHeatMap();
 
     console.log('[Historical] Cleanup complete');
 }
@@ -3221,6 +3657,14 @@ function setupPlaybackControls() {
         return;
     }
 
+    // Load saved playback speed from localStorage
+    const savedSpeed = SafeStorage.getItem('playbackSpeed');
+    if (savedSpeed !== null) {
+        PlaybackState.speed = parseFloat(savedSpeed);
+        speedSelect.value = savedSpeed;
+        console.log(`[Playback] Loaded saved speed: ${PlaybackState.speed}x`);
+    }
+
     // Play/Pause
     playPauseBtn.addEventListener('click', togglePlayback);
 
@@ -3231,7 +3675,47 @@ function setupPlaybackControls() {
     speedSelect.addEventListener('change', (e) => {
         PlaybackState.speed = parseFloat(e.target.value);
         console.log(`[Playback] Speed changed to ${PlaybackState.speed}x`);
+        // Save to localStorage
+        SafeStorage.setItem('playbackSpeed', PlaybackState.speed);
     });
+
+    // Skip buttons
+    const skipBack10m = document.getElementById('skip-back-10m');
+    const skipBack1m = document.getElementById('skip-back-1m');
+    const skipForward1m = document.getElementById('skip-forward-1m');
+    const skipForward10m = document.getElementById('skip-forward-10m');
+
+    if (skipBack10m) {
+        skipBack10m.addEventListener('click', () => {
+            const newTime = Math.max(0, PlaybackState.currentTime - 600); // 10 minutes = 600 seconds
+            seekToTime(newTime);
+            console.log(`[Playback] Skipped back 10m to ${formatPlaybackTime(newTime)}`);
+        });
+    }
+
+    if (skipBack1m) {
+        skipBack1m.addEventListener('click', () => {
+            const newTime = Math.max(0, PlaybackState.currentTime - 60); // 1 minute = 60 seconds
+            seekToTime(newTime);
+            console.log(`[Playback] Skipped back 1m to ${formatPlaybackTime(newTime)}`);
+        });
+    }
+
+    if (skipForward1m) {
+        skipForward1m.addEventListener('click', () => {
+            const newTime = Math.min(PlaybackState.duration, PlaybackState.currentTime + 60); // 1 minute = 60 seconds
+            seekToTime(newTime);
+            console.log(`[Playback] Skipped forward 1m to ${formatPlaybackTime(newTime)}`);
+        });
+    }
+
+    if (skipForward10m) {
+        skipForward10m.addEventListener('click', () => {
+            const newTime = Math.min(PlaybackState.duration, PlaybackState.currentTime + 600); // 10 minutes = 600 seconds
+            seekToTime(newTime);
+            console.log(`[Playback] Skipped forward 10m to ${formatPlaybackTime(newTime)}`);
+        });
+    }
 
     // Timeline scrubber
     let isScrubbing = false;
@@ -3495,6 +3979,12 @@ function setupHistoricalControls() {
         // Update description
         displayModeDescription.textContent = 'Showing all tracks at once. Click Playback Mode to animate tracks over time.';
 
+        // Show visualization mode selector (heat map options)
+        const visualizationModeSelector = document.getElementById('visualization-mode-selector');
+        if (visualizationModeSelector) {
+            visualizationModeSelector.style.display = 'block';
+        }
+
         // Hide playback controls
         playbackControlsDiv.style.display = 'none';
 
@@ -3544,6 +4034,15 @@ function setupHistoricalControls() {
         // Update description
         displayModeDescription.textContent = 'Playback mode: tracks will animate based on their timestamps. Use controls below to play/pause.';
 
+        // Hide visualization mode selector (heat map not available in playback mode)
+        const visualizationModeSelector = document.getElementById('visualization-mode-selector');
+        if (visualizationModeSelector) {
+            visualizationModeSelector.style.display = 'none';
+        }
+
+        // Clear heat map if it exists
+        clearHeatMap();
+
         // Initialize playback system
         initializePlayback();
 
@@ -3551,6 +4050,46 @@ function setupHistoricalControls() {
 
         // Update URL with current app state
         URLState.updateFromCurrentState();
+    });
+
+    // Heat map visualization mode toggle (radio buttons)
+    document.querySelectorAll('input[name="display-mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const newMode = e.target.value;
+            HistoricalState.heatmapMode = newMode;
+            console.log(`[HeatMap] Visualization mode changed to ${newMode}`);
+
+            // Apply visibility changes based on mode
+            switch (newMode) {
+                case 'tracks':
+                    // Show tracks, hide heat map
+                    showHistoricalTracks(true);
+                    setHeatMapVisibility(false);
+                    break;
+
+                case 'heatmap':
+                    // Hide tracks, show heat map
+                    showHistoricalTracks(false);
+                    setHeatMapVisibility(true);
+
+                    // Generate heat map if not already created
+                    if (HistoricalState.heatmapMeshes.length === 0) {
+                        generateHeatMap();
+                    }
+                    break;
+
+                case 'both':
+                    // Show both
+                    showHistoricalTracks(true);
+                    setHeatMapVisibility(true);
+
+                    // Generate heat map if not already created
+                    if (HistoricalState.heatmapMeshes.length === 0) {
+                        generateHeatMap();
+                    }
+                    break;
+            }
+        });
     });
 
     // Tron mode is now handled by the unified toggle in Settings panel
@@ -4111,6 +4650,14 @@ async function initializeApp() {
         if (altScaleSelect) altScaleSelect.value = savedAltScale;
     }
 
+    // Load trail color mode preference
+    const savedColorMode = SafeStorage.getItem('trailColorMode');
+    if (savedColorMode !== null) {
+        trailColorMode = savedColorMode;
+        const colorModeRadio = document.querySelector(`input[name="trail-color-mode"][value="${savedColorMode}"]`);
+        if (colorModeRadio) colorModeRadio.checked = true;
+    }
+
     // Load compass preference
     const savedCompass = SafeStorage.getItem('showCompass');
     if (savedCompass !== null) {
@@ -4286,6 +4833,12 @@ function init() {
 
     // Setup UI controls
     setupUIControls();
+
+    // Load daily statistics
+    loadDailyStats();
+
+    // Check for daily reset every minute
+    setInterval(checkDailyReset, 60000);
 
     // Initialize compass tick marks
     initializeCompassTicks();
@@ -5583,6 +6136,36 @@ function setupUIControls() {
     // Aircraft Search Bar
     setupAircraftSearch();
 
+    // Stats panel collapse toggle
+    const statsCollapseBtn = document.getElementById('collapse-stats');
+    if (statsCollapseBtn) {
+        statsCollapseBtn.addEventListener('click', () => {
+            const panel = document.getElementById('stats-panel');
+            const btn = document.getElementById('collapse-stats');
+            const content = document.getElementById('stats-content');
+
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                content.style.display = 'block';
+                btn.textContent = '−';
+                StatsState.isVisible = true;
+                SafeStorage.setItem('statsPanelVisible', 'true');
+            } else {
+                panel.classList.add('collapsed');
+                content.style.display = 'none';
+                btn.textContent = '+';
+                StatsState.isVisible = false;
+                SafeStorage.setItem('statsPanelVisible', 'false');
+            }
+        });
+
+        // Load stats panel visibility preference
+        const savedStatsVisible = SafeStorage.getItem('statsPanelVisible');
+        if (savedStatsVisible === 'false') {
+            statsCollapseBtn.click();
+        }
+    }
+
     // Reset camera button
     document.getElementById('reset-camera').addEventListener('click', () => {
         resetCamera();
@@ -5907,6 +6490,98 @@ function setupUIControls() {
 
             console.log(`[AltitudeScale] Historical tracks updated successfully`);
         }
+    });
+
+    // Trail color mode selector (altitude vs speed)
+    document.querySelectorAll('input[name="trail-color-mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            trailColorMode = e.target.value;
+            SafeStorage.setItem('trailColorMode', trailColorMode);
+            console.log(`[TrailColor] Mode changed to ${trailColorMode}`);
+
+            // Rebuild all live trail colors
+            trails.forEach((trail) => {
+                if (!trail || !trail.positions || trail.positions.length === 0) return;
+
+                const colors = trail.line.geometry.attributes.color.array;
+
+                trail.positions.forEach((pos, i) => {
+                    // Get color based on new mode
+                    let colorValue;
+                    if (trailColorMode === 'speed') {
+                        colorValue = getSpeedColor(pos.groundSpeed);
+                    } else {
+                        colorValue = getAltitudeColor(pos.y);
+                    }
+                    const trailColor = new THREE.Color(colorValue);
+                    colors[i * 3] = trailColor.r;
+                    colors[i * 3 + 1] = trailColor.g;
+                    colors[i * 3 + 2] = trailColor.b;
+                });
+
+                trail.line.geometry.attributes.color.needsUpdate = true;
+
+                // Update stored original colors for hover restore
+                trail.originalColors = new Float32Array(colors);
+
+                // Rebuild Tron curtain if active
+                if (showTronMode && trail.tronCurtain) {
+                    updateTronCurtain(trail);
+                }
+            });
+
+            // Rebuild historical track colors if in historical mode
+            if (currentMode === 'historical' && HistoricalState.trackMeshes) {
+                console.log(`[TrailColor] Updating ${HistoricalState.trackMeshes.size} historical tracks for new color mode`);
+
+                HistoricalState.trackMeshes.forEach((trackData, icao) => {
+                    const { line, track, trail } = trackData;
+
+                    if (!track || !track.positions) return;
+
+                    const isMilitary = track.is_military || false;
+                    const smoothedPositions = smoothAltitudes(track.positions);
+
+                    // Update track line colors
+                    if (line && line.geometry && line.geometry.attributes.color) {
+                        const colors = line.geometry.attributes.color.array;
+
+                        smoothedPositions.forEach((pos, i) => {
+                            const alt = pos.alt || pos.altitude || 0;
+                            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+                            const y = Math.max(1.0, altitude);
+                            const speed = pos.speed || pos.gs || 0;
+
+                            // Get color based on new mode
+                            let colorValue;
+                            if (isMilitary) {
+                                colorValue = CONFIG.militaryColor;
+                            } else if (trailColorMode === 'speed') {
+                                colorValue = getSpeedColor(speed);
+                            } else {
+                                colorValue = getAltitudeColor(y);
+                            }
+                            const color = new THREE.Color(colorValue);
+                            colors[i * 3] = color.r;
+                            colors[i * 3 + 1] = color.g;
+                            colors[i * 3 + 2] = color.b;
+                        });
+
+                        line.geometry.attributes.color.needsUpdate = true;
+
+                        // Update stored original colors
+                        line.userData.originalColors = new Float32Array(colors);
+                    }
+
+                    // Rebuild Tron curtain if active
+                    if (showTronMode && trail && trail.tronCurtain) {
+                        updateTronCurtain(trail);
+                    }
+                });
+
+                console.log(`[TrailColor] Historical tracks updated successfully`);
+            }
+        });
     });
 
     // Keyboard help modal
@@ -6739,6 +7414,13 @@ function updateAircraft(aircraft) {
         return;
     }
 
+    // Reset real-time stats for this update
+    StatsState.currentCount = 0;
+    StatsState.militaryCount = 0;
+    StatsState.highestAircraft = null;
+    StatsState.lowestAircraft = null;
+    StatsState.totalAltitude = 0;
+
     aircraft.forEach(ac => {
         // Validate required fields and data types
         if (!ac || typeof ac !== 'object') return;
@@ -6752,6 +7434,41 @@ function updateAircraft(aircraft) {
         if (ac.alt_baro < -1000 || ac.alt_baro > 100000) return; // Reasonable altitude range
 
         currentHexes.add(ac.hex);
+
+        // Update statistics
+        StatsState.currentCount++;
+        StatsState.totalAltitude += ac.alt_baro;
+
+        // Track unique aircraft today
+        if (!StatsState.uniqueToday.has(ac.hex)) {
+            StatsState.uniqueToday.add(ac.hex);
+            saveUniqueToday(); // Save to localStorage
+        }
+
+        // Military aircraft count
+        if (isMilitaryAircraft(ac.hex)) {
+            StatsState.militaryCount++;
+        }
+
+        // Track highest aircraft
+        if (!StatsState.highestAircraft || ac.alt_baro > StatsState.highestAircraft.altitude) {
+            StatsState.highestAircraft = {
+                hex: ac.hex,
+                tail: ac.flight?.trim() || ac.r || ac.hex,
+                altitude: ac.alt_baro
+            };
+        }
+
+        // Track lowest aircraft (above 100ft to avoid ground clutter)
+        if (ac.alt_baro > 100) {
+            if (!StatsState.lowestAircraft || ac.alt_baro < StatsState.lowestAircraft.altitude) {
+                StatsState.lowestAircraft = {
+                    hex: ac.hex,
+                    tail: ac.flight?.trim() || ac.r || ac.hex,
+                    altitude: ac.alt_baro
+                };
+            }
+        }
 
         const pos = latLonToXZ(ac.lat, ac.lon);
         // feet to meters to scene units, with exaggeration for visibility
@@ -6902,8 +7619,8 @@ function updateAircraft(aircraft) {
             updateAircraftPosition(ac.hex, pos.x, altitude, pos.z);
         }
 
-        // Update trail (pass altitude in feet for scale changes)
-        updateTrail(ac.hex, pos.x, altitude, pos.z, ac.alt_baro);
+        // Update trail (pass altitude in feet and ground speed for color changes)
+        updateTrail(ac.hex, pos.x, altitude, pos.z, ac.alt_baro, ac.gs);
     });
 
     // Remove aircraft that are no longer visible
@@ -6955,6 +7672,48 @@ function updateAircraft(aircraft) {
         urlParamsChecked = true;
         checkUrlParameters();
     }
+
+    // Update statistics display after processing all aircraft
+    updateStatsDisplay();
+}
+
+/**
+ * Update statistics panel display with current values
+ * @returns {void}
+ */
+function updateStatsDisplay() {
+    // Real-time stats
+    document.getElementById('stats-current').textContent =
+        `${StatsState.currentCount} aircraft`;
+
+    document.getElementById('stats-military').textContent =
+        `${StatsState.militaryCount} military`;
+
+    if (StatsState.highestAircraft) {
+        document.getElementById('stats-highest').textContent =
+            `↑ ${StatsState.highestAircraft.tail} @ ${StatsState.highestAircraft.altitude.toLocaleString()} ft`;
+    } else {
+        document.getElementById('stats-highest').textContent = '↑ --';
+    }
+
+    if (StatsState.lowestAircraft) {
+        document.getElementById('stats-lowest').textContent =
+            `↓ ${StatsState.lowestAircraft.tail} @ ${StatsState.lowestAircraft.altitude.toLocaleString()} ft`;
+    } else {
+        document.getElementById('stats-lowest').textContent = '↓ --';
+    }
+
+    if (StatsState.currentCount > 0) {
+        const avgAlt = Math.round(StatsState.totalAltitude / StatsState.currentCount);
+        document.getElementById('stats-average').textContent =
+            `⌀ ${avgAlt.toLocaleString()} ft avg`;
+    } else {
+        document.getElementById('stats-average').textContent = '⌀ --';
+    }
+
+    // Daily stats
+    document.getElementById('stats-unique-today').textContent =
+        `${StatsState.uniqueToday.size} unique`;
 }
 
 // Create aircraft model - sphere or sprite based on mode
@@ -7480,11 +8239,11 @@ function updateAircraftPosition(hex, x, y, z) {
     }
 }
 
-function updateTrail(hex, x, y, z, altFeet) {
+function updateTrail(hex, x, y, z, altFeet, groundSpeed) {
     const trail = trails.get(hex);
     if (!trail) return;
 
-    trail.positions.push({ x, y, z, altFeet, timestamp: Date.now() });
+    trail.positions.push({ x, y, z, altFeet, groundSpeed, timestamp: Date.now() });
 
     // Check if we need to grow the buffer
     if (trail.positions.length > trail.capacity) {
@@ -7513,11 +8272,17 @@ function updateTrail(hex, x, y, z, altFeet) {
         positions[i * 3 + 1] = pos.y;
         positions[i * 3 + 2] = pos.z;
 
-        // Get color for this altitude
-        const altColor = new THREE.Color(getAltitudeColor(pos.y));
-        colors[i * 3] = altColor.r;
-        colors[i * 3 + 1] = altColor.g;
-        colors[i * 3 + 2] = altColor.b;
+        // Get color based on current mode (altitude or speed)
+        let colorValue;
+        if (trailColorMode === 'speed') {
+            colorValue = getSpeedColor(pos.groundSpeed);
+        } else {
+            colorValue = getAltitudeColor(pos.y);
+        }
+        const trailColor = new THREE.Color(colorValue);
+        colors[i * 3] = trailColor.r;
+        colors[i * 3 + 1] = trailColor.g;
+        colors[i * 3 + 2] = trailColor.b;
     });
 
     trail.line.geometry.attributes.position.needsUpdate = true;
@@ -7574,9 +8339,17 @@ function updateTronCurtain(trail) {
             continue; // Skip this segment, no curtain
         }
 
-        // Get altitude colors for gradient
-        const color1 = new THREE.Color(getAltitudeColor(p1.y));
-        const color2 = new THREE.Color(getAltitudeColor(p2.y));
+        // Get colors for gradient based on current mode (altitude or speed)
+        let colorValue1, colorValue2;
+        if (trailColorMode === 'speed') {
+            colorValue1 = getSpeedColor(p1.groundSpeed);
+            colorValue2 = getSpeedColor(p2.groundSpeed);
+        } else {
+            colorValue1 = getAltitudeColor(p1.y);
+            colorValue2 = getAltitudeColor(p2.y);
+        }
+        const color1 = new THREE.Color(colorValue1);
+        const color2 = new THREE.Color(colorValue2);
         const groundColor = new THREE.Color(0x333333); // Dark gray for ground
 
         // Calculate alpha values based on altitude
@@ -7775,6 +8548,48 @@ function getAltitudeColor(altitudeSceneUnits) {
         hue = 140 + ratio * (300 - 140);
     } else {
         hue = 300; // Magenta for >40000ft
+    }
+
+    return hslToRgb(hue, saturation, lightness);
+}
+
+/**
+ * Get speed-based color for trails (green to red gradient)
+ * @param {number} groundSpeed - Ground speed in knots
+ * @returns {number} RGB color value as hex number (e.g., 0x00ff00 for green)
+ */
+function getSpeedColor(groundSpeed) {
+    // Speed-based color scheme: Green → Yellow-green → Yellow-orange → Orange-red
+    // 0-100 kts: Green (H=120)
+    // 100-250 kts: Yellow-green (H=90)
+    // 250-400 kts: Yellow-orange (H=45)
+    // 400-600+ kts: Orange-red (H=15)
+
+    const saturation = 100;
+    const lightness = 65;
+    let hue;
+
+    // Handle unknown/zero speed
+    if (!groundSpeed || groundSpeed < 1) {
+        return hslToRgb(0, 0, 45); // Gray for unknown speed
+    }
+
+    if (groundSpeed <= 100) {
+        hue = 120; // Green
+    } else if (groundSpeed <= 250) {
+        // Interpolate from 120 (green) to 90 (yellow-green)
+        const ratio = (groundSpeed - 100) / (250 - 100);
+        hue = 120 - ratio * (120 - 90);
+    } else if (groundSpeed <= 400) {
+        // Interpolate from 90 (yellow-green) to 45 (yellow-orange)
+        const ratio = (groundSpeed - 250) / (400 - 250);
+        hue = 90 - ratio * (90 - 45);
+    } else if (groundSpeed <= 600) {
+        // Interpolate from 45 (yellow-orange) to 15 (orange-red)
+        const ratio = (groundSpeed - 400) / (600 - 400);
+        hue = 45 - ratio * (45 - 15);
+    } else {
+        hue = 15; // Orange-red for >600 kts
     }
 
     return hslToRgb(hue, saturation, lightness);
@@ -9253,6 +10068,30 @@ async function showAircraftDetail(hex) {
     if (data.r) details.push({ label: 'Registration', value: sanitizeHTML(data.r) });
     if (data.t) details.push({ label: 'Type Code', value: sanitizeHTML(data.t) });
 
+    // === Aircraft Specifications ===
+    if (data.t) {
+        const specs = getAircraftSpecs(data.t);
+        if (specs) {
+            // Add section header
+            details.push({ label: 'Performance Specifications', value: '', header: true });
+
+            details.push({
+                label: 'Cruise Speed',
+                value: `${specs.cruise} kts`
+            });
+
+            details.push({
+                label: 'Max Altitude',
+                value: `${specs.maxAlt.toLocaleString()} ft`
+            });
+
+            details.push({
+                label: 'Range',
+                value: `${specs.range.toLocaleString()} nm`
+            });
+        }
+    }
+
     // Add route placeholder (will be populated async)
     details.push({ label: 'Route', value: '<span id="route-loading">Loading...</span>' });
 
@@ -9272,9 +10111,15 @@ async function showAircraftDetail(hex) {
     if (data.squawk) details.push({ label: 'Squawk', value: data.squawk });
     if (data.emergency) details.push({ label: 'Emergency', value: data.emergency });
 
-    const contentHtml = details.map(d =>
-        `<div class="detail-label">${d.label}:</div><div class="detail-value">${d.value}</div>`
-    ).join('');
+    const contentHtml = details.map(d => {
+        if (d.header) {
+            // Header row for sections (e.g., "Performance Specifications")
+            return `<div class="detail-header">${d.label}</div>`;
+        } else {
+            // Regular label:value pair
+            return `<div class="detail-label">${d.label}:</div><div class="detail-value">${d.value}</div>`;
+        }
+    }).join('');
 
     document.getElementById('detail-content').innerHTML = contentHtml +
         '<div id="aircraft-photo-container" style="grid-column: 1 / -1; margin-top: 10px; text-align: center;"></div>';
