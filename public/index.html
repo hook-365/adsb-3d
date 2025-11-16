@@ -2093,6 +2093,404 @@
             background: var(--accent-primary-hover);
         }
 
+        /* ========================================
+           UNIFIED SIDEBAR STYLES
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 320px;
+            height: 100vh;
+            background: var(--panel-bg);
+            backdrop-filter: var(--panel-blur);
+            border-left: var(--panel-border-width) solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            z-index: var(--z-panels);
+            transition: transform 0.3s ease, width 0.1s ease;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(calc(100% - 40px));
+        }
+
+        /* Resize Handle */
+        .sidebar-resize-handle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: transparent;
+            cursor: ew-resize;
+            transition: background 0.2s ease;
+            z-index: 10;
+        }
+
+        .sidebar-resize-handle:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-resize-handle:active {
+            background: var(--accent-primary);
+        }
+
+        /* Toggle Button */
+        .sidebar-toggle-btn {
+            position: absolute;
+            left: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 80px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--panel-blur);
+            border: var(--panel-border-width) solid var(--panel-border);
+            border-right: none;
+            border-radius: var(--panel-radius) 0 0 var(--panel-radius);
+            color: var(--text-accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background: var(--accent-primary-dim);
+        }
+
+        .sidebar.collapsed .sidebar-toggle-btn .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Sidebar Content */
+        .sidebar-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            padding: var(--spacing-lg);
+        }
+
+        /* Mode Header */
+        .sidebar-mode-header {
+            background: var(--mode-active);
+            color: #000;
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            font-size: var(--font-size-large);
+            border-radius: var(--panel-radius);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: var(--spacing-lg);
+            box-shadow: 0 0 10px var(--mode-active-glow);
+        }
+
+        .sidebar-mode-header:hover {
+            background: var(--mode-active-border);
+            transform: translateY(-1px);
+        }
+
+        .sidebar-mode-header.historical {
+            background: var(--status-warning);
+            box-shadow: 0 0 10px rgba(255, 170, 74, 0.5);
+        }
+
+        /* Mode Content Sections */
+        .sidebar-mode-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        /* Stats */
+        .sidebar-stats {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: var(--font-size-base);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            color: var(--text-accent);
+            font-weight: bold;
+        }
+
+        /* Dividers */
+        .sidebar-divider {
+            height: 1px;
+            background: var(--panel-border);
+            margin: var(--spacing-sm) 0;
+        }
+
+        /* Section Labels */
+        .sidebar-section-label {
+            color: var(--text-accent);
+            font-size: var(--font-size-base);
+            font-weight: bold;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        /* Search */
+        .sidebar-search {
+            position: relative;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .sidebar-search input {
+            width: 100%;
+            padding: 8px 30px 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+        }
+
+        .sidebar-search input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .sidebar-search .search-clear-btn {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-search input:not(:placeholder-shown) + .search-clear-btn {
+            opacity: 1;
+        }
+
+        .sidebar-search .search-clear-btn:hover {
+            color: var(--text-accent);
+        }
+
+        /* Aircraft List */
+        .sidebar-aircraft-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .sidebar-aircraft-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: var(--button-radius);
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-aircraft-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-primary);
+        }
+
+        .sidebar-aircraft-item.selected {
+            background: var(--accent-primary-dim);
+            border-color: var(--accent-primary);
+        }
+
+        /* Sidebar Sections */
+        .sidebar-section {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .sidebar-section label {
+            color: var(--text-secondary);
+            font-size: var(--font-size-base);
+        }
+
+        /* Inputs */
+        .sidebar-input,
+        .sidebar-select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+        }
+
+        .sidebar-input:focus,
+        .sidebar-select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Radio Groups */
+        .sidebar-radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sidebar-radio-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: var(--button-radius);
+            transition: background 0.2s ease;
+        }
+
+        .sidebar-radio-label:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .sidebar-radio-label input[type="radio"] {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        /* Buttons */
+        .sidebar-button {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-primary-dim);
+            border: 1px solid var(--accent-primary);
+            border-radius: var(--button-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-button:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-button-primary {
+            background: var(--accent-primary);
+            font-weight: bold;
+        }
+
+        .sidebar-button-primary:hover {
+            background: var(--accent-primary-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Info text */
+        .sidebar-info {
+            font-size: var(--font-size-base);
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 8px;
+        }
+
+        /* Footer */
+        .sidebar-footer {
+            border-top: 1px solid var(--panel-border);
+            padding-top: var(--spacing-md);
+            margin-top: auto;
+        }
+
+        .sidebar-footer-toggle {
+            width: 100%;
+            padding: 8px;
+            background: var(--accent-primary-dim);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--button-radius);
+            color: var(--text-accent);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .sidebar-footer-toggle:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-footer-content {
+            max-height: 200px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .sidebar-footer-content.collapsed {
+            max-height: 0;
+        }
+
+        /* Scrollbar Styling */
+        .sidebar-mode-content::-webkit-scrollbar,
+        .sidebar-aircraft-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-track,
+        .sidebar-aircraft-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-thumb,
+        .sidebar-aircraft-list::-webkit-scrollbar-thumb {
+            background: var(--accent-primary-dim);
+            border-radius: 3px;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-thumb:hover,
+        .sidebar-aircraft-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 280px;
+            }
+
+            .sidebar-mode-header {
+                font-size: var(--font-size-base);
+                padding: 10px;
+            }
+
+            .sidebar-content {
+                padding: var(--spacing-md);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .sidebar {
+                width: 100%;
+                max-width: 320px;
+            }
+        }
+
         /* Toggle Switch Styles */
         .toggle-switch-container {
             display: flex;
@@ -2737,6 +3135,177 @@
 </head>
 <body>
     <canvas id="canvas"></canvas>
+
+    <!-- Unified Sidebar (replaces aircraft-list and historical-controls panels) -->
+    <div id="unified-sidebar" class="sidebar">
+        <!-- Resize Handle -->
+        <div class="sidebar-resize-handle"></div>
+
+        <!-- Collapse/Expand Button -->
+        <button class="sidebar-toggle-btn" id="sidebar-toggle" title="Toggle sidebar">
+            <span class="toggle-icon">◀</span>
+        </button>
+
+        <!-- Sidebar Content -->
+        <div class="sidebar-content">
+            <!-- Mode Header (clickable to toggle) -->
+            <div class="sidebar-mode-header" id="sidebar-mode-header">
+                <span class="mode-indicator" id="sidebar-mode-indicator">🔴 LIVE MODE</span>
+            </div>
+
+            <!-- Live Mode Content -->
+            <div id="sidebar-live-content" class="sidebar-mode-content">
+                <!-- Stats Summary -->
+                <div class="sidebar-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Aircraft:</span>
+                        <span class="stat-value" id="sidebar-aircraft-count">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">With position:</span>
+                        <span class="stat-value" id="sidebar-aircraft-positioned">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Updated:</span>
+                        <span class="stat-value" id="sidebar-last-update">--</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Aircraft Search -->
+                <div class="sidebar-search">
+                    <input
+                        type="text"
+                        id="sidebar-aircraft-search"
+                        placeholder="🔍 Search aircraft..."
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <button id="sidebar-search-clear" class="search-clear-btn" title="Clear">✕</button>
+                </div>
+
+                <!-- Aircraft List -->
+                <div class="sidebar-section-label">Nearby Aircraft</div>
+                <div id="sidebar-aircraft-list" class="sidebar-aircraft-list">
+                    <!-- Aircraft items will be populated here -->
+                </div>
+            </div>
+
+            <!-- Historical Mode Content -->
+            <div id="sidebar-historical-content" class="sidebar-mode-content" style="display: none;">
+                <!-- Time Range -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Time Range</div>
+                    <select id="sidebar-time-preset" class="sidebar-select">
+                        <option value="1">Last 1 hour</option>
+                        <option value="4">Last 4 hours</option>
+                        <option value="8">Last 8 hours</option>
+                        <option value="12">Last 12 hours</option>
+                        <option value="24">Last 24 hours</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                    <div id="sidebar-custom-range" style="display: none; margin-top: 10px;">
+                        <label>Start:</label>
+                        <input type="datetime-local" id="sidebar-start-time" class="sidebar-input">
+                        <label style="margin-top: 5px;">End:</label>
+                        <input type="datetime-local" id="sidebar-end-time" class="sidebar-input">
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Filters -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Filters</div>
+                    <label>Altitude (ft):</label>
+                    <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+                        <input type="number" id="sidebar-alt-min" placeholder="Min" class="sidebar-input">
+                        <input type="number" id="sidebar-alt-max" placeholder="Max" class="sidebar-input">
+                    </div>
+                    <label>Speed (kts):</label>
+                    <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+                        <input type="number" id="sidebar-speed-min" placeholder="Min" class="sidebar-input">
+                        <input type="number" id="sidebar-speed-max" placeholder="Max" class="sidebar-input">
+                    </div>
+                    <label>Aircraft Type:</label>
+                    <select id="sidebar-aircraft-type" class="sidebar-select">
+                        <option value="all">All Aircraft</option>
+                        <option value="military">Military Only</option>
+                        <option value="civilian">Civilian Only</option>
+                    </select>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Visualization Mode -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Visualization</div>
+                    <div class="sidebar-radio-group">
+                        <label class="sidebar-radio-label">
+                            <input type="radio" name="vis-mode" value="tracks" checked>
+                            <span>Tracks</span>
+                        </label>
+                        <label class="sidebar-radio-label">
+                            <input type="radio" name="vis-mode" value="heatmap">
+                            <span>Heat Map</span>
+                        </label>
+                        <label class="sidebar-radio-label">
+                            <input type="radio" name="vis-mode" value="both">
+                            <span>Both</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Playback Controls -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Playback</div>
+                    <div class="sidebar-radio-group">
+                        <label class="sidebar-radio-label">
+                            <input type="radio" name="playback-mode" value="all" checked>
+                            <span>Show All</span>
+                        </label>
+                        <label class="sidebar-radio-label">
+                            <input type="radio" name="playback-mode" value="animated">
+                            <span>Animated</span>
+                        </label>
+                    </div>
+                    <div id="sidebar-playback-controls" style="display: none; margin-top: 10px;">
+                        <button id="sidebar-play-btn" class="sidebar-button">▶ Play</button>
+                        <select id="sidebar-playback-speed" class="sidebar-select" style="margin-top: 8px;">
+                            <option value="1">1x Speed</option>
+                            <option value="2">2x Speed</option>
+                            <option value="5">5x Speed</option>
+                            <option value="10">10x Speed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Results & Load Button -->
+                <div class="sidebar-section">
+                    <div id="sidebar-results-info" class="sidebar-info">Ready to load tracks</div>
+                    <button id="sidebar-load-tracks" class="sidebar-button sidebar-button-primary">Load Tracks</button>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer (Mini Radar + Compass) -->
+            <div class="sidebar-footer" id="sidebar-footer">
+                <button class="sidebar-footer-toggle" id="sidebar-footer-toggle" title="Toggle radar/compass">
+                    <span>⬆</span>
+                </button>
+                <div class="sidebar-footer-content" id="sidebar-footer-content">
+                    <!-- Mini radar and compass will be moved here -->
+                    <div id="sidebar-mini-radar-container">
+                        <!-- Placeholder for mini radar -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- About Modal -->
     <div id="about-modal">
