@@ -691,6 +691,302 @@ const THEMES = {
     }
 };
 
+// ============================================================================
+// UNIFIED SIDEBAR SYSTEM
+// ============================================================================
+
+/**
+ * Sidebar state management
+ */
+const SidebarState = {
+    isCollapsed: false,
+    width: 320,
+    currentMode: 'live', // 'live' or 'historical'
+    footerVisible: true,
+    aircraftData: new Map(), // hex -> aircraft object
+    selectedAircraft: null,
+
+    // Load from localStorage
+    load() {
+        const saved = localStorage.getItem('sidebarState');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                this.isCollapsed = data.isCollapsed || false;
+                this.width = data.width || 320;
+                this.footerVisible = data.footerVisible !== undefined ? data.footerVisible : true;
+            } catch (e) {
+                console.error('Failed to load sidebar state:', e);
+            }
+        }
+    },
+
+    // Save to localStorage
+    save() {
+        localStorage.setItem('sidebarState', JSON.stringify({
+            isCollapsed: this.isCollapsed,
+            width: this.width,
+            footerVisible: this.footerVisible
+        }));
+    }
+};
+
+/**
+ * Initialize sidebar functionality
+ */
+function initSidebar() {
+    console.log('[Sidebar] Initializing unified sidebar');
+
+    // Load saved state
+    SidebarState.load();
+
+    const sidebar = document.getElementById('unified-sidebar');
+    if (!sidebar) {
+        console.error('[Sidebar] Sidebar element not found');
+        return;
+    }
+
+    // Apply saved width
+    sidebar.style.width = `${SidebarState.width}px`;
+
+    // Apply saved collapsed state
+    if (SidebarState.isCollapsed) {
+        sidebar.classList.add('collapsed');
+    }
+
+    // Apply saved footer state
+    const footerContent = document.getElementById('sidebar-footer-content');
+    if (footerContent && !SidebarState.footerVisible) {
+        footerContent.classList.add('collapsed');
+    }
+
+    // Setup event listeners
+    setupSidebarToggle();
+    setupSidebarResize();
+    setupModeToggle();
+    setupFooterToggle();
+    setupSearchBar();
+
+    console.log('[Sidebar] Initialization complete');
+}
+
+/**
+ * Setup sidebar collapse/expand toggle
+ */
+function setupSidebarToggle() {
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('unified-sidebar');
+
+    if (!toggleBtn || !sidebar) return;
+
+    toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        SidebarState.isCollapsed = sidebar.classList.contains('collapsed');
+        SidebarState.save();
+    });
+}
+
+/**
+ * Setup sidebar resize functionality
+ */
+function setupSidebarResize() {
+    const resizeHandle = document.querySelector('.sidebar-resize-handle');
+    const sidebar = document.getElementById('unified-sidebar');
+
+    if (!resizeHandle || !sidebar) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = sidebar.offsetWidth;
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+
+        const delta = startX - e.clientX;
+        const newWidth = Math.max(200, Math.min(600, startWidth + delta));
+        sidebar.style.width = `${newWidth}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            SidebarState.width = sidebar.offsetWidth;
+            SidebarState.save();
+        }
+    });
+}
+
+/**
+ * Setup mode toggle (Live <-> Historical)
+ */
+function setupModeToggle() {
+    const modeHeader = document.getElementById('sidebar-mode-header');
+    const modeIndicator = document.getElementById('sidebar-mode-indicator');
+    const liveContent = document.getElementById('sidebar-live-content');
+    const historicalContent = document.getElementById('sidebar-historical-content');
+
+    if (!modeHeader || !modeIndicator || !liveContent || !historicalContent) return;
+
+    modeHeader.addEventListener('click', () => {
+        if (SidebarState.currentMode === 'live') {
+            // Switch to historical
+            SidebarState.currentMode = 'historical';
+            modeIndicator.textContent = '🕐 HISTORICAL MODE';
+            modeHeader.classList.add('historical');
+            liveContent.style.display = 'none';
+            historicalContent.style.display = 'flex';
+        } else {
+            // Switch to live
+            SidebarState.currentMode = 'live';
+            modeIndicator.textContent = '🔴 LIVE MODE';
+            modeHeader.classList.remove('historical');
+            liveContent.style.display = 'flex';
+            historicalContent.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Setup footer toggle (mini radar/compass)
+ */
+function setupFooterToggle() {
+    const toggleBtn = document.getElementById('sidebar-footer-toggle');
+    const footerContent = document.getElementById('sidebar-footer-content');
+
+    if (!toggleBtn || !footerContent) return;
+
+    toggleBtn.addEventListener('click', () => {
+        footerContent.classList.toggle('collapsed');
+        SidebarState.footerVisible = !footerContent.classList.contains('collapsed');
+        SidebarState.save();
+
+        // Update button icon
+        toggleBtn.querySelector('span').textContent =
+            footerContent.classList.contains('collapsed') ? '⬇' : '⬆';
+    });
+}
+
+/**
+ * Setup search bar functionality
+ */
+function setupSearchBar() {
+    const searchInput = document.getElementById('sidebar-aircraft-search');
+    const clearBtn = document.getElementById('sidebar-search-clear');
+
+    if (!searchInput || !clearBtn) return;
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        updateAircraftListFilter(query);
+    });
+
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        updateAircraftListFilter('');
+    });
+}
+
+/**
+ * Update aircraft list in sidebar
+ */
+function updateSidebarAircraftList() {
+    const listContainer = document.getElementById('sidebar-aircraft-list');
+    const countElem = document.getElementById('sidebar-aircraft-count');
+    const positionedElem = document.getElementById('sidebar-aircraft-positioned');
+    const updateElem = document.getElementById('sidebar-last-update');
+
+    if (!listContainer) return;
+
+    // Update stats
+    const totalAircraft = aircraftData.size;
+    const positionedAircraft = Array.from(aircraftData.values()).filter(ac => ac.lat && ac.lon).length;
+
+    if (countElem) countElem.textContent = totalAircraft;
+    if (positionedElem) positionedElem.textContent = positionedAircraft;
+    if (updateElem) updateElem.textContent = new Date().toLocaleTimeString();
+
+    // Build aircraft list
+    const sortedAircraft = Array.from(aircraftData.values())
+        .filter(ac => ac.lat && ac.lon)
+        .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+
+    // Clear existing list
+    listContainer.innerHTML = '';
+
+    // Add aircraft items
+    sortedAircraft.forEach(ac => {
+        const item = document.createElement('div');
+        item.className = 'sidebar-aircraft-item';
+        item.dataset.hex = ac.hex;
+
+        if (selectedAircraft === ac.hex) {
+            item.classList.add('selected');
+        }
+
+        const callsign = ac.flight ? ac.flight.trim() : ac.hex.toUpperCase();
+        const altitude = ac.alt_baro ? `${Math.round(ac.alt_baro)}ft` : 'N/A';
+        const speed = ac.gs ? `${Math.round(ac.gs)}kts` : 'N/A';
+        const distance = ac.distance ? `${ac.distance.toFixed(1)}km` : '';
+
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <strong style="color: var(--text-accent);">${callsign}</strong>
+                <span style="color: var(--text-secondary); font-size: 11px;">${distance}</span>
+            </div>
+            <div style="display: flex; gap: 15px; font-size: 11px; color: var(--text-secondary);">
+                <span>Alt: ${altitude}</span>
+                <span>Spd: ${speed}</span>
+            </div>
+        `;
+
+        // Click to select/follow aircraft
+        item.addEventListener('click', () => {
+            selectAircraft(ac.hex);
+        });
+
+        listContainer.appendChild(item);
+    });
+}
+
+/**
+ * Filter aircraft list by search query
+ */
+function updateAircraftListFilter(query) {
+    const items = document.querySelectorAll('.sidebar-aircraft-item');
+
+    items.forEach(item => {
+        const hex = item.dataset.hex;
+        const aircraft = aircraftData.get(hex);
+
+        if (!aircraft) {
+            item.style.display = 'none';
+            return;
+        }
+
+        const callsign = aircraft.flight ? aircraft.flight.trim().toLowerCase() : '';
+        const tail = aircraft.r ? aircraft.r.toLowerCase() : '';
+        const type = aircraft.t ? aircraft.t.toLowerCase() : '';
+
+        const matches =
+            hex.toLowerCase().includes(query) ||
+            callsign.includes(query) ||
+            tail.includes(query) ||
+            type.includes(query);
+
+        item.style.display = matches ? 'block' : 'none';
+    });
+}
+
 /**
  * Apply a theme to the application
  * @param {string} themeName - Name of theme from THEMES object
@@ -5100,6 +5396,9 @@ function init() {
         console.log('[RecentTrails] Auto-loading trails on startup');
         setTimeout(() => loadRecentTrails(), 2000); // Wait 2s for initial aircraft data
     }
+
+    // Initialize unified sidebar
+    initSidebar();
 }
 
 // Create realistic sky with gradient
@@ -7588,6 +7887,7 @@ async function fetchAircraftData() {
         if (currentMode === 'live') {
             updateAircraft(data.aircraft || []);
             updateUI(data);
+            updateSidebarAircraftList();
         }
     } catch (error) {
         fetchErrorCount++;
