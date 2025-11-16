@@ -7,6 +7,7 @@ Real-time and historical 3D visualization of ADS-B aircraft data with 7 visual t
 - **Real-time 3D visualization** with altitude-based color coding
 - **7 visual themes**: Modern, Digital/CRT, Dark, Arctic, Sunset, Neon, Vintage
 - **Optional historical mode** with track playback and filtering
+- **Heat map visualization** showing traffic density with unique aircraft counting
 - **Mini radar** always showing live aircraft
 - **Mobile responsive** with touch controls
 - **Advanced filtering** and Tron mode with vertical curtains
@@ -17,24 +18,29 @@ Real-time and historical 3D visualization of ADS-B aircraft data with 7 visual t
 ### Live Mode
 Real-time aircraft visualization with altitude-based color coding and flight trails.
 
-<img src="Live.png" alt="Live Mode" width="800"/>
+<img src="Live.png" alt="Live Mode" width="600"/>
 
 ### Sprite Mode (Aircraft Shapes)
 Realistic aircraft shapes using tar1090's SVG system for accurate type identification.
 
-<img src="Live-Sprite.png" alt="Sprite Mode with Aircraft Shapes" width="800"/>
+<img src="Live-Sprite.png" alt="Sprite Mode with Aircraft Shapes" width="600"/>
 
 ### Tron Mode
 Vertical altitude curtains beneath flight trails for dramatic visualization.
 
-<img src="Live-TronMode.png" alt="Tron Mode with Altitude Curtains" width="800"/>
+<img src="Live-TronMode.png" alt="Tron Mode with Altitude Curtains" width="600"/>
+
+### Heat Map Mode
+Volumetric fog visualization showing flight corridor density using unique aircraft counting per grid cell. Blue indicates light traffic (2-3 aircraft), green shows moderate traffic (4-7), yellow indicates high traffic (8-14), and red represents very high traffic (15+ unique aircraft).
+
+<img src="HeatMap.png" alt="Heat Map - Traffic Density Visualization" width="600"/>
 
 ### Historical Mode with Filtering
 Time-travel through past flights with powerful filtering options (altitude, speed, aircraft type, track length).
 
-<img src="Historical-Filter1.png" alt="Historical Mode - Filter Panel" width="800"/>
+<img src="Historical-Filter1.png" alt="Historical Mode - Filter Panel" width="600"/>
 
-<img src="Historical-Filter2.png" alt="Historical Mode - Filtered Tracks" width="800"/>
+<img src="Historical-Filter2.png" alt="Historical Mode - Filtered Tracks" width="600"/>
 
 ## Quick Start
 

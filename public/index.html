@@ -1167,62 +1167,6 @@
             box-shadow: 0 0 20px var(--accent-primary-hover);
         }
 
-        /* Live Statistics Panel */
-        #stats-panel {
-            position: fixed;
-            top: 580px;  /* Below settings panel */
-            right: 10px;
-            z-index: 1000;
-            background: var(--panel-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: var(--panel-radius);
-            padding: var(--panel-padding);
-            backdrop-filter: var(--panel-blur);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            min-width: 200px;
-            max-width: 280px;
-            font-size: var(--font-size-base);
-            touch-action: auto;
-        }
-
-        #stats-panel .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--panel-border);
-        }
-
-        #stats-panel .panel-title {
-            color: var(--text-accent);
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        #stats-panel .collapse-btn {
-            background: transparent;
-            color: var(--text-accent);
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 0;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #stats-panel .collapse-btn:hover {
-            background: var(--accent-primary-dim);
-            border-radius: 4px;
-        }
-
-        #stats-panel.collapsed .panel-content {
-            display: none;
-        }
-
         /* Mode Selector Buttons */
         .mode-selector {
             position: absolute;
@@ -2751,23 +2695,6 @@
                 padding: 0;  /* No outer padding */
             }
 
-            /* Stats panel mobile positioning */
-            #stats-panel {
-                right: 10px;
-                left: auto;
-                top: 140px; /* Below mode buttons on mobile */
-                max-width: calc(100vw - 30px);
-                font-size: 10px;
-            }
-
-            #stats-panel .panel-title {
-                font-size: 12px;
-            }
-
-            #stats-panel .panel-content {
-                font-size: 10px;
-            }
-
             #controls.collapseable-panel .panel-content {
                 max-height: 200px;  /* Even smaller for very small screens */
             }
@@ -3324,28 +3251,6 @@
 
             <!-- Keyboard Help Button -->
             <button id="show-keyboard-help" class="secondary-btn">⌨️ Keyboard Shortcuts</button>
-        </div>
-    </div>
-
-    <!-- Live Statistics Panel -->
-    <div id="stats-panel" class="collapseable-panel">
-        <div class="panel-header">
-            <span class="panel-title">📊 Live Statistics</span>
-            <button class="collapse-btn" id="collapse-stats">−</button>
-        </div>
-        <div class="panel-content" id="stats-content">
-            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
-                <div style="margin-bottom: 4px;"><strong>Now:</strong></div>
-                <div id="stats-current" style="padding-left: 8px;">--</div>
-                <div id="stats-military" style="padding-left: 8px;">--</div>
-                <div id="stats-highest" style="padding-left: 8px;">--</div>
-                <div id="stats-lowest" style="padding-left: 8px;">--</div>
-                <div id="stats-average" style="padding-left: 8px;">--</div>
-            </div>
-            <div style="font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--panel-border); padding-top: 8px;">
-                <div><strong>Today:</strong></div>
-                <div id="stats-unique-today" style="padding-left: 8px;">--</div>
-            </div>
         </div>
     </div>
 

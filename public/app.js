@@ -3283,9 +3283,15 @@ function generateFlightCorridors() {
     geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
 
     // Custom shader material for soft glowing particles
+    // TODO: Improve blending to prevent see-through effect (red shows blue behind it)
+    // Attempted solutions that didn't work:
+    // - depthWrite: true -> Creates shiny bubble appearance
+    // - AdditiveBlending -> Colors wash to white in dense areas
+    // - MaxEquation -> Looks strange/unnatural
+    // Current compromise: Normal blending with see-through (best visual, but not perfect depth)
     const material = new THREE.ShaderMaterial({
         uniforms: {
-            baseOpacity: { value: 0.5 }  // Increased since we're using normal blending now
+            baseOpacity: { value: 0.6 }  // Moderate opacity for fog-like appearance
         },
         vertexShader: `
             attribute float size;
@@ -3307,23 +3313,27 @@ function generateFlightCorridors() {
                 vec2 center = gl_PointCoord - vec2(0.5);
                 float dist = length(center);
 
-                // Very soft circular gradient for fog-like blending
+                // Soft circular gradient for fog-like blending
                 float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
 
-                // Apply softer power curve for more gradual falloff
-                alpha = pow(alpha, 2.5);
+                // Gentle power curve for soft fog appearance
+                alpha = pow(alpha, 2.2);
 
                 // Multiply by base opacity
                 alpha *= baseOpacity;
+
+                // Discard very transparent pixels to reduce overdraw
+                if (alpha < 0.02) discard;
 
                 // Output color with radial alpha falloff
                 gl_FragColor = vec4(vColor, alpha);
             }
         `,
         transparent: true,
-        depthWrite: false,
-        blending: THREE.NormalBlending,  // Normal blending preserves color better
-        vertexColors: true  // This tells Three.js to auto-provide 'color' attribute
+        depthWrite: false,  // Disable to allow soft blending (but causes see-through)
+        depthTest: true,    // Keep particles behind aircraft
+        blending: THREE.NormalBlending,
+        vertexColors: true
     });
 
     const particles = new THREE.Points(geometry, material);
@@ -4968,10 +4978,19 @@ function init() {
     camera.position.set(0, 50, 100);
     camera.lookAt(0, 0, 0);
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // Renderer with performance optimizations
+    renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        powerPreference: 'high-performance',  // Prefer dedicated GPU over integrated
+        stencil: false,  // Disable stencil buffer (not used)
+        depth: true,     // Keep depth buffer (needed for proper rendering)
+        alpha: false     // Opaque canvas saves GPU cycles
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Limit pixel ratio to 2 max (4K/5K displays don't need >2x)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     // Lights - Daylight simulation
     const ambientLight = new THREE.AmbientLight(CONFIG.sceneAmbient, 0.6);
@@ -6349,36 +6368,6 @@ function filterAircraftList(query) {
 function setupUIControls() {
     // Aircraft Search Bar
     setupAircraftSearch();
-
-    // Stats panel collapse toggle
-    const statsCollapseBtn = document.getElementById('collapse-stats');
-    if (statsCollapseBtn) {
-        statsCollapseBtn.addEventListener('click', () => {
-            const panel = document.getElementById('stats-panel');
-            const btn = document.getElementById('collapse-stats');
-            const content = document.getElementById('stats-content');
-
-            if (panel.classList.contains('collapsed')) {
-                panel.classList.remove('collapsed');
-                content.style.display = 'block';
-                btn.textContent = '−';
-                StatsState.isVisible = true;
-                SafeStorage.setItem('statsPanelVisible', 'true');
-            } else {
-                panel.classList.add('collapsed');
-                content.style.display = 'none';
-                btn.textContent = '+';
-                StatsState.isVisible = false;
-                SafeStorage.setItem('statsPanelVisible', 'false');
-            }
-        });
-
-        // Load stats panel visibility preference
-        const savedStatsVisible = SafeStorage.getItem('statsPanelVisible');
-        if (savedStatsVisible === 'false') {
-            statsCollapseBtn.click();
-        }
-    }
 
     // Reset camera button
     document.getElementById('reset-camera').addEventListener('click', () => {
@@ -7893,47 +7882,6 @@ function updateAircraft(aircraft) {
         checkUrlParameters();
     }
 
-    // Update statistics display after processing all aircraft
-    updateStatsDisplay();
-}
-
-/**
- * Update statistics panel display with current values
- * @returns {void}
- */
-function updateStatsDisplay() {
-    // Real-time stats
-    document.getElementById('stats-current').textContent =
-        `${StatsState.currentCount} aircraft`;
-
-    document.getElementById('stats-military').textContent =
-        `${StatsState.militaryCount} military`;
-
-    if (StatsState.highestAircraft) {
-        document.getElementById('stats-highest').textContent =
-            `↑ ${StatsState.highestAircraft.tail} @ ${StatsState.highestAircraft.altitude.toLocaleString()} ft`;
-    } else {
-        document.getElementById('stats-highest').textContent = '↑ --';
-    }
-
-    if (StatsState.lowestAircraft) {
-        document.getElementById('stats-lowest').textContent =
-            `↓ ${StatsState.lowestAircraft.tail} @ ${StatsState.lowestAircraft.altitude.toLocaleString()} ft`;
-    } else {
-        document.getElementById('stats-lowest').textContent = '↓ --';
-    }
-
-    if (StatsState.currentCount > 0) {
-        const avgAlt = Math.round(StatsState.totalAltitude / StatsState.currentCount);
-        document.getElementById('stats-average').textContent =
-            `⌀ ${avgAlt.toLocaleString()} ft avg`;
-    } else {
-        document.getElementById('stats-average').textContent = '⌀ --';
-    }
-
-    // Daily stats
-    document.getElementById('stats-unique-today').textContent =
-        `${StatsState.uniqueToday.size} unique`;
 }
 
 // Create aircraft model - sphere or sprite based on mode
@@ -9561,11 +9509,25 @@ function updateMiniRadar(cameraYawDegrees) {
     ctx.restore();
 }
 
+// Frame rate limiting variables
+let lastFrameTime = 0;
+const targetFPS = 30;  // Limit to 30fps instead of 60fps
+const frameInterval = 1000 / targetFPS;
+
 function animate() {
     requestAnimationFrame(animate);
 
-    // Update sky colors every 60 seconds
+    // Limit frame rate to reduce GPU usage
     const now = Date.now();
+    const deltaTime = now - lastFrameTime;
+
+    if (deltaTime < frameInterval) {
+        return;  // Skip this frame
+    }
+
+    lastFrameTime = now - (deltaTime % frameInterval);
+
+    // Update sky colors every 60 seconds
     if (now - lastSkyUpdate > 60000) {
         updateSkyColors();
         lastSkyUpdate = now;
