@@ -233,6 +233,10 @@ docker compose up -d
 - **Time Presets**: 1h, 4h, 8h, 12h, 24h or custom range
 - **Filters**: Altitude (min/max), speed (min/max), aircraft type, minimum positions
 - **Display Modes**: Show all tracks at once, or animated playback
+- **Visualization Modes**:
+  - **Tracks**: Traditional flight path lines
+  - **Heat Map**: Volumetric fog showing traffic density (unique aircraft per grid cell)
+  - **Both**: Overlay tracks on heat map
 - **Shareable URLs**: All settings persist in URL for bookmarking/sharing
 
 ### Keyboard Shortcuts
