@@ -2589,6 +2589,7 @@ function addRecentTrailsToLiveMode(tracks) {
                 x: posXZ.x,
                 y: Math.max(1.0, altitude),
                 z: posXZ.z,
+                altFeet: alt,
                 timestamp: posTimestamp
             });
         });
@@ -2774,12 +2775,15 @@ function createHistoricalTrack(track) {
         endpointMesh.position.set(endPoint.x, endPoint.y, endPoint.z);
 
         // Store reference to track line and original color for hover effects
+        const lastPos = smoothedPositions[smoothedPositions.length - 1];
+        const lastAltFeet = lastPos.alt || lastPos.altitude || 0;
         endpointMesh.userData = {
             isHistoricalEndpoint: true,
             trackLine: line,
             originalColor: endColor.clone(),
             icao: track.hex || track.icao,
-            track: track
+            track: track,
+            altFeet: lastAltFeet  // Store altitude for rescaling
         };
 
         // Add to scene and store reference
@@ -2799,6 +2803,7 @@ function createHistoricalTrack(track) {
                 x: p.x,
                 y: p.y,
                 z: p.z,
+                altFeet: smoothedPositions[i].alt || smoothedPositions[i].altitude || 0,
                 timestamp: smoothedPositions[i].time ? new Date(smoothedPositions[i].time).getTime() : null
             })),
             tronCurtain: null  // Will be populated by updateTronCurtain
@@ -4096,6 +4101,14 @@ async function initializeApp() {
         trailFadeTime = parseInt(savedFadeTime);
         const fadeTimeSelect = document.getElementById('trail-fade-time');
         if (fadeTimeSelect) fadeTimeSelect.value = trailFadeTime.toString();
+    }
+
+    // Load altitude scale preference
+    const savedAltScale = SafeStorage.getItem('altitudeScale');
+    if (savedAltScale !== null) {
+        CONFIG.altitudeExaggeration = parseFloat(savedAltScale);
+        const altScaleSelect = document.getElementById('altitude-scale');
+        if (altScaleSelect) altScaleSelect.value = savedAltScale;
     }
 
     // Load compass preference
@@ -5761,6 +5774,141 @@ function setupUIControls() {
         validateFadePreloadConflict();
     });
 
+    // Altitude scale selector
+    document.getElementById('altitude-scale').addEventListener('change', (e) => {
+        const newScale = parseFloat(e.target.value);
+        const oldScale = CONFIG.altitudeExaggeration;
+        CONFIG.altitudeExaggeration = newScale;
+        SafeStorage.setItem('altitudeScale', newScale);
+        console.log(`[AltitudeScale] Scale changed from ${oldScale}x to ${newScale}x`);
+
+        // Reposition all aircraft with new scale
+        aircraftMeshes.forEach((mesh, hex) => {
+            if (mesh.userData && typeof mesh.userData.alt_baro === 'number') {
+                const altFeet = mesh.userData.alt_baro;
+                const newAltitude = Math.max(1.0, (altFeet - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration);
+                mesh.position.y = newAltitude;
+
+                // Update sprite position if exists
+                if (mesh.userData.sprite) {
+                    mesh.userData.sprite.position.copy(mesh.position);
+                }
+            }
+        });
+
+        // Reposition all trail points
+        trails.forEach((trail) => {
+            if (trail.line && trail.positions.length > 0) {
+                const positions = trail.line.geometry.attributes.position.array;
+
+                // Update each position's Y coordinate
+                trail.positions.forEach((pos, i) => {
+                    if (pos.altFeet !== undefined) {
+                        const newY = Math.max(1.0, (pos.altFeet - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration);
+                        positions[i * 3 + 1] = newY;
+                        pos.y = newY; // Update stored position too
+                    }
+                });
+
+                trail.line.geometry.attributes.position.needsUpdate = true;
+            }
+        });
+
+        // Reposition altitude lines if they exist
+        scene.traverse((object) => {
+            if (object.userData && object.userData.isAltitudeLine) {
+                const altFeet = object.userData.altitudeFeet;
+                if (altFeet !== undefined) {
+                    const newY = ((altFeet - CONFIG.homeLocation.alt) * 0.3048 / 1000) * CONFIG.altitudeExaggeration;
+                    object.position.y = newY;
+
+                    // Update label position if exists
+                    if (object.userData.label) {
+                        object.userData.label.position.y = newY + 0.05;
+                    }
+                }
+            }
+        });
+
+        // Update Tron curtains if in Tron mode
+        if (showTronMode) {
+            aircraftMeshes.forEach((mesh, hex) => {
+                if (mesh.userData && mesh.userData.tronCurtain) {
+                    const curtain = mesh.userData.tronCurtain;
+                    scene.remove(curtain);
+                    disposeGeometry(curtain.geometry);
+                    disposeMaterial(curtain.material);
+                    delete mesh.userData.tronCurtain;
+                }
+            });
+
+            // Recreate curtains with new scale
+            aircraftMeshes.forEach((mesh) => {
+                updateTronCurtain(mesh);
+            });
+        }
+
+        // Update historical tracks if in historical mode
+        if (currentMode === 'historical' && HistoricalState.trackMeshes) {
+            console.log(`[AltitudeScale] Updating ${HistoricalState.trackMeshes.size} historical tracks for new scale ${newScale}x`);
+
+            HistoricalState.trackMeshes.forEach((trackData, icao) => {
+                const { line, track, trail, endpointMesh } = trackData;
+
+                if (!track || !track.positions) return;
+
+                const smoothedPositions = smoothAltitudes(track.positions);
+
+                // Update track line geometry
+                if (line && line.geometry) {
+                    const positions = line.geometry.attributes.position.array;
+
+                    smoothedPositions.forEach((pos, i) => {
+                        const alt = pos.alt || pos.altitude || 0;
+                        const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+                        const y = Math.max(1.0, altitude);
+
+                        // Update Y coordinate only (X and Z stay the same)
+                        positions[i * 3 + 1] = y;
+                    });
+
+                    line.geometry.attributes.position.needsUpdate = true;
+                }
+
+                // Update trail positions array (for Tron curtains)
+                if (trail && trail.positions) {
+                    trail.positions.forEach((pos) => {
+                        if (pos.altFeet !== undefined) {
+                            const altitude = (pos.altFeet - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+                            pos.y = Math.max(1.0, altitude);
+                        }
+                    });
+
+                    // Recreate Tron curtain if in Tron mode
+                    if (showTronMode && trail.tronCurtain) {
+                        // Remove old curtain
+                        scene.remove(trail.tronCurtain);
+                        disposeGeometry(trail.tronCurtain.geometry);
+                        disposeMaterial(trail.tronCurtain.material);
+                        trail.tronCurtain = null;
+
+                        // Create new curtain with updated positions
+                        updateTronCurtain(trail);
+                    }
+                }
+
+                // Update endpoint sphere position
+                if (endpointMesh && endpointMesh.userData && endpointMesh.userData.altFeet !== undefined) {
+                    const altFeet = endpointMesh.userData.altFeet;
+                    const newY = Math.max(1.0, (altFeet - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration);
+                    endpointMesh.position.y = newY;
+                }
+            });
+
+            console.log(`[AltitudeScale] Historical tracks updated successfully`);
+        }
+    });
+
     // Keyboard help modal
     // NEW: Keyboard help sidebar (improved UX)
     const keyboardHelpSidebar = document.getElementById('keyboard-help-sidebar');
@@ -6754,8 +6902,8 @@ function updateAircraft(aircraft) {
             updateAircraftPosition(ac.hex, pos.x, altitude, pos.z);
         }
 
-        // Update trail
-        updateTrail(ac.hex, pos.x, altitude, pos.z);
+        // Update trail (pass altitude in feet for scale changes)
+        updateTrail(ac.hex, pos.x, altitude, pos.z, ac.alt_baro);
     });
 
     // Remove aircraft that are no longer visible
@@ -7332,11 +7480,11 @@ function updateAircraftPosition(hex, x, y, z) {
     }
 }
 
-function updateTrail(hex, x, y, z) {
+function updateTrail(hex, x, y, z, altFeet) {
     const trail = trails.get(hex);
     if (!trail) return;
 
-    trail.positions.push({ x, y, z, timestamp: Date.now() });
+    trail.positions.push({ x, y, z, altFeet, timestamp: Date.now() });
 
     // Check if we need to grow the buffer
     if (trail.positions.length > trail.capacity) {
