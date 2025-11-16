@@ -4963,8 +4963,8 @@ function init() {
     // Create sky with gradient
     createSky();
 
-    // Improved fog for depth perception (reduced density for better long-distance visibility)
-    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.0008);
+    // Minimal fog for depth perception - very light to support 600km+ visibility
+    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.0003);
 
     // Camera
     camera = new THREE.PerspectiveCamera(
@@ -5104,7 +5104,8 @@ function init() {
 
 // Create realistic sky with gradient
 function createSky() {
-    const skyGeometry = new THREE.SphereGeometry(500, 32, 15);
+    // Sky dome must be larger than max camera distance (1200) to prevent breaking through
+    const skyGeometry = new THREE.SphereGeometry(2000, 32, 15);
 
     // Create gradient from horizon to zenith
     const skyMaterial = new THREE.ShaderMaterial({
@@ -5280,6 +5281,11 @@ function createGroundPlane() {
                 if (tilesLoaded === totalTiles) {
                     // All tiles loaded, create texture from canvas
                     const texture = new THREE.CanvasTexture(canvas);
+                    // Reduce artifacts with better filtering
+                    texture.minFilter = THREE.LinearMipMapLinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // Max quality
+                    texture.generateMipmaps = true;
                     texture.needsUpdate = true;
                     material.map = texture;
                     material.needsUpdate = true;
@@ -5297,6 +5303,11 @@ function createGroundPlane() {
                 tilesLoaded++;
                 if (tilesLoaded === totalTiles) {
                     const texture = new THREE.CanvasTexture(canvas);
+                    // Same filtering as success path
+                    texture.minFilter = THREE.LinearMipMapLinearFilter;
+                    texture.magFilter = THREE.LinearFilter;
+                    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                    texture.generateMipmaps = true;
                     material.map = texture;
                     material.needsUpdate = true;
                 }
