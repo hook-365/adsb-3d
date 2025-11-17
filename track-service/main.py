@@ -61,6 +61,130 @@ def ensure_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+async def initialize_database_schema(db_pool):
+    """
+    Initialize database schema if tables don't exist.
+    This runs automatically on first startup - no user action required.
+    """
+    logger.info("=" * 60)
+    logger.info("Checking database schema...")
+    logger.info("=" * 60)
+
+    try:
+        async with db_pool.acquire() as conn:
+            # Check if our tables exist
+            tables_exist = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'aircraft_positions'
+                )
+            """)
+
+            if tables_exist:
+                logger.info("✓ Database schema already exists")
+                return
+
+            logger.info("✗ Tables not found - initializing database...")
+
+            # Create TimescaleDB extension
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+            logger.info("✓ TimescaleDB extension enabled")
+
+            # Create aircraft_positions table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS aircraft_positions (
+                    time TIMESTAMPTZ NOT NULL,
+                    icao TEXT NOT NULL,
+                    flight TEXT,
+                    lat DOUBLE PRECISION NOT NULL,
+                    lon DOUBLE PRECISION NOT NULL,
+                    alt_baro INTEGER,
+                    alt_geom INTEGER,
+                    gs DOUBLE PRECISION,
+                    track DOUBLE PRECISION,
+                    baro_rate INTEGER,
+                    squawk TEXT,
+                    emergency TEXT,
+                    category TEXT,
+                    nav_altitude_mcp INTEGER,
+                    rssi DOUBLE PRECISION,
+                    messages INTEGER,
+                    seen DOUBLE PRECISION
+                )
+            """)
+            logger.info("✓ Created aircraft_positions table")
+
+            # Convert to hypertable
+            await conn.execute("""
+                SELECT create_hypertable('aircraft_positions', 'time',
+                    chunk_time_interval => INTERVAL '7 days',
+                    if_not_exists => TRUE)
+            """)
+            logger.info("✓ Converted to TimescaleDB hypertable (7-day chunks)")
+
+            # Enable compression
+            await conn.execute("""
+                ALTER TABLE aircraft_positions SET (
+                    timescaledb.compress,
+                    timescaledb.compress_segmentby = 'icao',
+                    timescaledb.compress_orderby = 'time DESC'
+                )
+            """)
+            logger.info("✓ Compression enabled (70-80% storage savings)")
+
+            # Create aircraft_metadata table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS aircraft_metadata (
+                    icao TEXT PRIMARY KEY,
+                    registration TEXT,
+                    aircraft_type TEXT,
+                    type_description TEXT,
+                    owner_operator TEXT,
+                    year TEXT,
+                    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    total_sightings INTEGER DEFAULT 1,
+                    is_military BOOLEAN DEFAULT false
+                )
+            """)
+            logger.info("✓ Created aircraft_metadata table")
+
+            # Create indexes
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_positions_icao_time ON aircraft_positions (icao, time DESC);
+                CREATE INDEX IF NOT EXISTS idx_positions_time ON aircraft_positions (time DESC);
+                CREATE INDEX IF NOT EXISTS idx_positions_lat_lon ON aircraft_positions (lat, lon);
+                CREATE INDEX IF NOT EXISTS idx_metadata_reg ON aircraft_metadata (registration);
+                CREATE INDEX IF NOT EXISTS idx_metadata_type ON aircraft_metadata (aircraft_type);
+                CREATE INDEX IF NOT EXISTS idx_metadata_last_seen ON aircraft_metadata (last_seen DESC);
+                CREATE INDEX IF NOT EXISTS idx_metadata_military ON aircraft_metadata (is_military) WHERE is_military = true;
+            """)
+            logger.info("✓ Created indexes for fast queries")
+
+            # Add compression policy (compress data older than 7 days)
+            await conn.execute("""
+                SELECT add_compression_policy('aircraft_positions', INTERVAL '7 days',
+                    if_not_exists => TRUE)
+            """)
+            logger.info("✓ Added automatic compression policy (>7 days old)")
+
+            # Add retention policy (optional - keeps 90 days by default)
+            await conn.execute("""
+                SELECT add_retention_policy('aircraft_positions', INTERVAL '90 days',
+                    if_not_exists => TRUE)
+            """)
+            logger.info("✓ Added retention policy (90 days)")
+
+            logger.info("=" * 60)
+            logger.info("✅ Database initialization complete!")
+            logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+
+
 async def run_database_migrations(db_pool):
     """
     Run automatic database migrations on startup.
@@ -427,6 +551,9 @@ async def startup():
         async with db_pool.acquire() as conn:
             version = await conn.fetchval('SELECT version()')
             logger.info(f"Connected to: {version}")
+
+        # Initialize database schema if needed (automatic, no user action required)
+        await initialize_database_schema(db_pool)
 
         # Run database migrations (compression, schema updates)
         await run_database_migrations(db_pool)

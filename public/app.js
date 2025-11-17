@@ -691,452 +691,6 @@ const THEMES = {
     }
 };
 
-// ============================================================================
-// UNIFIED SIDEBAR SYSTEM
-// ============================================================================
-
-/**
- * Sidebar state management
- */
-const SidebarState = {
-    isCollapsed: false,
-    width: 320,
-    currentMode: 'live', // 'live' or 'historical'
-    footerVisible: true,
-
-    // Load from localStorage
-    load() {
-        const saved = localStorage.getItem('sidebarState');
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                this.isCollapsed = data.isCollapsed || false;
-                this.width = data.width || 320;
-                this.footerVisible = data.footerVisible !== undefined ? data.footerVisible : true;
-            } catch (e) {
-                console.error('Failed to load sidebar state:', e);
-            }
-        }
-    },
-
-    // Save to localStorage
-    save() {
-        localStorage.setItem('sidebarState', JSON.stringify({
-            isCollapsed: this.isCollapsed,
-            width: this.width,
-            footerVisible: this.footerVisible
-        }));
-    }
-};
-
-/**
- * Initialize sidebar functionality
- */
-function initSidebar() {
-    console.log('[Sidebar] Initializing unified sidebar');
-
-    // Load saved state
-    SidebarState.load();
-
-    const sidebar = document.getElementById('unified-sidebar');
-    if (!sidebar) {
-        console.error('[Sidebar] Sidebar element not found');
-        return;
-    }
-
-    // Apply saved width
-    sidebar.style.width = `${SidebarState.width}px`;
-
-    // Apply saved collapsed state
-    if (SidebarState.isCollapsed) {
-        sidebar.classList.add('collapsed');
-    }
-
-    // Apply saved footer state
-    const footerContent = document.getElementById('sidebar-footer-content');
-    if (footerContent && !SidebarState.footerVisible) {
-        footerContent.classList.add('collapsed');
-    }
-
-    // Setup event listeners
-    setupSidebarToggle();
-    setupSidebarResize();
-    setupModeToggle();
-    setupFooterToggle();
-    setupSearchBar();
-
-    console.log('[Sidebar] Initialization complete');
-}
-
-/**
- * Setup sidebar collapse/expand toggle
- */
-function setupSidebarToggle() {
-    const toggleBtn = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('unified-sidebar');
-
-    if (!toggleBtn || !sidebar) return;
-
-    toggleBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('collapsed');
-        SidebarState.isCollapsed = sidebar.classList.contains('collapsed');
-        SidebarState.save();
-    });
-}
-
-/**
- * Setup sidebar resize functionality
- */
-function setupSidebarResize() {
-    const resizeHandle = document.querySelector('.sidebar-resize-handle');
-    const sidebar = document.getElementById('unified-sidebar');
-
-    if (!resizeHandle || !sidebar) return;
-
-    let isResizing = false;
-    let startX = 0;
-    let startWidth = 0;
-
-    resizeHandle.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        startX = e.clientX;
-        startWidth = sidebar.offsetWidth;
-        document.body.style.cursor = 'ew-resize';
-        document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isResizing) return;
-
-        const delta = startX - e.clientX;
-        const newWidth = Math.max(200, Math.min(600, startWidth + delta));
-        sidebar.style.width = `${newWidth}px`;
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isResizing) {
-            isResizing = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-            SidebarState.width = sidebar.offsetWidth;
-            SidebarState.save();
-        }
-    });
-}
-
-/**
- * Setup mode toggle (Live <-> Historical)
- */
-function setupModeToggle() {
-    const modeHeader = document.getElementById('sidebar-mode-header');
-    const modeIndicator = document.getElementById('sidebar-mode-indicator');
-    const liveContent = document.getElementById('sidebar-live-content');
-    const historicalContent = document.getElementById('sidebar-historical-content');
-
-    if (!modeHeader || !modeIndicator || !liveContent || !historicalContent) return;
-
-    modeHeader.addEventListener('click', async () => {
-        if (SidebarState.currentMode === 'live') {
-            // Switch to historical mode (call existing function)
-            await switchToHistoricalMode();
-
-            // Update sidebar UI
-            SidebarState.currentMode = 'historical';
-            modeIndicator.textContent = '🕐 HISTORICAL MODE';
-            modeHeader.classList.add('historical');
-            liveContent.style.display = 'none';
-            historicalContent.style.display = 'flex';
-        } else {
-            // Switch to live mode (call existing function)
-            await switchToLiveMode();
-
-            // Update sidebar UI
-            SidebarState.currentMode = 'live';
-            modeIndicator.textContent = '🔴 LIVE MODE';
-            modeHeader.classList.remove('historical');
-            liveContent.style.display = 'flex';
-            historicalContent.style.display = 'none';
-        }
-    });
-}
-
-/**
- * Setup footer toggle (mini radar/compass)
- */
-function setupFooterToggle() {
-    const toggleBtn = document.getElementById('sidebar-footer-toggle');
-    const footerContent = document.getElementById('sidebar-footer-content');
-
-    if (!toggleBtn || !footerContent) return;
-
-    toggleBtn.addEventListener('click', () => {
-        footerContent.classList.toggle('collapsed');
-        SidebarState.footerVisible = !footerContent.classList.contains('collapsed');
-        SidebarState.save();
-
-        // Update button icon
-        toggleBtn.querySelector('span').textContent =
-            footerContent.classList.contains('collapsed') ? '⬇' : '⬆';
-    });
-}
-
-/**
- * Setup search bar functionality
- */
-function setupSearchBar() {
-    const searchInput = document.getElementById('sidebar-aircraft-search');
-    const clearBtn = document.getElementById('sidebar-search-clear');
-
-    if (!searchInput || !clearBtn) return;
-
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        updateAircraftListFilter(query);
-    });
-
-    clearBtn.addEventListener('click', () => {
-        searchInput.value = '';
-        updateAircraftListFilter('');
-    });
-}
-
-/**
- * Update aircraft list in sidebar
- */
-let lastAircraftSet = new Set();
-function updateSidebarAircraftList(data) {
-    const listContainer = document.getElementById('sidebar-aircraft-list');
-    const countElem = document.getElementById('sidebar-aircraft-count');
-    const positionedElem = document.getElementById('sidebar-aircraft-positioned');
-    const updateElem = document.getElementById('sidebar-last-update');
-
-    if (!listContainer) return;
-    if (!data || !data.aircraft) return;
-
-    // Update stats using raw aircraft data
-    const totalAircraft = data.aircraft.length;
-    const validAircraft = data.aircraft.filter(ac => ac.lat && ac.lon && ac.alt_baro);
-    const positionedAircraft = validAircraft.length;
-
-    if (countElem) countElem.textContent = totalAircraft;
-    if (positionedElem) positionedElem.textContent = positionedAircraft;
-    if (updateElem) updateElem.textContent = new Date().toLocaleTimeString();
-
-    // Check if aircraft set has changed (to prevent unnecessary rebuilds)
-    const currentAircraftSet = new Set(validAircraft.map(ac => ac.hex));
-    const hasChanges = currentAircraftSet.size !== lastAircraftSet.size ||
-        ![...currentAircraftSet].every(hex => lastAircraftSet.has(hex));
-
-    // Only rebuild list if aircraft set has changed
-    if (!hasChanges) {
-        // Just update selected state without rebuilding
-        const items = listContainer.querySelectorAll('.sidebar-aircraft-item');
-        items.forEach(item => {
-            if (item.dataset.hex === selectedAircraft) {
-                item.classList.add('selected');
-            } else {
-                item.classList.remove('selected');
-            }
-        });
-        return;
-    }
-
-    lastAircraftSet = currentAircraftSet;
-
-    // Find highest/fastest/closest aircraft for badges
-    let highestHex = null, fastestHex = null, closestHex = null;
-
-    if (validAircraft.length > 0) {
-        // Find highest
-        const highest = validAircraft.reduce((max, ac) => (ac.alt_baro > max.alt_baro) ? ac : max);
-        highestHex = highest.hex;
-
-        // Find fastest
-        const withSpeed = validAircraft.filter(ac => ac.gs);
-        if (withSpeed.length > 0) {
-            const fastest = withSpeed.reduce((max, ac) => (ac.gs > max.gs) ? ac : max);
-            fastestHex = fastest.hex;
-        }
-
-        // Find closest
-        const withDistance = validAircraft.filter(ac => ac.r_dst || ac.distance);
-        if (withDistance.length > 0) {
-            const closest = withDistance.reduce((min, ac) => {
-                const dist = ac.r_dst || ac.distance || 999;
-                const minDist = min.r_dst || min.distance || 999;
-                return dist < minDist ? ac : min;
-            });
-            closestHex = closest.hex;
-        }
-    }
-
-    // Build aircraft list sorted by distance
-    const sortedAircraft = validAircraft
-        .sort((a, b) => (a.distance || 0) - (b.distance || 0));
-
-    // Clear existing list
-    listContainer.innerHTML = '';
-
-    // Add aircraft items
-    sortedAircraft.forEach(ac => {
-        const item = document.createElement('div');
-        item.className = 'sidebar-aircraft-item';
-        item.dataset.hex = ac.hex;
-
-        if (selectedAircraft === ac.hex) {
-            item.classList.add('selected');
-        }
-
-        const callsign = ac.flight ? ac.flight.trim() : ac.hex.toUpperCase();
-        const altitude = ac.alt_baro ? `${Math.round(ac.alt_baro).toLocaleString()}ft` : 'N/A';
-        const speed = ac.gs ? `${Math.round(ac.gs)}kts` : 'N/A';
-        const distance = ac.distance ? `${ac.distance.toFixed(1)}km` : '';
-        const registration = ac.r || '';
-        const type = ac.t || '';
-        const squawk = ac.squawk || '';
-        const heading = ac.track ? `${Math.round(ac.track)}°` : '';
-
-        // Add vertical rate indicator with actual rate
-        let verticalIndicator = '';
-        let verticalRateText = '';
-        const verticalRate = ac.baro_rate ?? ac.geom_rate;
-        if (verticalRate) {
-            if (verticalRate > 64) {
-                verticalIndicator = ' ▲';
-                verticalRateText = `+${Math.abs(verticalRate)}fpm`;
-            } else if (verticalRate < -64) {
-                verticalIndicator = ' ▼';
-                verticalRateText = `${verticalRate}fpm`;
-            }
-        }
-
-        // Build badges
-        let badges = '';
-        const isMilitary = isMilitaryAircraft(ac.hex);
-        const isMLAT = ac.mlat && ac.mlat.length > 0;
-
-        // Military badge (red) - highest priority
-        if (isMilitary) {
-            badges += '<span class="badge badge-military">🛡️ MIL</span>';
-        }
-
-        // MLAT badge (orange) - if not military
-        if (!isMilitary && isMLAT) {
-            badges += '<span class="badge badge-mlat">MLAT</span>';
-        }
-
-        // Stats badges (blue)
-        if (ac.hex === highestHex) {
-            badges += '<span class="badge badge-stat">HIGHEST</span>';
-        }
-        if (ac.hex === fastestHex) {
-            badges += '<span class="badge badge-stat">FASTEST</span>';
-        }
-        if (ac.hex === closestHex) {
-            badges += '<span class="badge badge-stat">CLOSEST</span>';
-        }
-
-        item.innerHTML = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
-                <strong style="color: var(--text-accent); font-size: 13px;">${callsign}${verticalIndicator}</strong>
-                <span style="color: var(--text-secondary); font-size: 10px;">${distance}</span>
-            </div>
-            ${badges ? `<div style="margin-bottom: 3px;">${badges}</div>` : ''}
-            <div style="display: flex; gap: 12px; font-size: 10px; color: var(--text-secondary);">
-                <span>Alt: ${altitude}</span>
-                <span>Spd: ${speed}</span>
-                ${heading ? `<span>Hdg: ${heading}</span>` : ''}
-            </div>
-            <div style="display: flex; gap: 12px; font-size: 9px; color: var(--text-secondary); margin-top: 2px;">
-                ${registration ? `<span>Reg: ${registration}</span>` : ''}
-                ${type ? `<span>Type: ${type}</span>` : ''}
-                ${squawk ? `<span>Sqk: ${squawk}</span>` : ''}
-                ${verticalRateText ? `<span>${verticalRateText}</span>` : ''}
-            </div>
-        `;
-
-        // Click to select/follow aircraft
-        item.addEventListener('click', () => {
-            selectAircraft(ac.hex);
-        });
-
-        // Hover to highlight aircraft in 3D scene
-        item.addEventListener('mouseenter', () => {
-            highlightAircraft(ac.hex, true);
-        });
-
-        item.addEventListener('mouseleave', () => {
-            highlightAircraft(ac.hex, false);
-        });
-
-        listContainer.appendChild(item);
-    });
-}
-
-/**
- * Filter aircraft list by search query
- */
-function updateAircraftListFilter(query) {
-    const items = document.querySelectorAll('.sidebar-aircraft-item');
-
-    items.forEach(item => {
-        const hex = item.dataset.hex;
-        const mesh = aircraftMeshes.get(hex);
-        const aircraft = mesh ? mesh.userData : null;
-
-        if (!aircraft) {
-            item.style.display = 'none';
-            return;
-        }
-
-        // Comprehensive search fields
-        const callsign = aircraft.flight ? aircraft.flight.trim().toLowerCase() : '';
-        const tail = aircraft.r ? aircraft.r.toLowerCase() : '';  // Registration
-        const type = aircraft.t ? aircraft.t.toLowerCase() : '';  // Type code (e.g., B738, C172)
-        const desc = aircraft.desc ? aircraft.desc.toLowerCase() : '';  // Full description
-        const owner = aircraft.ownOp ? aircraft.ownOp.toLowerCase() : '';  // Owner/operator
-        const squawk = aircraft.squawk ? aircraft.squawk.toLowerCase() : '';
-        const category = aircraft.category ? aircraft.category.toLowerCase() : '';
-
-        // Check common aircraft model names
-        const commonNames = {
-            'c172': ['cessna', '172', 'skyhawk'],
-            'c182': ['cessna', '182', 'skylane'],
-            'pa28': ['piper', 'cherokee', 'warrior'],
-            'b737': ['boeing', '737'],
-            'b738': ['boeing', '737-800'],
-            'a320': ['airbus', 'a320'],
-            'a321': ['airbus', 'a321']
-        };
-
-        // Check if query matches any common names
-        let matchesCommon = false;
-        for (const [code, names] of Object.entries(commonNames)) {
-            if (type === code || desc.includes(code)) {
-                matchesCommon = names.some(name => name.includes(query));
-                if (matchesCommon) break;
-            }
-        }
-
-        const matches =
-            hex.toLowerCase().includes(query) ||
-            callsign.includes(query) ||
-            tail.includes(query) ||
-            type.includes(query) ||
-            desc.includes(query) ||
-            owner.includes(query) ||
-            squawk.includes(query) ||
-            category.includes(query) ||
-            matchesCommon ||
-            // Special searches
-            (query === 'military' && aircraft.isMilitary) ||
-            (query === 'ground' && category === 'c0') ||
-            (query === 'helicopter' && (category === 'a7' || type.startsWith('h')));
-
-        item.style.display = matches ? 'block' : 'none';
-    });
-}
-
 /**
  * Apply a theme to the application
  * @param {string} themeName - Name of theme from THEMES object
@@ -5409,8 +4963,8 @@ function init() {
     // Create sky with gradient
     createSky();
 
-    // Minimal fog for depth perception - ultra light to reduce artifacts
-    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.00015);  // Reduced from 0.0003
+    // Minimal fog for depth perception - very light to support 600km+ visibility
+    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.0003);
 
     // Camera
     camera = new THREE.PerspectiveCamera(
@@ -5546,9 +5100,6 @@ function init() {
         console.log('[RecentTrails] Auto-loading trails on startup');
         setTimeout(() => loadRecentTrails(), 2000); // Wait 2s for initial aircraft data
     }
-
-    // Initialize unified sidebar
-    initSidebar();
 }
 
 // Create realistic sky with gradient
@@ -5836,7 +5387,7 @@ function createExtendedGrid() {
 
     // Rotate to be horizontal and position slightly below ground
     gridHelper.rotation.x = 0;
-    gridHelper.position.y = -0.5; // Further below to prevent z-fighting with ground
+    gridHelper.position.y = -0.2; // Below the map tiles
 
     // Make it semi-transparent
     gridHelper.material.opacity = 0.4; // Slightly more visible
@@ -7530,43 +7081,10 @@ function setupKeyboardShortcuts() {
     }
 
     document.addEventListener('keydown', (e) => {
-        // Ignore if typing in an input field (except for Escape and some Ctrl combos)
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            // Allow Escape to blur input fields
-            if (e.key === 'Escape') {
-                e.target.blur();
-                showKeyboardHint('Search Cleared <kbd>ESC</kbd>');
-                return;
-            }
-            // Otherwise ignore keyboard shortcuts while typing
-            if (!e.ctrlKey && !e.metaKey) return;
-        }
+        // Ignore if typing in an input field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         switch(e.key.toLowerCase()) {
-            case '/':
-            case 'f':
-                // Focus search (/ for vim-like, f for find)
-                if (!e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                    const searchInput = document.getElementById('sidebar-aircraft-search');
-                    if (searchInput) {
-                        searchInput.focus();
-                        searchInput.select();
-                        showKeyboardHint('Search Aircraft <kbd>/</kbd> or <kbd>F</kbd>');
-                    }
-                }
-                break;
-            case 'b':
-                // Toggle sidebar (B for bar)
-                if (!e.ctrlKey && !e.metaKey) {
-                    const sidebar = document.querySelector('.sidebar');
-                    if (sidebar) {
-                        sidebar.classList.toggle('collapsed');
-                        const isCollapsed = sidebar.classList.contains('collapsed');
-                        showKeyboardHint(`Sidebar ${isCollapsed ? 'Hidden' : 'Shown'} <kbd>B</kbd>`);
-                    }
-                }
-                break;
             case 'r':
                 // Reset camera
                 document.getElementById('reset-camera').click();
@@ -8070,7 +7588,6 @@ async function fetchAircraftData() {
         if (currentMode === 'live') {
             updateAircraft(data.aircraft || []);
             updateUI(data);
-            updateSidebarAircraftList(data);
         }
     } catch (error) {
         fetchErrorCount++;
@@ -8274,18 +7791,12 @@ function updateAircraft(aircraft) {
             // Update sprite rotation if in sprite mode and heading changed
             if (useSpriteMode && ac.track !== undefined) {
                 mesh.children.forEach(child => {
-                    if (child.userData.isSprite && !child.userData.noRotate) {
+                    if (child.userData.isSprite) {
                         const oldHeading = child.userData.spriteHeading || 0;
                         const newHeading = ac.track;
 
-                        // Calculate shortest angular distance (handles 359°→1° as 2° not 358°)
-                        let headingDiff = newHeading - oldHeading;
-                        // Normalize to [-180, 180] range
-                        while (headingDiff > 180) headingDiff -= 360;
-                        while (headingDiff < -180) headingDiff += 360;
-
                         // Update if heading changed by more than 2 degrees
-                        if (Math.abs(headingDiff) > 2.0) {
+                        if (Math.abs(newHeading - oldHeading) > 2.0) {
                             // Rotate around Y axis for horizontal plane, negative like runways
                             // NOTE: -90° SVG offset is baked into geometry, so only apply heading here
                             child.rotation.y = -(newHeading * Math.PI / 180);
@@ -8470,8 +7981,8 @@ function createAircraftModel(color, aircraftData = null) {
                 transparent: true,
                 alphaTest: 0.1,
                 side: THREE.DoubleSide,
-                depthWrite: false,  // Keep false for proper transparency blending
-                depthTest: true     // Keep true to prevent z-fighting between nearby aircraft
+                depthWrite: true,
+                depthTest: true
             });
 
             const plane = new THREE.Mesh(geometry, material);
@@ -8480,19 +7991,17 @@ function createAircraftModel(color, aircraftData = null) {
             const shapeInfo = window.AircraftSVGSystem.AIRCRAFT_SHAPES[shapeName];
             const noRotate = shapeInfo && shapeInfo.noRotate === true;
 
-            // Apply initial rotation to sprite child (parent group stays at 0)
-            // Only rotate if not a noRotate shape (balloons, ground vehicles)
-            if (!noRotate) {
-                plane.rotation.y = -(heading * Math.PI / 180);
-            }
+            // NOTE: Rotation will be applied to the GROUP (parent), not the plane child
+            // This is handled in createAircraft() after the group is created
+            // Don't rotate the child here - just store the heading for later
 
             // Store metadata for updates (use spriteHeading for consistency with update code)
             plane.userData.aircraftShape = shapeName;
             plane.userData.aircraftType = typeDesignator;
             plane.userData.aircraftCategory = category;
             plane.userData.noRotate = noRotate; // Store for later updates
-            plane.userData.spriteHeading = heading;  // Store current heading for update logic
-            plane.userData.isSprite = true;  // Mark as sprite
+            plane.userData.spriteHeading = heading;  // Changed from aircraftHeading to spriteHeading
+            plane.userData.isSprite = true;  // Keep compatibility
 
             group.add(plane);
         } else {
@@ -8549,7 +8058,8 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     // Calculate signal quality and apply opacity
     const signalQuality = getSignalQuality(aircraftData);
 
-    mesh.userData = aircraftData;
+    // IMPORTANT: Don't overwrite userData, merge it to preserve isSprite flag
+    Object.assign(mesh.userData, aircraftData);
     mesh.userData.isMLAT = isMLAT;
     mesh.userData.isVeryLow = isVeryLow;
     mesh.userData.isMilitary = isMilitary;
@@ -8559,17 +8069,12 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     mesh.userData.noRotate = noRotate; // Copy from child for rotation logic
     mesh.userData.signalQuality = signalQuality; // Store signal quality for detail display
 
-    // Apply initial rotation to the GROUP (not the child plane)
-    // IMPORTANT: Skip rotation for sprites - they handle their own rotation via child
-    // Only rotate parent mesh for sphere mode
-
-    if (!isSprite && !noRotate && aircraftData.track !== undefined) {
-        const trackRad = aircraftData.track * Math.PI / 180;
-        mesh.rotation.y = -trackRad;
-    } else if (!isSprite && !noRotate) {
-        mesh.rotation.y = 0; // Default pointing south (will update when track available)
-    }
-    // For sprites or noRotate shapes, leave parent rotation at 0
+    // Rotation logic:
+    // - Sprites: No rotation needed (heading baked into texture)
+    // - Spheres: No rotation needed (they're SPHERES - they look the same from every angle!)
+    // - Only special shapes with noRotate need to maintain orientation
+    //
+    // So basically... we don't need to rotate anything! 😂
 
     // DEBUG: Log aircraft creation with detailed info
     console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
@@ -8885,24 +8390,10 @@ function updateAircraftPosition(hex, x, y, z) {
         }
     });
 
-    // Update rotation based on track (heading)
-    // IMPORTANT: Skip rotation for sprites - they handle their own rotation via child
-    // Also skip for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
-    if (!mesh.userData.isSprite && mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
-        const trackRad = mesh.userData.track * Math.PI / 180;
-
-        // DEBUG: Log rotation calculation for first few frames
-        if (Math.random() < 0.01) {
-            console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
-        }
-
-        // Only apply rotation for sphere mode
-        mesh.rotation.y = -trackRad;
-    } else if (!mesh.userData.isSprite && mesh.userData.noRotate !== true) {
-        // Default orientation if no track data (sphere mode only)
-        mesh.rotation.y = 0;
-    }
-    // If isSprite or noRotate, leave parent rotation unchanged
+    // No rotation updates needed!
+    // - Sprites: heading is baked into texture
+    // - Spheres: they're PERFECT SPHERES - rotation is meaningless!
+    // We were carefully rotating objects that look identical from every angle 🤦
 
     // Reapply highlight if this aircraft is currently hovered on canvas
     if (currentlyHoveredCanvasAircraft === hex) {
@@ -9568,16 +9059,6 @@ function highlightAircraft(hex, highlight) {
     const label = aircraftLabels.get(hex);
 
     console.log(`[Highlight] Aircraft ${hex}, highlight=${highlight}, mesh=${!!mesh}, trail=${!!trail}, label=${!!label}`);
-
-    // Highlight/unhighlight sidebar item
-    const sidebarItem = document.querySelector(`.sidebar-aircraft-item[data-hex="${hex}"]`);
-    if (sidebarItem) {
-        if (highlight) {
-            sidebarItem.classList.add('highlighted');
-        } else {
-            sidebarItem.classList.remove('highlighted');
-        }
-    }
 
     if (mesh) {
         // Scale up aircraft when highlighted
