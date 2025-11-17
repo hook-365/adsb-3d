@@ -2101,8 +2101,9 @@
             position: fixed;
             top: 0;
             right: 0;
+            bottom: 60px; /* Account for footer bar height */
             width: 320px;
-            height: 100vh;
+            height: calc(100vh - 60px); /* Subtract footer height */
             background: var(--panel-bg);
             backdrop-filter: var(--panel-blur);
             border-left: var(--panel-border-width) solid var(--panel-border);

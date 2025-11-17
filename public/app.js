@@ -988,18 +988,25 @@ function updateSidebarAircraftList(data) {
         }
 
         const callsign = ac.flight ? ac.flight.trim() : ac.hex.toUpperCase();
-        const altitude = ac.alt_baro ? `${Math.round(ac.alt_baro)}ft` : 'N/A';
+        const altitude = ac.alt_baro ? `${Math.round(ac.alt_baro).toLocaleString()}ft` : 'N/A';
         const speed = ac.gs ? `${Math.round(ac.gs)}kts` : 'N/A';
         const distance = ac.distance ? `${ac.distance.toFixed(1)}km` : '';
+        const registration = ac.r || '';
+        const type = ac.t || '';
+        const squawk = ac.squawk || '';
+        const heading = ac.track ? `${Math.round(ac.track)}°` : '';
 
-        // Add vertical rate indicator
+        // Add vertical rate indicator with actual rate
         let verticalIndicator = '';
+        let verticalRateText = '';
         const verticalRate = ac.baro_rate ?? ac.geom_rate;
         if (verticalRate) {
             if (verticalRate > 64) {
                 verticalIndicator = ' ▲';
+                verticalRateText = `+${Math.abs(verticalRate)}fpm`;
             } else if (verticalRate < -64) {
                 verticalIndicator = ' ▼';
+                verticalRateText = `${verticalRate}fpm`;
             }
         }
 
@@ -1034,10 +1041,17 @@ function updateSidebarAircraftList(data) {
                 <strong style="color: var(--text-accent); font-size: 13px;">${callsign}${verticalIndicator}</strong>
                 <span style="color: var(--text-secondary); font-size: 10px;">${distance}</span>
             </div>
-            <div style="margin-bottom: 3px;">${badges}</div>
+            ${badges ? `<div style="margin-bottom: 3px;">${badges}</div>` : ''}
             <div style="display: flex; gap: 12px; font-size: 10px; color: var(--text-secondary);">
                 <span>Alt: ${altitude}</span>
                 <span>Spd: ${speed}</span>
+                ${heading ? `<span>Hdg: ${heading}</span>` : ''}
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 9px; color: var(--text-secondary); margin-top: 2px;">
+                ${registration ? `<span>Reg: ${registration}</span>` : ''}
+                ${type ? `<span>Type: ${type}</span>` : ''}
+                ${squawk ? `<span>Sqk: ${squawk}</span>` : ''}
+                ${verticalRateText ? `<span>${verticalRateText}</span>` : ''}
             </div>
         `;
 
@@ -1075,15 +1089,49 @@ function updateAircraftListFilter(query) {
             return;
         }
 
+        // Comprehensive search fields
         const callsign = aircraft.flight ? aircraft.flight.trim().toLowerCase() : '';
-        const tail = aircraft.r ? aircraft.r.toLowerCase() : '';
-        const type = aircraft.t ? aircraft.t.toLowerCase() : '';
+        const tail = aircraft.r ? aircraft.r.toLowerCase() : '';  // Registration
+        const type = aircraft.t ? aircraft.t.toLowerCase() : '';  // Type code (e.g., B738, C172)
+        const desc = aircraft.desc ? aircraft.desc.toLowerCase() : '';  // Full description
+        const owner = aircraft.ownOp ? aircraft.ownOp.toLowerCase() : '';  // Owner/operator
+        const squawk = aircraft.squawk ? aircraft.squawk.toLowerCase() : '';
+        const category = aircraft.category ? aircraft.category.toLowerCase() : '';
+
+        // Check common aircraft model names
+        const commonNames = {
+            'c172': ['cessna', '172', 'skyhawk'],
+            'c182': ['cessna', '182', 'skylane'],
+            'pa28': ['piper', 'cherokee', 'warrior'],
+            'b737': ['boeing', '737'],
+            'b738': ['boeing', '737-800'],
+            'a320': ['airbus', 'a320'],
+            'a321': ['airbus', 'a321']
+        };
+
+        // Check if query matches any common names
+        let matchesCommon = false;
+        for (const [code, names] of Object.entries(commonNames)) {
+            if (type === code || desc.includes(code)) {
+                matchesCommon = names.some(name => name.includes(query));
+                if (matchesCommon) break;
+            }
+        }
 
         const matches =
             hex.toLowerCase().includes(query) ||
             callsign.includes(query) ||
             tail.includes(query) ||
-            type.includes(query);
+            type.includes(query) ||
+            desc.includes(query) ||
+            owner.includes(query) ||
+            squawk.includes(query) ||
+            category.includes(query) ||
+            matchesCommon ||
+            // Special searches
+            (query === 'military' && aircraft.isMilitary) ||
+            (query === 'ground' && category === 'c0') ||
+            (query === 'helicopter' && (category === 'a7' || type.startsWith('h')));
 
         item.style.display = matches ? 'block' : 'none';
     });
@@ -7482,10 +7530,43 @@ function setupKeyboardShortcuts() {
     }
 
     document.addEventListener('keydown', (e) => {
-        // Ignore if typing in an input field
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        // Ignore if typing in an input field (except for Escape and some Ctrl combos)
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            // Allow Escape to blur input fields
+            if (e.key === 'Escape') {
+                e.target.blur();
+                showKeyboardHint('Search Cleared <kbd>ESC</kbd>');
+                return;
+            }
+            // Otherwise ignore keyboard shortcuts while typing
+            if (!e.ctrlKey && !e.metaKey) return;
+        }
 
         switch(e.key.toLowerCase()) {
+            case '/':
+            case 'f':
+                // Focus search (/ for vim-like, f for find)
+                if (!e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    const searchInput = document.getElementById('sidebar-aircraft-search');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                        showKeyboardHint('Search Aircraft <kbd>/</kbd> or <kbd>F</kbd>');
+                    }
+                }
+                break;
+            case 'b':
+                // Toggle sidebar (B for bar)
+                if (!e.ctrlKey && !e.metaKey) {
+                    const sidebar = document.querySelector('.sidebar');
+                    if (sidebar) {
+                        sidebar.classList.toggle('collapsed');
+                        const isCollapsed = sidebar.classList.contains('collapsed');
+                        showKeyboardHint(`Sidebar ${isCollapsed ? 'Hidden' : 'Shown'} <kbd>B</kbd>`);
+                    }
+                }
+                break;
             case 'r':
                 // Reset camera
                 document.getElementById('reset-camera').click();
