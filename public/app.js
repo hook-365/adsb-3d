@@ -7797,9 +7797,9 @@ function updateAircraft(aircraft) {
 
                         // Update if heading changed by more than 2 degrees
                         if (Math.abs(newHeading - oldHeading) > 2.0) {
-                            // Rotate around Y axis for horizontal plane, negative like runways
-                            // NOTE: -90° SVG offset is baked into geometry, so only apply heading here
-                            child.rotation.y = -(newHeading * Math.PI / 180);
+                            // DO NOT ROTATE SPRITES!
+                            // The heading is baked into the texture when created.
+                            // child.rotation.y = -(newHeading * Math.PI / 180); // This causes sideways flying!
                             child.userData.spriteHeading = newHeading;
 
                             // Log rotation updates (sample 1% to avoid spam)
@@ -7991,9 +7991,13 @@ function createAircraftModel(color, aircraftData = null) {
             const shapeInfo = window.AircraftSVGSystem.AIRCRAFT_SHAPES[shapeName];
             const noRotate = shapeInfo && shapeInfo.noRotate === true;
 
-            // NOTE: Rotation will be applied to the GROUP (parent), not the plane child
-            // This is handled in createAircraft() after the group is created
-            // Don't rotate the child here - just store the heading for later
+            // Apply rotation to match heading
+            // The SVG textures are all generated facing the same direction (north)
+            // We need to rotate them to match the aircraft's actual heading
+            if (!noRotate && heading !== undefined) {
+                // Simple rotation - just apply the heading
+                plane.rotation.y = -(heading * Math.PI / 180);
+            }
 
             // Store metadata for updates (use spriteHeading for consistency with update code)
             plane.userData.aircraftShape = shapeName;
