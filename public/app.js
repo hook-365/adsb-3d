@@ -1046,6 +1046,15 @@ function updateSidebarAircraftList(data) {
             selectAircraft(ac.hex);
         });
 
+        // Hover to highlight aircraft in 3D scene
+        item.addEventListener('mouseenter', () => {
+            highlightAircraft(ac.hex, true);
+        });
+
+        item.addEventListener('mouseleave', () => {
+            highlightAircraft(ac.hex, false);
+        });
+
         listContainer.appendChild(item);
     });
 }
@@ -5352,8 +5361,8 @@ function init() {
     // Create sky with gradient
     createSky();
 
-    // Minimal fog for depth perception - very light to support 600km+ visibility
-    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.0003);
+    // Minimal fog for depth perception - ultra light to reduce artifacts
+    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.00015);  // Reduced from 0.0003
 
     // Camera
     camera = new THREE.PerspectiveCamera(
@@ -5779,7 +5788,7 @@ function createExtendedGrid() {
 
     // Rotate to be horizontal and position slightly below ground
     gridHelper.rotation.x = 0;
-    gridHelper.position.y = -0.2; // Below the map tiles
+    gridHelper.position.y = -0.5; // Further below to prevent z-fighting with ground
 
     // Make it semi-transparent
     gridHelper.material.opacity = 0.4; // Slightly more visible
@@ -8184,12 +8193,18 @@ function updateAircraft(aircraft) {
             // Update sprite rotation if in sprite mode and heading changed
             if (useSpriteMode && ac.track !== undefined) {
                 mesh.children.forEach(child => {
-                    if (child.userData.isSprite) {
+                    if (child.userData.isSprite && !child.userData.noRotate) {
                         const oldHeading = child.userData.spriteHeading || 0;
                         const newHeading = ac.track;
 
+                        // Calculate shortest angular distance (handles 359°→1° as 2° not 358°)
+                        let headingDiff = newHeading - oldHeading;
+                        // Normalize to [-180, 180] range
+                        while (headingDiff > 180) headingDiff -= 360;
+                        while (headingDiff < -180) headingDiff += 360;
+
                         // Update if heading changed by more than 2 degrees
-                        if (Math.abs(newHeading - oldHeading) > 2.0) {
+                        if (Math.abs(headingDiff) > 2.0) {
                             // Rotate around Y axis for horizontal plane, negative like runways
                             // NOTE: -90° SVG offset is baked into geometry, so only apply heading here
                             child.rotation.y = -(newHeading * Math.PI / 180);
@@ -8374,8 +8389,8 @@ function createAircraftModel(color, aircraftData = null) {
                 transparent: true,
                 alphaTest: 0.1,
                 side: THREE.DoubleSide,
-                depthWrite: true,
-                depthTest: true
+                depthWrite: false,  // Keep false for proper transparency blending
+                depthTest: true     // Keep true to prevent z-fighting between nearby aircraft
             });
 
             const plane = new THREE.Mesh(geometry, material);
@@ -8384,8 +8399,8 @@ function createAircraftModel(color, aircraftData = null) {
             const shapeInfo = window.AircraftSVGSystem.AIRCRAFT_SHAPES[shapeName];
             const noRotate = shapeInfo && shapeInfo.noRotate === true;
 
-            // Apply initial rotation to sprite child (not parent group)
-            // Parent rotation is skipped for sprites in createAircraft()
+            // Apply initial rotation to sprite child (parent group stays at 0)
+            // Only rotate if not a noRotate shape (balloons, ground vehicles)
             if (!noRotate) {
                 plane.rotation.y = -(heading * Math.PI / 180);
             }
@@ -8395,8 +8410,8 @@ function createAircraftModel(color, aircraftData = null) {
             plane.userData.aircraftType = typeDesignator;
             plane.userData.aircraftCategory = category;
             plane.userData.noRotate = noRotate; // Store for later updates
-            plane.userData.spriteHeading = heading;  // Store current heading for update comparison
-            plane.userData.isSprite = true;  // Mark as sprite for rotation logic
+            plane.userData.spriteHeading = heading;  // Store current heading for update logic
+            plane.userData.isSprite = true;  // Mark as sprite
 
             group.add(plane);
         } else {
@@ -8464,12 +8479,8 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     mesh.userData.signalQuality = signalQuality; // Store signal quality for detail display
 
     // Apply initial rotation to the GROUP (not the child plane)
-    // Geometry already has rotateX baked in, making it horizontal with nose pointing +Z (south)
-    // We only need to rotate around Y axis for heading
-
-    // IMPORTANT: Only rotate parent mesh if NOT using sprite mode
-    // Sprite children handle their own rotation via child.rotation.y in updateAircraft()
-    // (isSprite variable already set above via mesh.traverse)
+    // IMPORTANT: Skip rotation for sprites - they handle their own rotation via child
+    // Only rotate parent mesh for sphere mode
 
     if (!isSprite && !noRotate && aircraftData.track !== undefined) {
         const trackRad = aircraftData.track * Math.PI / 180;
@@ -8477,7 +8488,7 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     } else if (!isSprite && !noRotate) {
         mesh.rotation.y = 0; // Default pointing south (will update when track available)
     }
-    // For sprites or noRotate shapes, leave parent rotation at 0 (child handles its own rotation)
+    // For sprites or noRotate shapes, leave parent rotation at 0
 
     // DEBUG: Log aircraft creation with detailed info
     console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
@@ -8794,9 +8805,9 @@ function updateAircraftPosition(hex, x, y, z) {
     });
 
     // Update rotation based on track (heading)
-    // Skip rotation for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
-    // IMPORTANT: Also skip for sprites - they handle rotation via child.rotation.y in updateAircraft()
-    if (mesh.userData.noRotate !== true && !mesh.userData.isSprite && mesh.userData.track !== undefined) {
+    // IMPORTANT: Skip rotation for sprites - they handle their own rotation via child
+    // Also skip for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
+    if (!mesh.userData.isSprite && mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
         const trackRad = mesh.userData.track * Math.PI / 180;
 
         // DEBUG: Log rotation calculation for first few frames
@@ -8804,13 +8815,13 @@ function updateAircraftPosition(hex, x, y, z) {
             console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
         }
 
-        // Geometry has rotateX baked in, only need Y rotation for sphere mode
+        // Only apply rotation for sphere mode
         mesh.rotation.y = -trackRad;
-    } else if (mesh.userData.noRotate !== true && !mesh.userData.isSprite) {
+    } else if (!mesh.userData.isSprite && mesh.userData.noRotate !== true) {
         // Default orientation if no track data (sphere mode only)
         mesh.rotation.y = 0;
     }
-    // If noRotate or isSprite, leave parent rotation unchanged (sprites rotate their child)
+    // If isSprite or noRotate, leave parent rotation unchanged
 
     // Reapply highlight if this aircraft is currently hovered on canvas
     if (currentlyHoveredCanvasAircraft === hex) {
@@ -9476,6 +9487,16 @@ function highlightAircraft(hex, highlight) {
     const label = aircraftLabels.get(hex);
 
     console.log(`[Highlight] Aircraft ${hex}, highlight=${highlight}, mesh=${!!mesh}, trail=${!!trail}, label=${!!label}`);
+
+    // Highlight/unhighlight sidebar item
+    const sidebarItem = document.querySelector(`.sidebar-aircraft-item[data-hex="${hex}"]`);
+    if (sidebarItem) {
+        if (highlight) {
+            sidebarItem.classList.add('highlighted');
+        } else {
+            sidebarItem.classList.remove('highlighted');
+        }
+    }
 
     if (mesh) {
         // Scale up aircraft when highlighted
