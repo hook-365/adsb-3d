@@ -8074,8 +8074,8 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
 
     if (!noRotate && aircraftData.track !== undefined) {
         const trackRad = aircraftData.track * Math.PI / 180;
-        // If backwards with trackRad, try negative rotation
-        mesh.rotation.y = -trackRad;
+        // Apply rotation to match heading
+        mesh.rotation.y = trackRad;
     } else if (!noRotate) {
         mesh.rotation.y = 0; // Default pointing south (will update when track available)
     }
@@ -8405,9 +8405,9 @@ function updateAircraftPosition(hex, x, y, z) {
             console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
         }
 
-        // Geometry has rotateX baked in, only need Y rotation
-        // Testing: negative trackRad
-        mesh.rotation.y = -trackRad;
+        // Apply rotation based on heading
+        // Aircraft models face south by default, rotate to match track
+        mesh.rotation.y = trackRad;
     } else if (mesh.userData.noRotate !== true) {
         // Default orientation if no track data
         mesh.rotation.y = 0;
