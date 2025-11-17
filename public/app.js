@@ -8469,7 +8469,7 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
 
     // IMPORTANT: Only rotate parent mesh if NOT using sprite mode
     // Sprite children handle their own rotation via child.rotation.y in updateAircraft()
-    const isSprite = mesh.children.some(child => child.userData.isSprite);
+    // (isSprite variable already set above via mesh.traverse)
 
     if (!isSprite && !noRotate && aircraftData.track !== undefined) {
         const trackRad = aircraftData.track * Math.PI / 180;
