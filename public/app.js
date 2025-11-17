@@ -8069,18 +8069,12 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     mesh.userData.noRotate = noRotate; // Copy from child for rotation logic
     mesh.userData.signalQuality = signalQuality; // Store signal quality for detail display
 
-    // Apply initial rotation to the GROUP (not the child plane)
-    // IMPORTANT: Skip rotation for sprites - they have heading baked into texture
-    // Only rotate for sphere mode
-
-    if (!isSprite && !noRotate && aircraftData.track !== undefined) {
-        const trackRad = aircraftData.track * Math.PI / 180;
-        // Apply rotation for sphere mode only
-        mesh.rotation.y = -trackRad;
-    } else if (!isSprite && !noRotate) {
-        mesh.rotation.y = 0; // Default pointing south (will update when track available)
-    }
-    // For noRotate shapes, leave rotation at 0
+    // Rotation logic:
+    // - Sprites: No rotation needed (heading baked into texture)
+    // - Spheres: No rotation needed (they're SPHERES - they look the same from every angle!)
+    // - Only special shapes with noRotate need to maintain orientation
+    //
+    // So basically... we don't need to rotate anything! 😂
 
     // DEBUG: Log aircraft creation with detailed info
     console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
@@ -8396,18 +8390,10 @@ function updateAircraftPosition(hex, x, y, z) {
         }
     });
 
-    // Update rotation based on track (heading)
-    // IMPORTANT: Skip rotation for sprites - they have heading baked into texture
-    // Also skip for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
-    if (!mesh.userData.isSprite && mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
-        const trackRad = mesh.userData.track * Math.PI / 180;
-        // Apply rotation for sphere mode only
-        mesh.rotation.y = -trackRad;
-    } else if (!mesh.userData.isSprite && mesh.userData.noRotate !== true) {
-        // Default orientation if no track data (sphere mode only)
-        mesh.rotation.y = 0;
-    }
-    // If noRotate is true, leave rotation unchanged (0,0,0)
+    // No rotation updates needed!
+    // - Sprites: heading is baked into texture
+    // - Spheres: they're PERFECT SPHERES - rotation is meaningless!
+    // We were carefully rotating objects that look identical from every angle 🤦
 
     // Reapply highlight if this aircraft is currently hovered on canvas
     if (currentlyHoveredCanvasAircraft === hex) {
