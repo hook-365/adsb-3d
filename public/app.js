@@ -8058,7 +8058,8 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     // Calculate signal quality and apply opacity
     const signalQuality = getSignalQuality(aircraftData);
 
-    mesh.userData = aircraftData;
+    // IMPORTANT: Don't overwrite userData, merge it to preserve isSprite flag
+    Object.assign(mesh.userData, aircraftData);
     mesh.userData.isMLAT = isMLAT;
     mesh.userData.isVeryLow = isVeryLow;
     mesh.userData.isMilitary = isMilitary;
@@ -8069,14 +8070,14 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     mesh.userData.signalQuality = signalQuality; // Store signal quality for detail display
 
     // Apply initial rotation to the GROUP (not the child plane)
-    // Geometry already has rotateX baked in, making it horizontal with nose pointing +Z (south)
-    // We only need to rotate around Y axis for heading
+    // IMPORTANT: Skip rotation for sprites - they have heading baked into texture
+    // Only rotate for sphere mode
 
-    if (!noRotate && aircraftData.track !== undefined) {
+    if (!isSprite && !noRotate && aircraftData.track !== undefined) {
         const trackRad = aircraftData.track * Math.PI / 180;
-        // Apply rotation to match heading
-        mesh.rotation.y = trackRad;
-    } else if (!noRotate) {
+        // Apply rotation for sphere mode only
+        mesh.rotation.y = -trackRad;
+    } else if (!isSprite && !noRotate) {
         mesh.rotation.y = 0; // Default pointing south (will update when track available)
     }
     // For noRotate shapes, leave rotation at 0
@@ -8396,20 +8397,14 @@ function updateAircraftPosition(hex, x, y, z) {
     });
 
     // Update rotation based on track (heading)
-    // Skip rotation for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
-    if (mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
+    // IMPORTANT: Skip rotation for sprites - they have heading baked into texture
+    // Also skip for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
+    if (!mesh.userData.isSprite && mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
         const trackRad = mesh.userData.track * Math.PI / 180;
-
-        // DEBUG: Log rotation calculation for first few frames
-        if (Math.random() < 0.01) {
-            console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
-        }
-
-        // Apply rotation based on heading
-        // Aircraft models face south by default, rotate to match track
-        mesh.rotation.y = trackRad;
-    } else if (mesh.userData.noRotate !== true) {
-        // Default orientation if no track data
+        // Apply rotation for sphere mode only
+        mesh.rotation.y = -trackRad;
+    } else if (!mesh.userData.isSprite && mesh.userData.noRotate !== true) {
+        // Default orientation if no track data (sphere mode only)
         mesh.rotation.y = 0;
     }
     // If noRotate is true, leave rotation unchanged (0,0,0)
