@@ -8384,17 +8384,19 @@ function createAircraftModel(color, aircraftData = null) {
             const shapeInfo = window.AircraftSVGSystem.AIRCRAFT_SHAPES[shapeName];
             const noRotate = shapeInfo && shapeInfo.noRotate === true;
 
-            // NOTE: Rotation will be applied to the GROUP (parent), not the plane child
-            // This is handled in createAircraft() after the group is created
-            // Don't rotate the child here - just store the heading for later
+            // Apply initial rotation to sprite child (not parent group)
+            // Parent rotation is skipped for sprites in createAircraft()
+            if (!noRotate) {
+                plane.rotation.y = -(heading * Math.PI / 180);
+            }
 
             // Store metadata for updates (use spriteHeading for consistency with update code)
             plane.userData.aircraftShape = shapeName;
             plane.userData.aircraftType = typeDesignator;
             plane.userData.aircraftCategory = category;
             plane.userData.noRotate = noRotate; // Store for later updates
-            plane.userData.spriteHeading = heading;  // Changed from aircraftHeading to spriteHeading
-            plane.userData.isSprite = true;  // Keep compatibility
+            plane.userData.spriteHeading = heading;  // Store current heading for update comparison
+            plane.userData.isSprite = true;  // Mark as sprite for rotation logic
 
             group.add(plane);
         } else {
@@ -8465,14 +8467,17 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     // Geometry already has rotateX baked in, making it horizontal with nose pointing +Z (south)
     // We only need to rotate around Y axis for heading
 
-    if (!noRotate && aircraftData.track !== undefined) {
+    // IMPORTANT: Only rotate parent mesh if NOT using sprite mode
+    // Sprite children handle their own rotation via child.rotation.y in updateAircraft()
+    const isSprite = mesh.children.some(child => child.userData.isSprite);
+
+    if (!isSprite && !noRotate && aircraftData.track !== undefined) {
         const trackRad = aircraftData.track * Math.PI / 180;
-        // If backwards with trackRad, try negative rotation
         mesh.rotation.y = -trackRad;
-    } else if (!noRotate) {
+    } else if (!isSprite && !noRotate) {
         mesh.rotation.y = 0; // Default pointing south (will update when track available)
     }
-    // For noRotate shapes, leave rotation at 0
+    // For sprites or noRotate shapes, leave parent rotation at 0 (child handles its own rotation)
 
     // DEBUG: Log aircraft creation with detailed info
     console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
