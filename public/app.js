@@ -8795,7 +8795,8 @@ function updateAircraftPosition(hex, x, y, z) {
 
     // Update rotation based on track (heading)
     // Skip rotation for shapes that shouldn't rotate (balloons, ground vehicles, etc.)
-    if (mesh.userData.noRotate !== true && mesh.userData.track !== undefined) {
+    // IMPORTANT: Also skip for sprites - they handle rotation via child.rotation.y in updateAircraft()
+    if (mesh.userData.noRotate !== true && !mesh.userData.isSprite && mesh.userData.track !== undefined) {
         const trackRad = mesh.userData.track * Math.PI / 180;
 
         // DEBUG: Log rotation calculation for first few frames
@@ -8803,14 +8804,13 @@ function updateAircraftPosition(hex, x, y, z) {
             console.log(`[Rotation Debug] hex=${hex}, track=${mesh.userData.track}°, isSprite=${mesh.userData.isSprite}, rotation.y=${trackRad * 180 / Math.PI}`);
         }
 
-        // Geometry has rotateX baked in, only need Y rotation
-        // Testing: negative trackRad
+        // Geometry has rotateX baked in, only need Y rotation for sphere mode
         mesh.rotation.y = -trackRad;
-    } else if (mesh.userData.noRotate !== true) {
-        // Default orientation if no track data
+    } else if (mesh.userData.noRotate !== true && !mesh.userData.isSprite) {
+        // Default orientation if no track data (sphere mode only)
         mesh.rotation.y = 0;
     }
-    // If noRotate is true, leave rotation unchanged (0,0,0)
+    // If noRotate or isSprite, leave parent rotation unchanged (sprites rotate their child)
 
     // Reapply highlight if this aircraft is currently hovered on canvas
     if (currentlyHoveredCanvasAircraft === hex) {
