@@ -1170,6 +1170,7 @@ const TypeDesignatorIcons = {
 
     'PRTS': ['rutan_veze', 1.3], // approximation for canard configuration
 
+    'C150': ['cessna', 0.95],  // Cessna 150
     'C152': ['cessna', 0.95],  // Cessna 152
     'PA24': ['pa24', 1],
 
