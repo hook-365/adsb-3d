@@ -8114,9 +8114,10 @@ function updateAircraft(aircraft) {
 
                         // Update if heading changed by more than 2 degrees
                         if (Math.abs(newHeading - oldHeading) > 2.0) {
-                            // DO NOT ROTATE SPRITES!
-                            // The heading is baked into the texture when created.
-                            // child.rotation.y = -(newHeading * Math.PI / 180); // This causes sideways flying!
+                            // Update rotation to match new heading (unless noRotate flag set)
+                            if (!child.userData.noRotate) {
+                                child.rotation.y = -(newHeading * Math.PI / 180);
+                            }
                             child.userData.spriteHeading = newHeading;
 
                             // Log rotation updates (sample 1% to avoid spam)
