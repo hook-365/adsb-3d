@@ -8114,10 +8114,9 @@ function updateAircraft(aircraft) {
 
                         // Update if heading changed by more than 2 degrees
                         if (Math.abs(newHeading - oldHeading) > 2.0) {
-                            // Update rotation to match new heading (unless noRotate flag set)
-                            if (!child.userData.noRotate) {
-                                child.rotation.y = -(newHeading * Math.PI / 180);
-                            }
+                            // DO NOT ROTATE SPRITES!
+                            // The heading is baked into the texture when created.
+                            // child.rotation.y = -(newHeading * Math.PI / 180); // This causes sideways flying!
                             child.userData.spriteHeading = newHeading;
 
                             // Log rotation updates (sample 1% to avoid spam)
@@ -8310,10 +8309,10 @@ function createAircraftModel(color, aircraftData = null) {
             const noRotate = shapeInfo && shapeInfo.noRotate === true;
 
             // Apply rotation to match heading
-            // The SVG textures are generated facing north in their coordinate system
+            // The SVG textures are all generated facing the same direction (north)
             // We need to rotate them to match the aircraft's actual heading
             if (!noRotate && heading !== undefined) {
-                // Simple rotation - negative because Three.js Y rotation is counterclockwise
+                // Simple rotation - just apply the heading
                 plane.rotation.y = -(heading * Math.PI / 180);
             }
 
