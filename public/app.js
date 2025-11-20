@@ -77,7 +77,7 @@ const CONFIG = {
     distanceRingIntervals: [92.6, 185.2, 277.8], // 50, 100, 150 nautical miles in km
     distanceRingLabels: ['50 nmi', '100 nmi', '150 nmi'], // Labels for distance rings
     mapZoomLevel: 8, // OSM zoom level for ground texture (7-12, lower = wider area)
-    mapTileGridSize: 13, // Load NxN grid of tiles (13x13 = ~600km for large-area feeders)
+    mapTileGridSize: 21, // Load NxN grid of tiles (21x21 = ~1000km+ coverage area)
     showAirports: true, // Show airport markers
     showRunways: true, // Show runway overlays
     airportMaxDistance: 200, // km - load airports within this radius
@@ -1421,11 +1421,17 @@ const PlaybackState = {
 
 // Recent trails state (for live mode enhancement)
 const RecentTrailsState = {
-    enabled: false,
+    enabled: true,           // Enabled by default (was controlled by deleted checkbox)
     minutes: 5,              // Default to 5 minutes
     loaded: false,
     loading: false,          // Prevent concurrent load operations (race condition guard)
     icaos: new Set()         // Track which aircraft have recent trails loaded
+};
+
+// Full trail state (for on-demand full history loading)
+const FullTrailsState = {
+    icaos: new Set(),        // Track which aircraft have full trails loaded
+    loading: new Set()       // Track which aircraft are currently loading
 };
 
 // Trail color mode: 'altitude' or 'speed'
@@ -1539,8 +1545,8 @@ function smoothAltitudes(positions) {
     const smoothed = positions.map(p => ({ ...p }));
 
     // Step 1: Calculate reference altitudes for the entire track
-    // NOTE: Track API returns 'alt' field, not 'altitude'
-    const allAltitudes = smoothed.map(p => p.alt || p.altitude).filter(alt => alt && alt > 500);
+    // NOTE: Track API can return 'alt_baro' (single aircraft), 'alt' (bulk), or 'altitude'
+    const allAltitudes = smoothed.map(p => p.alt_baro || p.alt || p.altitude).filter(alt => alt && alt > 500);
 
     if (allAltitudes.length === 0) {
         console.warn('[Smoothing] Track has no valid altitudes');
@@ -1573,9 +1579,12 @@ function smoothAltitudes(positions) {
         return true;
     };
 
-    // Helper to get altitude from position (handles both 'alt' and 'altitude' fields)
-    const getAlt = (pos) => pos.alt !== undefined ? pos.alt : pos.altitude;
+    // Helper to get altitude from position (handles 'alt_baro', 'alt', and 'altitude' fields)
+    const getAlt = (pos) => pos.alt_baro !== undefined ? pos.alt_baro :
+                           pos.alt !== undefined ? pos.alt :
+                           pos.altitude;
     const setAlt = (pos, value) => {
+        if (pos.alt_baro !== undefined) pos.alt_baro = value;
         if (pos.alt !== undefined) pos.alt = value;
         if (pos.altitude !== undefined) pos.altitude = value;
     };
@@ -2077,18 +2086,17 @@ let selectedAircraft = null;
 let showTrails = true;
 let showLabels = true;
 let showAltitudeLines = true;
-let showMiniRadar = true; // Mini radar view (on by default)
-let showCompass = true; // Compass rose (on by default)
 let showHomeTower = true; // Home tower marker (on by default)
 let showTronMode = true; // Tron mode: vertical altitude curtains beneath trails (on by default)
 let followMode = false;
 let followedAircraftHex = null;
 let autoFadeTrails = false; // Auto-fade old trail positions
-let trailFadeTime = 3600; // Fade time in seconds (default: 1 hour)
+let trailFadeTime = -1; // Fade time in seconds (default: -1 = immediate)
 let liveRadarData = []; // Always store live aircraft for mini radar (even in historical mode)
 let urlParamsChecked = false; // Track if we've checked URL parameters on load
 let followLocked = true; // When true, camera locked behind aircraft; when false, free orbit
 let cameraReturnInProgress = false;
+let lastNorthArrowAngle = 0; // Track north arrow rotation for smooth animation
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 let currentlyHoveredListItem = null; // Track which aircraft is hovered in the list
@@ -2234,6 +2242,15 @@ function createSpriteMaterial(row, column, color) {
             // Sample the sprite sheet
             vec4 texColor = texture2D(spriteSheet, spriteUV);
 
+            // Detect white outline (bright pixels with high RGB values)
+            float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
+            bool isWhiteOutline = brightness > 0.9 && texColor.a > 0.5;
+
+            // Replace white outline with dark gray/black
+            if (isWhiteOutline) {
+                texColor.rgb = vec3(0.1, 0.1, 0.1); // Dark gray instead of white
+            }
+
             // Apply color tint to non-transparent pixels
             vec3 finalColor = texColor.rgb * tintColor;
 
@@ -2355,6 +2372,68 @@ function getAircraftCategory(aircraftData) {
 // ============================================================================
 // HISTORICAL MODE FUNCTIONS
 // ============================================================================
+
+// Load historical tracks for specified hours ago
+async function loadHistoricalTracks(hoursAgo = 1) {
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - (hoursAgo * 60 * 60 * 1000));
+    const maxTracks = HistoricalState.settings.maxTracks;
+
+    console.log('[Historical] Loading tracks for last', hoursAgo, 'hours');
+
+    // Clear existing tracks first to prevent stacking
+    clearHistoricalTracks();
+
+    try {
+        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
+
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks`);
+
+        // Store tracks in both global variable (for backwards compat) and HistoricalState
+        historicalTracks = {};
+        HistoricalState.tracks = [];
+        playbackStartTime = null;
+        playbackEndTime = null;
+
+        if (data.tracks) {
+            data.tracks.forEach(track => {
+                const icao = track.hex || track.icao;
+                if (icao) {
+                    historicalTracks[icao] = track;
+                }
+                HistoricalState.tracks.push(track);
+
+                // Update time bounds
+                track.positions.forEach(pos => {
+                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
+                    if (!playbackStartTime || timestamp < playbackStartTime) {
+                        playbackStartTime = timestamp;
+                    }
+                    if (!playbackEndTime || timestamp > playbackEndTime) {
+                        playbackEndTime = timestamp;
+                    }
+                });
+            });
+
+            // Render the tracks visually
+            renderHistoricalTracks();
+        }
+
+        // Set current time to start
+        playbackCurrentTime = playbackStartTime;
+
+        return data.tracks || [];
+    } catch (error) {
+        console.error('[Historical] Error loading tracks:', error);
+        throw error;
+    }
+}
 
 // Load historical tracks from Track API
 async function loadHistoricalData() {
@@ -2517,8 +2596,8 @@ function clearAllTrails() {
 
 // Clean up old trail positions based on auto-fade settings
 function cleanupOldTrailPositions() {
-    if (!autoFadeTrails || trailFadeTime === 0) {
-        return; // Auto-fade disabled or set to "Never"
+    if (!autoFadeTrails || trailFadeTime === 0 || trailFadeTime === -1) {
+        return; // Auto-fade disabled, set to "Never", or "Immediate" (only remove on aircraft departure)
     }
 
     const now = Date.now();
@@ -2654,7 +2733,8 @@ function rebuildTrailGeometry(hex, trail) {
 // Validate fade time vs preload time and show warning if needed
 function validateFadePreloadConflict() {
     // Only validate if both features are enabled
-    if (!autoFadeTrails || trailFadeTime === 0 || !RecentTrailsState.enabled) {
+    // Skip for Immediate mode (-1) and Never mode (0)
+    if (!autoFadeTrails || trailFadeTime === 0 || trailFadeTime === -1 || !RecentTrailsState.enabled) {
         return;
     }
 
@@ -2699,9 +2779,248 @@ function showNotification(message, type = 'info', duration = 5000) {
 }
 
 // Load recent trails for live mode (last X minutes)
+// Load full historical trail for a specific aircraft (on-demand)
+async function loadFullTrailForAircraft(icao) {
+    // Check if Track API is available
+    if (!AppFeatures.historical) {
+        console.log('[FullTrail] Track API not available');
+        return false;
+    }
+
+    // Check if already loaded
+    if (FullTrailsState.icaos.has(icao)) {
+        return true;
+    }
+
+    // Check if already loading
+    if (FullTrailsState.loading.has(icao)) {
+        return false;
+    }
+
+    // Mark as loading
+    FullTrailsState.loading.add(icao);
+
+    try {
+        // Show loading indicator in detail panel
+        const detailPanel = document.getElementById('aircraft-detail');
+        if (detailPanel) {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = `trail-loading-${icao}`;
+            loadingDiv.style.cssText = 'padding: 5px; background: rgba(0,255,0,0.1); border: 1px solid rgba(0,255,0,0.3); border-radius: 4px; margin: 5px 0; font-size: 11px;';
+            loadingDiv.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 5px;"></div><span>Loading full trail history...</span>';
+            detailPanel.insertBefore(loadingDiv, detailPanel.firstChild);
+        }
+
+        // Build API URL - get last 24 hours of data
+        const apiUrl = `/api/tracks/${icao}?resolution=full`;
+
+        const response = await fetch(apiUrl);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Check if we got valid data
+        if (!data.positions || data.positions.length === 0) {
+            throw new Error('No historical data available');
+        }
+
+        // Smooth altitudes
+        const smoothedPositions = smoothAltitudes(data.positions);
+
+        // Get or create trail for this aircraft
+        let trail = trails.get(icao);
+        if (!trail) {
+            trail = {
+                positions: [],
+                line: null,
+                material: null,
+                lastUpdate: Date.now()
+            };
+            trails.set(icao, trail);
+        }
+
+        // Clear existing positions and add historical data
+        trail.positions = [];
+
+        smoothedPositions.forEach(pos => {
+            // Validate position data (Track API can return lat/lon or latitude/longitude)
+            const lat = pos.lat || pos.latitude;
+            const lon = pos.lon || pos.longitude;
+            // Single aircraft endpoint returns 'alt_baro', bulk returns 'alt'
+            const alt = pos.alt_baro || pos.alt || pos.altitude || 0;
+
+            // Skip invalid positions
+            if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
+                return;
+            }
+
+            // Use the same coordinate conversion as live mode (latLonToXZ function)
+            const posXZ = latLonToXZ(lat, lon);
+
+            // Use the same altitude calculation as live mode
+            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
+
+            // Validate coordinates aren't NaN
+            if (isNaN(posXZ.x) || isNaN(altitude) || isNaN(posXZ.z)) {
+                return;
+            }
+
+            // Add position to trail (with same minimum altitude as live mode)
+            // Single aircraft endpoint returns 'time', bulk returns 'timestamp'
+            const posTimestamp = pos.time ? new Date(pos.time).getTime() :
+                                pos.timestamp ? new Date(pos.timestamp).getTime() :
+                                Date.now();
+            const groundSpeed = pos.gs || pos.speed || 0;
+            trail.positions.push({
+                x: posXZ.x,
+                y: Math.max(1.0, altitude),
+                z: posXZ.z,
+                altFeet: alt,
+                groundSpeed: groundSpeed,
+                timestamp: posTimestamp
+            });
+        });
+
+        // Only update if we have enough valid positions
+        if (trail.positions.length < 2) {
+            throw new Error(`Only ${trail.positions.length} valid positions found`);
+        }
+
+        // Create the trail line geometry if it doesn't exist
+        if (!trail.line) {
+            const trailGeometry = new THREE.BufferGeometry();
+            const initialCapacity = Math.max(1000, trail.positions.length);
+            const positions = new Float32Array(initialCapacity * 3);
+            const colors = new Float32Array(initialCapacity * 3);
+
+            // Fill in the positions and colors
+            trail.positions.forEach((pos, i) => {
+                positions[i * 3] = pos.x;
+                positions[i * 3 + 1] = pos.y;
+                positions[i * 3 + 2] = pos.z;
+
+                // Get color based on current trail color mode
+                let colorValue;
+                if (trailColorMode === 'speed') {
+                    colorValue = getSpeedColor(pos.groundSpeed || 0);
+                } else {
+                    colorValue = getAltitudeColor(pos.y);
+                }
+                const trailColor = new THREE.Color(colorValue);
+                colors[i * 3] = trailColor.r;
+                colors[i * 3 + 1] = trailColor.g;
+                colors[i * 3 + 2] = trailColor.b;
+            });
+
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            trailGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const trailMaterial = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.6
+            });
+
+            const line = new THREE.Line(trailGeometry, trailMaterial);
+            line.visible = showTrails;
+            line.geometry.setDrawRange(0, trail.positions.length);
+            scene.add(line);
+
+            // Update trail object with line and capacity
+            trail.line = line;
+            trail.capacity = initialCapacity;
+
+            // Create Tron curtain if Tron mode is enabled
+            if (showTronMode && trail.positions.length >= 2) {
+                updateTronCurtain(trail);
+            }
+        } else {
+            // Trail line already exists, update it with new positions
+            const positions = trail.line.geometry.attributes.position.array;
+            const colors = trail.line.geometry.attributes.color.array;
+
+            // Check if we need to grow the buffer
+            if (trail.positions.length > trail.capacity) {
+                trail.capacity = Math.max(trail.capacity * 2, trail.positions.length);
+                const newPositions = new Float32Array(trail.capacity * 3);
+                const newColors = new Float32Array(trail.capacity * 3);
+                trail.line.geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
+                trail.line.geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
+            }
+
+            // Update all positions and colors
+            trail.positions.forEach((pos, i) => {
+                positions[i * 3] = pos.x;
+                positions[i * 3 + 1] = pos.y;
+                positions[i * 3 + 2] = pos.z;
+
+                let colorValue;
+                if (trailColorMode === 'speed') {
+                    colorValue = getSpeedColor(pos.groundSpeed || 0);
+                } else {
+                    colorValue = getAltitudeColor(pos.y);
+                }
+                const trailColor = new THREE.Color(colorValue);
+                colors[i * 3] = trailColor.r;
+                colors[i * 3 + 1] = trailColor.g;
+                colors[i * 3 + 2] = trailColor.b;
+            });
+
+            trail.line.geometry.attributes.position.needsUpdate = true;
+            trail.line.geometry.attributes.color.needsUpdate = true;
+            trail.line.geometry.setDrawRange(0, trail.positions.length);
+
+            // Update Tron curtain if enabled
+            if (showTronMode) {
+                updateTronCurtain(trail);
+            }
+        }
+
+        // Mark as loaded
+        FullTrailsState.icaos.add(icao);
+
+        // Update loading indicator
+        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
+        if (loadingDiv) {
+            loadingDiv.style.background = 'rgba(0,255,0,0.15)';
+            loadingDiv.style.border = '1px solid rgba(0,255,0,0.5)';
+            loadingDiv.innerHTML = `✓ Loaded ${trail.positions.length} positions from last 24 hours`;
+            setTimeout(() => loadingDiv.remove(), 3000);
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error(`[FullTrail] Error loading trail for ${icao}:`, error);
+
+        // Update loading indicator
+        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
+        if (loadingDiv) {
+            loadingDiv.style.background = 'rgba(255,0,0,0.15)';
+            loadingDiv.style.border = '1px solid rgba(255,0,0,0.5)';
+            loadingDiv.innerHTML = `❌ Failed to load trail: ${error.message}`;
+            setTimeout(() => loadingDiv.remove(), 3000);
+        }
+
+        return false;
+    } finally {
+        // Always remove from loading set
+        FullTrailsState.loading.delete(icao);
+    }
+}
+
 async function loadRecentTrails() {
     if (!RecentTrailsState.enabled) {
         console.log('[RecentTrails] Feature not enabled');
+        return;
+    }
+
+    // Skip if preload time is set to 0 (off)
+    if (RecentTrailsState.minutes === 0) {
+        console.log('[RecentTrails] Preload disabled (set to 0 minutes)');
         return;
     }
 
@@ -2742,8 +3061,8 @@ async function loadRecentTrails() {
     console.log(`[RecentTrails] Loading last ${minutes} minutes of trails...`, {startTime, endTime});
 
     try {
-        // Update status
-        const statusDiv = document.getElementById('recent-trails-status');
+        // Update status in sidebar (prefer sidebar-preload-status, fallback to recent-trails-status)
+        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
         if (statusDiv) {
             statusDiv.innerHTML = '<div class="spinner"></div><span>Loading recent trails...</span>';
             statusDiv.className = 'historical-status loading';
@@ -2786,7 +3105,7 @@ async function loadRecentTrails() {
 
     } catch (error) {
         console.error('[RecentTrails] Error loading data:', error);
-        const statusDiv = document.getElementById('recent-trails-status');
+        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
         if (statusDiv) {
             statusDiv.innerHTML = `❌ Failed to load recent trails: ${error.message}`;
             statusDiv.className = 'historical-status error';
@@ -2801,6 +3120,9 @@ async function loadRecentTrails() {
 function addRecentTrailsToLiveMode(tracks) {
     console.log(`[RecentTrails] Adding ${tracks.length} tracks to live mode`);
 
+    const now = Date.now();
+    let skippedFaded = 0;
+
     tracks.forEach(track => {
         const icao = track.hex || track.icao;
         if (!icao) return;
@@ -2809,6 +3131,32 @@ function addRecentTrailsToLiveMode(tracks) {
         if (!track.positions || track.positions.length < 2) {
             console.log(`[RecentTrails] Skipping ${icao} - insufficient positions (${track.positions?.length || 0})`);
             return;
+        }
+
+        // Filter based on auto-fade-trails setting
+        // If immediate mode is enabled, only load tracks for currently active aircraft
+        // If fade time is set, only load tracks that haven't exceeded the fade time
+        if (autoFadeTrails && trailFadeTime !== 0) {
+            if (trailFadeTime === -1) {
+                // Immediate mode: ONLY load trails for aircraft that are currently active in live feed
+                // Check if this aircraft has a mesh (is currently being tracked live)
+                if (!aircraftMeshes.has(icao)) {
+                    skippedFaded++;
+                    console.log(`[RecentTrails] Skipping ${icao} - not in current live feed (immediate mode)`);
+                    return;
+                }
+            } else {
+                // Fade time mode: Skip if exceeded fade time
+                const lastPosition = track.positions[track.positions.length - 1];
+                const lastSeen = lastPosition.timestamp ? new Date(lastPosition.timestamp).getTime() : now;
+                const timeSinceLastSeen = now - lastSeen;
+                const fadeTimeMs = trailFadeTime * 1000;
+
+                if (timeSinceLastSeen > fadeTimeMs) {
+                    skippedFaded++;
+                    return;
+                }
+            }
         }
 
         // Smooth altitudes
@@ -2874,6 +3222,11 @@ function addRecentTrailsToLiveMode(tracks) {
             console.log(`[RecentTrails] Skipping ${icao} - only ${trail.positions.length} valid positions`);
         }
     });
+
+    // Log filtering results
+    if (skippedFaded > 0) {
+        console.log(`[RecentTrails] Filtered out ${skippedFaded} tracks due to auto-fade-trails setting (${trailFadeTime === -1 ? 'Immediate' : trailFadeTime + 's'})`);
+    }
 
     // Render trails for all aircraft with new data
     trails.forEach((trail, icao) => {
@@ -3105,6 +3458,31 @@ function createHistoricalTrack(track) {
     } else {
         console.log(`[Historical] Not enough points to create line (${points.length})`);
     }
+}
+
+/**
+ * Display all historical tracks at once (show-all mode)
+ * Makes all tracks visible and ensures playback controls are hidden
+ */
+function displayAllTracks() {
+    console.log('[Historical] Displaying all tracks');
+
+    // Make all track lines and endpoints visible
+    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail }) => {
+        if (line) line.visible = true;
+        if (endpointMesh) endpointMesh.visible = true;
+        if (trail && trail.tronCurtain) trail.tronCurtain.visible = true;
+    });
+
+    // Make all endpoint spheres visible
+    HistoricalState.endpointMeshes.forEach(mesh => {
+        if (mesh) mesh.visible = true;
+    });
+
+    // Update display mode
+    HistoricalState.displayMode = 'show-all';
+
+    console.log(`[Historical] Made ${HistoricalState.trackMeshes.size} tracks visible`);
 }
 
 /**
@@ -3486,6 +3864,12 @@ function setHeatMapVisibility(visible) {
 function clearHistoricalTracks() {
     console.log('[Historical] Clearing tracks');
 
+    // SAFETY: Stop playback before clearing tracks
+    if (PlaybackState.isPlaying) {
+        pausePlayback();
+        console.log('[Historical] Stopped playback before clearing tracks');
+    }
+
     // Remove all track lines and Tron curtains
     let linesRemoved = 0;
     let curtainsRemoved = 0;
@@ -3526,149 +3910,6 @@ function clearHistoricalTracks() {
 
     console.log('[Historical] Cleanup complete');
 }
-
-// Apply filters to loaded historical tracks
-function applyHistoricalFilters() {
-    console.log('[Historical] Applying filters');
-
-    // Get filter values
-    const militaryOnly = document.getElementById('filter-military-only').checked;
-    const altMinInput = document.getElementById('filter-altitude-min');
-    const altMaxInput = document.getElementById('filter-altitude-max');
-    const minPosInput = document.getElementById('filter-min-positions');
-    const spdMinInput = document.getElementById('filter-speed-min');
-    const spdMaxInput = document.getElementById('filter-speed-max');
-
-    const minAlt = parseInt(altMinInput?.value) || 0;
-    const maxAlt = parseInt(altMaxInput?.value) || 999999;
-    const minPositions = parseInt(minPosInput?.value) || 0;
-    const minSpeed = parseInt(spdMinInput?.value) || 0;
-    const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
-
-    // Debug: Log raw input values to help troubleshoot
-    console.log('[Historical] DOM input values:', {
-        'filter-altitude-min': altMinInput?.value,
-        'filter-altitude-max': altMaxInput?.value,
-        'filter-min-positions': minPosInput?.value,
-        'filter-speed-min': spdMinInput?.value,
-        'filter-speed-max': spdMaxInput?.value
-    });
-
-    console.log('[Historical] Parsed filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
-
-    let visibleCount = 0;
-    let hiddenCount = 0;
-    let filterBreakdown = {
-        military: 0,
-        minPositions: 0,
-        altitude: 0,
-        speed: 0
-    };
-
-    // Apply filters to each track mesh
-    HistoricalState.trackMeshes.forEach(({ line, points, track, instanceIndices, endpointMesh, trail }, icao) => {
-        let visible = true;
-
-        // Military filter
-        if (militaryOnly && !track.is_military) {
-            visible = false;
-            filterBreakdown.military++;
-        }
-
-        // Minimum positions filter
-        if (track.positions && track.positions.length < minPositions) {
-            visible = false;
-            filterBreakdown.minPositions++;
-        }
-
-        // Altitude filter (exclude if ANY position is outside range)
-        if (track.positions && track.positions.length > 0) {
-            const altitudeList = track.positions.map(p => p.alt || p.altitude || 0);
-            const altMin = Math.min(...altitudeList);
-            const altMax = Math.max(...altitudeList);
-            const allAltitudesInRange = track.positions.every(pos => {
-                const alt = pos.alt || pos.altitude || 0;
-                return alt >= minAlt && alt <= maxAlt;
-            });
-            if (!allAltitudesInRange) {
-                visible = false;
-                filterBreakdown.altitude++;
-                // Log first few failures for debugging
-                if (filterBreakdown.altitude <= 3) {
-                    console.log(`[Historical] Altitude filter rejected track: alt range ${altMin}-${altMax} not in ${minAlt}-${maxAlt}`);
-                }
-            }
-        }
-
-        // Speed filter (check if ALL positions have speed in range)
-        if (track.positions && track.positions.length > 0) {
-            const allSpeedsInRange = track.positions.every(pos => {
-                const speed = pos.gs || pos.speed || 0;
-                return speed >= minSpeed && speed <= maxSpeed;
-            });
-            if (!allSpeedsInRange) {
-                visible = false;
-                filterBreakdown.speed++;
-            }
-        }
-
-        // Remove from scene or add to scene based on visibility
-        // This frees GPU memory and reduces scene graph traversal overhead
-        if (visible) {
-            // Add to scene if not already present
-            if (!line.parent) {
-                scene.add(line);
-            }
-            if (endpointMesh && !endpointMesh.parent) {
-                scene.add(endpointMesh);
-            }
-            // Add or create Tron curtain if enabled
-            if (showTronMode && trail) {
-                // Create curtain if it doesn't exist
-                if (!trail.tronCurtain && trail.positions.length > 1) {
-                    updateTronCurtain(trail);
-                }
-                // Add to scene if it exists but isn't in scene
-                if (trail.tronCurtain && !trail.tronCurtain.parent) {
-                    scene.add(trail.tronCurtain);
-                }
-            }
-            visibleCount++;
-        } else {
-            // Remove from scene to free GPU memory
-            if (line.parent) {
-                scene.remove(line);
-            }
-            if (endpointMesh && endpointMesh.parent) {
-                scene.remove(endpointMesh);
-            }
-            // Remove Tron curtain from scene but keep the reference
-            // We keep the curtain object so it can be re-added if filters change
-            if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
-                scene.remove(trail.tronCurtain);
-            }
-            hiddenCount++;
-        }
-    });
-
-    console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
-    console.log('[Historical] Filter breakdown:', filterBreakdown);
-
-    // Update status
-    const statusDiv = document.getElementById('historical-status');
-    const totalCount = visibleCount + hiddenCount;
-    if (visibleCount === 0) {
-        statusDiv.innerHTML = `⚠️ No tracks match filters (${totalCount} total loaded)`;
-        statusDiv.className = 'historical-status warning';
-    } else if (hiddenCount > 0) {
-        statusDiv.innerHTML = `✓ Showing ${visibleCount}/${totalCount} tracks`;
-        statusDiv.className = 'historical-status success';
-    } else {
-        statusDiv.innerHTML = `✓ Showing all ${totalCount} tracks`;
-        statusDiv.className = 'historical-status success';
-    }
-}
-
 // ============================================================================
 // ============================================================================
 // PLAYBACK ANIMATION FUNCTIONS
@@ -3703,9 +3944,14 @@ function initializePlayback() {
     console.log(`[Playback] Duration: ${PlaybackState.duration.toFixed(1)}s (${(PlaybackState.duration / 60).toFixed(1)} minutes)`);
 
     // Update UI
-    document.getElementById('total-time-display').textContent = formatPlaybackTime(PlaybackState.duration);
-    document.getElementById('timeline-scrubber').max = PlaybackState.duration;
-    document.getElementById('playback-controls').style.display = 'block';
+    const totalTimeDisplay = document.getElementById('total-time-display');
+    if (totalTimeDisplay) totalTimeDisplay.textContent = formatPlaybackTime(PlaybackState.duration);
+
+    const timelineScrubber = document.getElementById('timeline-scrubber');
+    if (timelineScrubber) timelineScrubber.max = PlaybackState.duration;
+
+    const playbackControls = document.getElementById('playback-controls');
+    if (playbackControls) playbackControls.style.display = 'block';
 
     // Initially hide all tracks and endpoints (they'll appear during playback)
     HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail }) => {
@@ -3743,8 +3989,12 @@ function togglePlayback() {
 function startPlayback() {
     PlaybackState.isPlaying = true;
     PlaybackState.lastFrameTime = performance.now();
-    document.getElementById('play-pause-btn').textContent = 'Pause';
-    document.getElementById('playback-status').textContent = 'Playing...';
+
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    if (playPauseBtn) playPauseBtn.textContent = 'Pause';
+
+    const playbackStatus = document.getElementById('playback-status');
+    if (playbackStatus) playbackStatus.textContent = 'Playing...';
 
     // Hide all tracks when entering playback mode - they'll animate based on timestamps
     HistoricalState.trackMeshes.forEach(({ line }) => {
@@ -3761,8 +4011,12 @@ function pausePlayback() {
         cancelAnimationFrame(PlaybackState.animationFrameId);
         PlaybackState.animationFrameId = null;
     }
-    document.getElementById('play-pause-btn').textContent = 'Play';
-    document.getElementById('playback-status').textContent = 'Paused';
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    if (playPauseBtn) playPauseBtn.textContent = 'Play';
+
+    const playbackStatus = document.getElementById('playback-status');
+    if (playbackStatus) playbackStatus.textContent = 'Paused';
+
     console.log('[Playback] Paused');
 }
 
@@ -3800,9 +4054,34 @@ function animatePlayback() {
 function updatePlaybackPosition(currentTime) {
     const currentTimestamp = PlaybackState.startTimestamp + (currentTime * 1000);
 
-    // Update UI
-    document.getElementById('current-time-display').textContent = formatPlaybackTime(currentTime);
-    document.getElementById('timeline-scrubber').value = currentTime;
+    // Update UI - support both old and new sidebar
+    const oldTimeDisplay = document.getElementById('current-time-display');
+    if (oldTimeDisplay) {
+        oldTimeDisplay.textContent = formatPlaybackTime(currentTime);
+    }
+
+    const oldTimeline = document.getElementById('timeline-scrubber');
+    if (oldTimeline) {
+        oldTimeline.value = currentTime;
+    }
+
+    // Update sidebar timeline
+    const sidebarTimeline = document.getElementById('sidebar-timeline');
+    if (sidebarTimeline && PlaybackState.duration > 0) {
+        // currentTime is relative (0 to duration), so just divide by duration for progress
+        const progress = currentTime / PlaybackState.duration;
+        sidebarTimeline.value = progress * 100;
+    }
+
+    // Update sidebar time displays
+    const currentTimeDisplay = document.getElementById('sidebar-time-current');
+    const totalTimeDisplay = document.getElementById('sidebar-time-total');
+    if (currentTimeDisplay && totalTimeDisplay) {
+        // currentTime is already relative seconds from start (0 to duration)
+        // PlaybackState.duration is total duration in seconds
+        currentTimeDisplay.textContent = formatPlaybackTime(currentTime);
+        totalTimeDisplay.textContent = formatPlaybackTime(PlaybackState.duration);
+    }
 
     let visibleTracks = 0;
 
@@ -3857,7 +4136,8 @@ function updatePlaybackPosition(currentTime) {
         }
     });
 
-    document.getElementById('playback-status').textContent = `${visibleTracks} aircraft visible`;
+    const playbackStatus = document.getElementById('playback-status');
+    if (playbackStatus) playbackStatus.textContent = `${visibleTracks} aircraft visible`;
 }
 
 // Seek to specific time
@@ -3873,7 +4153,7 @@ function setupPlaybackControls() {
     const speedSelect = document.getElementById('playback-speed');
     const scrubber = document.getElementById('timeline-scrubber');
 
-    if (!playPauseBtn) {
+    if (!playPauseBtn || !restartBtn || !speedSelect || !scrubber) {
         console.warn('[Playback] Playback controls not found');
         return;
     }
@@ -4183,7 +4463,11 @@ function setupHistoricalControls() {
     const displayModeDescription = document.getElementById('display-mode-description');
     const playbackControlsDiv = document.getElementById('playback-controls');
 
-    displayModeAllBtn.addEventListener('click', () => {
+    // Only set up display mode handlers if elements exist
+    if (!displayModeAllBtn || !displayModePlaybackBtn || !displayModeDescription || !playbackControlsDiv) {
+        console.warn('[Display Mode] Display mode controls not found');
+    } else {
+        displayModeAllBtn.addEventListener('click', () => {
         console.log('[Display Mode] Switching to Show All mode');
 
         // Update state
@@ -4315,6 +4599,7 @@ function setupHistoricalControls() {
             URLState.updateFromCurrentState();
         });
     });
+    } // End of display mode controls check
 
     // Tron mode is now handled by the unified toggle in Settings panel
 }
@@ -4420,6 +4705,12 @@ async function switchToLiveMode(skipURLUpdate = false) {
 
     console.log('[Mode] Switching to Live mode');
 
+    // SAFETY: Stop playback if it's running
+    if (PlaybackState.isPlaying) {
+        pausePlayback();
+        console.log('[Mode] Stopped playback when switching to live mode');
+    }
+
     // Add fade transition
     renderer.domElement.classList.add('mode-transition', 'fading');
 
@@ -4431,15 +4722,7 @@ async function switchToLiveMode(skipURLUpdate = false) {
     // Clear historical tracks
     clearHistoricalTracks();
 
-    // Hide historical controls
-    const historicalControls = document.getElementById('historical-controls');
-    if (historicalControls) historicalControls.style.display = 'none';
-
-    // Show nearby aircraft list (back in live mode)
-    const aircraftList = document.getElementById('aircraft-list');
-    if (aircraftList) {
-        aircraftList.style.display = 'block';
-    }
+    // Sidebar handles mode display
 
     // Show info panel (adsb-3d stats) in live mode
     const infoPanel = document.getElementById('info');
@@ -4469,6 +4752,9 @@ async function switchToLiveMode(skipURLUpdate = false) {
     if (RecentTrailsState.enabled) {
         await loadRecentTrails();
     }
+
+    // Update sidebar to show live mode content
+    updateSidebarMode();
 
     // Fade back in
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -4517,42 +4803,14 @@ async function switchToHistoricalMode(skipURLUpdate = false) {
         liveOptionsSection.style.display = 'none';
     }
 
-    // Hide nearby aircraft list (not relevant in historical mode)
-    const aircraftList = document.getElementById('aircraft-list');
-    if (aircraftList) {
-        aircraftList.style.display = 'none';
-    }
-
-    // Hide info panel (adsb-3d stats) in historical mode
-    const infoPanel = document.getElementById('info');
-    if (infoPanel) {
-        infoPanel.style.display = 'none';
-    }
-
     // Update mode button active states
     const liveModeBtn = document.getElementById('live-mode-btn');
     const historicalModeBtn = document.getElementById('historical-mode-btn');
     if (historicalModeBtn) historicalModeBtn.classList.add('active');
     if (liveModeBtn) liveModeBtn.classList.remove('active');
 
-    // Show historical controls panel
-    const historicalControls = document.getElementById('historical-controls');
-    if (historicalControls) {
-        historicalControls.style.display = 'block';
-        // Ensure it's not collapsed
-        historicalControls.classList.remove('collapsed');
-        // Update collapse button text
-        const collapseBtn = historicalControls.querySelector('.collapse-btn');
-        if (collapseBtn) {
-            collapseBtn.textContent = '−';
-        }
-        console.log('[Mode] Historical controls panel shown');
-
-        // Re-run collapse setup to attach event listeners to newly shown panel
-        setupCollapseablePanels();
-    } else {
-        console.error('[Mode] Could not find historical-controls element');
-    }
+    // Update sidebar to show historical mode content
+    updateSidebarMode();
 
     // Fade back in
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -4639,6 +4897,56 @@ function setupRecentTrailsListeners() {
             validateFadePreloadConflict();
         });
     }
+}
+
+// Setup event listeners for sidebar preload trails (right sidebar)
+function setupSidebarPreloadTrailsListeners() {
+    const checkbox = document.getElementById('enable-sidebar-preload-trails');
+    const timeDropdown = document.getElementById('sidebar-preload-trails-time');
+
+    if (!checkbox || !timeDropdown) {
+        console.log('[SidebarPreload] UI elements not found, skipping listener setup');
+        return;
+    }
+
+    // Set defaults
+    RecentTrailsState.minutes = 5;
+    RecentTrailsState.enabled = true;
+
+    // Checkbox: Enable/disable preload trails
+    checkbox.addEventListener('change', async (e) => {
+        RecentTrailsState.enabled = e.target.checked;
+        console.log(`[SidebarPreload] Feature ${RecentTrailsState.enabled ? 'enabled' : 'disabled'}`);
+
+        // If enabled and in live mode, load trails
+        if (RecentTrailsState.enabled && currentMode === 'live') {
+            await loadRecentTrails();
+            // Check for conflict with fade time
+            validateFadePreloadConflict();
+        } else if (!RecentTrailsState.enabled) {
+            // Clear status
+            const statusDiv = document.getElementById('sidebar-preload-status');
+            if (statusDiv) {
+                statusDiv.innerHTML = '';
+            }
+            RecentTrailsState.loaded = false;
+            RecentTrailsState.icaos.clear();
+        }
+    });
+
+    // Time dropdown: Change duration and reload if enabled
+    timeDropdown.addEventListener('change', async (e) => {
+        RecentTrailsState.minutes = parseInt(e.target.value);
+        console.log(`[SidebarPreload] Duration changed to ${RecentTrailsState.minutes} minutes`);
+
+        // If enabled and in live mode, reload trails with new duration
+        if (RecentTrailsState.enabled && currentMode === 'live') {
+            await loadRecentTrails();
+        }
+
+        // Check for conflict with fade time
+        validateFadePreloadConflict();
+    });
 }
 
 // Setup event listener for Tron mode toggle
@@ -4759,6 +5067,7 @@ function initializeUIForFeatures() {
     // Setup event listeners
     setupModeButtonListeners();
     setupRecentTrailsListeners();
+    setupSidebarPreloadTrailsListeners();
     setupTronModeListener();
 }
 
@@ -4781,16 +5090,6 @@ async function initializeApp() {
     setupThemeUI();
 
     // Step 5: Load saved preferences
-    const savedRadar = SafeStorage.getItem('showMiniRadar');
-    if (savedRadar !== null) {
-        showMiniRadar = savedRadar === 'true';
-        const toggleContainer = document.getElementById('toggle-mini-radar-container');
-        const miniRadar = document.getElementById('mini-radar');
-        if (!showMiniRadar) {
-            toggleContainer.classList.remove('active');
-            if (miniRadar) miniRadar.style.display = 'none';
-        }
-    }
 
     // Load sprite mode preference
     const savedSpriteMode = SafeStorage.getItem('useSpriteMode');
@@ -4866,6 +5165,14 @@ async function initializeApp() {
         if (fadeTimeSelect) fadeTimeSelect.value = trailFadeTime.toString();
     }
 
+    // Load preload trail time preference
+    const savedPreloadMinutes = SafeStorage.getItem('preloadTrailMinutes');
+    if (savedPreloadMinutes !== null) {
+        RecentTrailsState.minutes = parseInt(savedPreloadMinutes);
+        const preloadTimeSelect = document.getElementById('preload-trail-time');
+        if (preloadTimeSelect) preloadTimeSelect.value = savedPreloadMinutes;
+    }
+
     // Load altitude scale preference
     const savedAltScale = SafeStorage.getItem('altitudeScale');
     if (savedAltScale !== null) {
@@ -4882,18 +5189,6 @@ async function initializeApp() {
         if (colorModeRadio) colorModeRadio.checked = true;
     }
 
-    // Load compass preference
-    const savedCompass = SafeStorage.getItem('showCompass');
-    if (savedCompass !== null) {
-        showCompass = savedCompass === 'true';
-        const toggleContainer = document.getElementById('toggle-compass-container');
-        const compass = document.getElementById('compass-rose');
-        if (!showCompass) {
-            toggleContainer.classList.remove('active');
-            if (compass) compass.style.display = 'none';
-        }
-    }
-
     // Step 6: Apply URL state if present (shareable links)
     await URLState.applyFromURL();
 
@@ -4907,53 +5202,6 @@ async function initializeApp() {
 }
 
 // Initialize Three.js scene
-// Initialize compass tick marks
-function initializeCompassTicks() {
-    const compassRose = document.getElementById('compass-rose');
-    if (!compassRose) return;
-
-    const compassRadius = 50; // 100px diameter / 2
-    const centerX = compassRadius;
-    const centerY = compassRadius;
-
-    // Define tick marks with angles (0° = North)
-    const ticks = [
-        // Long ticks for intercardinals
-        { angle: 45, type: 'long' },   // NE
-        { angle: 135, type: 'long' },  // SE
-        { angle: 225, type: 'long' },  // SW
-        { angle: 315, type: 'long' },  // NW
-        // Medium ticks for secondary intercardinals
-        { angle: 22.5, type: 'medium' },   // NNE
-        { angle: 67.5, type: 'medium' },   // ENE
-        { angle: 112.5, type: 'medium' },  // ESE
-        { angle: 157.5, type: 'medium' },  // SSE
-        { angle: 202.5, type: 'medium' },  // SSW
-        { angle: 247.5, type: 'medium' },  // WSW
-        { angle: 292.5, type: 'medium' },  // WNW
-        { angle: 337.5, type: 'medium' },  // NNW
-    ];
-
-    // Create tick marks
-    ticks.forEach(tick => {
-        const tickDiv = document.createElement('div');
-        tickDiv.className = `tick ${tick.type}`;
-
-        // Calculate position on the edge of the compass
-        const angleRad = (tick.angle - 90) * Math.PI / 180; // -90 to start from top
-        const radius = compassRadius - (tick.type === 'long' ? 6 : 4); // Position near edge
-        const x = centerX + radius * Math.cos(angleRad);
-        const y = centerY + radius * Math.sin(angleRad);
-
-        // Position and rotate the tick
-        tickDiv.style.left = `${x}px`;
-        tickDiv.style.top = `${y}px`;
-        tickDiv.style.transform = `translate(-50%, -50%) rotate(${tick.angle}deg)`;
-
-        compassRose.appendChild(tickDiv);
-    });
-}
-
 function init() {
     const canvas = document.getElementById('canvas');
 
@@ -4963,8 +5211,8 @@ function init() {
     // Create sky with gradient
     createSky();
 
-    // Minimal fog for depth perception - very light to support 600km+ visibility
-    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.0003);
+    // Very subtle fog to soften distant edges and blend horizon
+    scene.fog = new THREE.FogExp2(CONFIG.sceneFog, 0.00008); // Much lower density to avoid artifacts
 
     // Camera
     camera = new THREE.PerspectiveCamera(
@@ -5008,8 +5256,8 @@ function init() {
     // Add ground with map texture
     createGroundPlane();
 
-    // Add large grid overlay for extended view
-    createExtendedGrid();
+    // Grid overlay disabled - was creating visual artifacts on ground texture
+    // createExtendedGrid();
 
     // Add distance rings for scale
     if (CONFIG.showDistanceRings) {
@@ -5073,11 +5321,14 @@ function init() {
     // Check for daily reset every minute
     setInterval(checkDailyReset, 60000);
 
-    // Initialize compass tick marks
-    initializeCompassTicks();
-
     // Setup aircraft click interaction
     setupAircraftClick();
+
+    // Initialize sidebar event handlers
+    setupSidebarEventHandlers();
+
+    // Ensure sidebar is in correct mode
+    updateSidebarMode();
 
     // Hide loading
     document.getElementById('loading').style.display = 'none';
@@ -5284,6 +5535,8 @@ function createGroundPlane() {
                     // Reduce artifacts with better filtering
                     texture.minFilter = THREE.LinearMipMapLinearFilter;
                     texture.magFilter = THREE.LinearFilter;
+                    texture.wrapS = THREE.ClampToEdgeWrapping;
+                    texture.wrapT = THREE.ClampToEdgeWrapping;
                     texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // Max quality
                     texture.generateMipmaps = true;
                     texture.needsUpdate = true;
@@ -5306,6 +5559,8 @@ function createGroundPlane() {
                     // Same filtering as success path
                     texture.minFilter = THREE.LinearMipMapLinearFilter;
                     texture.magFilter = THREE.LinearFilter;
+                    texture.wrapS = THREE.ClampToEdgeWrapping;
+                    texture.wrapT = THREE.ClampToEdgeWrapping;
                     texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
                     texture.generateMipmaps = true;
                     material.map = texture;
@@ -5317,7 +5572,7 @@ function createGroundPlane() {
     }
 
     const ground = new THREE.Mesh(geometry, material);
-    ground.position.y = -0.1;
+    ground.position.y = -1.0; // Lowered to avoid z-fighting with other elements
 
     // Calculate offset to align home location with scene center (0,0,0)
     // Get the exact position of home within the center tile
@@ -5349,17 +5604,22 @@ function createGroundPlane() {
 
     scene.add(ground);
 
-    // Add a large black background plane to fill edges beyond map tiles
-    const bgSize = 5000; // 5000km x 5000km black background
+    // Add a very large subtle background plane far below to prevent floating slab effect
+    const bgSize = 15000; // 15,000km x 15,000km - much larger than textured ground
     const bgGeometry = new THREE.PlaneGeometry(bgSize, bgSize);
     bgGeometry.rotateX(-Math.PI / 2);
-    const bgMaterial = new THREE.MeshStandardMaterial({
-        color: 0x000000,
-        roughness: 0.9,
-        metalness: 0.1
+
+    // Use fog color for seamless blending with horizon
+    const bgMaterial = new THREE.MeshBasicMaterial({
+        color: CONFIG.sceneFog, // Match fog color for natural blending
+        transparent: true,
+        opacity: 0.5, // More subtle
+        side: THREE.DoubleSide,
+        fog: true // Let fog affect this plane too
     });
+
     const bgPlane = new THREE.Mesh(bgGeometry, bgMaterial);
-    bgPlane.position.y = -0.5; // Below the map tiles
+    bgPlane.position.y = -10.0; // Far below the textured ground to avoid any z-fighting
     scene.add(bgPlane);
 }
 
@@ -6417,29 +6677,6 @@ function setupUIControls() {
         altitudeLines.forEach(line => line.visible = showAltitudeLines);
     });
 
-    document.getElementById('toggle-mini-radar-container').addEventListener('click', (e) => {
-        showMiniRadar = !showMiniRadar;
-        e.currentTarget.classList.toggle('active');
-        const miniRadar = document.getElementById('mini-radar');
-        if (miniRadar) {
-            miniRadar.style.display = showMiniRadar ? 'flex' : 'none';
-        }
-        // Save preference
-        SafeStorage.setItem('showMiniRadar', showMiniRadar);
-    });
-
-    // Compass rose toggle
-    document.getElementById('toggle-compass-container').addEventListener('click', (e) => {
-        showCompass = !showCompass;
-        e.currentTarget.classList.toggle('active');
-        const compass = document.getElementById('compass-rose');
-        if (compass) {
-            compass.style.display = showCompass ? 'block' : 'none';
-        }
-        // Save preference
-        SafeStorage.setItem('showCompass', showCompass);
-    });
-
     // Auto-fade trails toggle
     document.getElementById('toggle-trail-fade-container').addEventListener('click', (e) => {
         autoFadeTrails = !autoFadeTrails;
@@ -6571,6 +6808,22 @@ function setupUIControls() {
 
         // Check for conflict with preload time
         validateFadePreloadConflict();
+    });
+
+    // Preload trail time selector
+    document.getElementById('preload-trail-time').addEventListener('change', (e) => {
+        const newMinutes = parseInt(e.target.value);
+        RecentTrailsState.minutes = newMinutes;
+        SafeStorage.setItem('preloadTrailMinutes', newMinutes);
+
+        // Reload trails with new time window if Track API is available and in live mode
+        if (AppFeatures.historical && currentMode === 'live' && newMinutes > 0) {
+            RecentTrailsState.loaded = false; // Reset loaded flag to allow reload
+            loadRecentTrails();
+        } else if (newMinutes === 0) {
+            // If set to "Off", clear existing trails
+            clearAllTrails();
+        }
     });
 
     // Altitude scale selector
@@ -6925,8 +7178,11 @@ function setupUIControls() {
     // Collapseable panel functionality
     setupCollapseablePanels();
 
-    // Historical controls (if feature enabled)
-    setupHistoricalControls();
+    // Historical controls (legacy - only run if old panel exists)
+    // New sidebar handles historical controls via setupSidebarEventHandlers()
+    if (document.getElementById('start-time')) {
+        setupHistoricalControls();
+    }
     setupPlaybackControls();
 
     // Keyboard shortcuts
@@ -7761,6 +8017,33 @@ function updateAircraft(aircraft) {
         } else {
             const mesh = aircraftMeshes.get(ac.hex);
 
+            // Check if aircraft type has changed (e.g., was null but now has data due to better signal)
+            const oldType = mesh.userData.t;
+            const newType = ac.t;
+            const typeChanged = (oldType !== newType) && (oldType === undefined || oldType === null) && (newType !== undefined && newType !== null);
+
+            // If type changed from null/undefined to a real value, recreate the mesh with the correct icon
+            if (typeChanged && useSpriteMode) {
+                console.log(`[Aircraft] Type data now available for ${ac.hex}: ${newType}. Recreating mesh with correct icon.`);
+
+                // Store trail data before removing mesh
+                const trailData = trails.get(ac.hex);
+
+                // Remove old mesh
+                removeAircraft(ac.hex);
+
+                // Create new mesh with correct type
+                createAircraft(ac.hex, pos.x, altitude, pos.z, ac.t, ac, isVeryLow);
+
+                // Restore trail data if it existed
+                if (trailData) {
+                    trails.set(ac.hex, trailData);
+                }
+
+                // Continue to next aircraft since we just recreated this one
+                return;
+            }
+
             // Check/update military status (in case database loaded after creation)
             const isMilitary = isMilitaryAircraft(ac.hex);
             const militaryInfo = isMilitary ? getMilitaryInfo(ac.hex) : null;
@@ -7776,14 +8059,48 @@ function updateAircraft(aircraft) {
             mesh.userData.lastValidAltitude = altitude; // Store for altitude smoothing
             mesh.userData.signalQuality = signalQuality; // Update signal quality
 
-            // Update opacity based on signal quality
+            // Update appearance based on signal quality
+            const isPoorSignal = ac.seen > 15 || ac.seen_pos > 15 || signalQuality.score < 50;
+
             mesh.traverse((child) => {
                 if (child.isMesh && child.material) {
-                    // Update opacity for ghost-like effect on poor signals
-                    child.material.opacity = signalQuality.opacity;
-                    if (signalQuality.score < 40) {
-                        // Extra transparent for very poor signals
-                        child.material.opacity = Math.min(child.material.opacity, 0.4);
+                    // Clone material to avoid affecting other aircraft
+                    if (!child.material.userData?.cloned) {
+                        child.material = child.material.clone();
+                        child.material.userData = { cloned: true };
+                    }
+
+                    // Gray out stale or poor signal aircraft
+                    if (isPoorSignal) {
+                        // Check if this is a shader material (sprite) or standard material
+                        if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.tintColor) {
+                            // For shader material sprites, update tintColor uniform to gray
+                            child.material.uniforms.tintColor.value.setHex(0x808080);
+                            if (child.material.uniforms.opacity) {
+                                child.material.uniforms.opacity.value = Math.min(signalQuality.opacity, 0.7);
+                            }
+                        } else if (child.material.color) {
+                            // For standard materials (spheres), override color to gray
+                            child.material.color = new THREE.Color(0x808080);
+                            child.material.emissive = new THREE.Color(0x404040);
+                            child.material.opacity = Math.min(signalQuality.opacity, 0.7);
+                        }
+                    } else {
+                        // Restore original colors for good signal
+                        const originalColor = isMilitary ? CONFIG.militaryColor : getAltitudeColor(altitude);
+
+                        if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.tintColor) {
+                            // For shader material sprites, update tintColor uniform
+                            child.material.uniforms.tintColor.value.setHex(originalColor);
+                            if (child.material.uniforms.opacity) {
+                                child.material.uniforms.opacity.value = signalQuality.opacity;
+                            }
+                        } else if (child.material.color) {
+                            // For standard materials (spheres)
+                            child.material.color = new THREE.Color(originalColor);
+                            child.material.emissive = new THREE.Color(originalColor).multiplyScalar(0.3);
+                            child.material.opacity = signalQuality.opacity;
+                        }
                     }
                 }
             });
@@ -7797,14 +8114,15 @@ function updateAircraft(aircraft) {
 
                         // Update if heading changed by more than 2 degrees
                         if (Math.abs(newHeading - oldHeading) > 2.0) {
-                            // DO NOT ROTATE SPRITES!
-                            // The heading is baked into the texture when created.
-                            // child.rotation.y = -(newHeading * Math.PI / 180); // This causes sideways flying!
+                            // Update rotation to match new heading (unless noRotate flag set)
+                            if (!child.userData.noRotate) {
+                                child.rotation.y = -(newHeading * Math.PI / 180);
+                            }
                             child.userData.spriteHeading = newHeading;
 
                             // Log rotation updates (sample 1% to avoid spam)
                             if (Math.random() < 0.01) {
-                                console.log(`[Sprites] Rotating ${ac.hex}: ${oldHeading.toFixed(1)}° → ${newHeading.toFixed(1)}°`);
+                                console.log(`[Sprites] Rotating ${ac.hex}: ${oldHeading.toFixed(1)}° → ${newHeading.toFixed(1)}° (rotation ${!child.userData.noRotate ? 'applied' : 'skipped'})`);
                             }
                         }
                     }
@@ -8083,19 +8401,52 @@ function createAircraft(hex, x, y, z, aircraftType, aircraftData, isVeryLow = fa
     // DEBUG: Log aircraft creation with detailed info
     console.log(`[Create] hex=${hex}, flight=${aircraftData.flight?.trim()}, track=${aircraftData.track}°, quality=${signalQuality.quality} (${signalQuality.score}%), opacity=${signalQuality.opacity.toFixed(2)}`);
 
-    // Apply opacity based on signal quality - makes poor signal aircraft "ghost-like"
+    // Apply opacity and color based on signal quality
+    const isPoorSignal = aircraftData.seen > 15 || aircraftData.seen_pos > 15 || signalQuality.score < 50;
+
     mesh.traverse((child) => {
         if (child.isMesh && child.material) {
             // Clone material to avoid affecting other aircraft
             child.material = child.material.clone();
             child.material.transparent = true;
-            child.material.opacity = signalQuality.opacity;
+
+            // Gray out stale or poor signal aircraft
+            if (isPoorSignal) {
+                // Check if this is a shader material (sprite) or standard material
+                if (child.material.type === 'ShaderMaterial' && child.material.uniforms) {
+                    // For shader material sprites, update tintColor uniform to gray
+                    if (child.material.uniforms.tintColor) {
+                        child.material.uniforms.tintColor.value.setHex(0x808080);
+                    }
+                    if (child.material.uniforms.opacity) {
+                        child.material.uniforms.opacity.value = Math.min(signalQuality.opacity, 0.7);
+                    }
+                } else if (child.material.color) {
+                    // For standard materials (spheres), override color to gray
+                    child.material.color.setHex(0x808080);
+                    if (child.material.emissive) {
+                        child.material.emissive.setHex(0x404040);
+                    }
+                    child.material.opacity = Math.min(signalQuality.opacity, 0.7);
+                }
+            } else {
+                // Good signal - use normal opacity
+                if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.opacity) {
+                    child.material.uniforms.opacity.value = signalQuality.opacity;
+                } else {
+                    child.material.opacity = signalQuality.opacity;
+                }
+            }
 
             // Add subtle wireframe for very poor signals
             if (signalQuality.score < 40) {
                 child.material.wireframe = false; // Don't use wireframe, too confusing
                 // Instead, make them extra transparent
-                child.material.opacity = Math.min(child.material.opacity, 0.4);
+                if (child.material.type === 'ShaderMaterial' && child.material.uniforms && child.material.uniforms.opacity) {
+                    child.material.uniforms.opacity.value = Math.min(child.material.uniforms.opacity.value, 0.4);
+                } else {
+                    child.material.opacity = Math.min(child.material.opacity, 0.4);
+                }
             }
         }
     });
@@ -8205,7 +8556,7 @@ function createTextLabel(text) {
 
     // Draw text (no outline - better readability)
     context.font = 'Bold 28px Arial';
-    context.fillStyle = 'white';
+    context.fillStyle = '#FFFFFF'; // Explicit white color
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -8263,7 +8614,7 @@ function updateLabelText(labelGroup, text) {
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     context.font = 'Bold 28px Arial';
-    context.fillStyle = 'white';
+    context.fillStyle = '#FFFFFF'; // Explicit white color
     context.textAlign = 'center';
     context.textBaseline = 'middle';
 
@@ -8655,13 +9006,35 @@ function removeAircraft(hex) {
 
     const trail = trails.get(hex);
     if (trail) {
-        // Move trail to staleTrails instead of deleting it
-        // Keep it visible to show where the aircraft was
-        trail.stale = true;
-        trail.lastUpdate = Date.now();
-        staleTrails.set(hex, trail);
-        trails.delete(hex);
-        // Trail stays in the scene - don't remove or dispose!
+        // Check if Immediate mode is enabled (trailFadeTime === -1)
+        if (autoFadeTrails && trailFadeTime === -1) {
+            // Immediate mode: Remove trail and curtain immediately
+            scene.remove(trail.line);
+            if (trail.gapLine) scene.remove(trail.gapLine);
+            if (trail.tronCurtain) scene.remove(trail.tronCurtain);
+
+            // Dispose geometries and materials
+            trail.line.geometry.dispose();
+            trail.line.material.dispose();
+            if (trail.gapLine) {
+                trail.gapLine.geometry.dispose();
+                trail.gapLine.material.dispose();
+            }
+            if (trail.tronCurtain) {
+                trail.tronCurtain.geometry.dispose();
+                trail.tronCurtain.material.dispose();
+            }
+
+            trails.delete(hex);
+        } else {
+            // Normal mode or disabled: Move trail to staleTrails
+            // Keep it visible to show where the aircraft was
+            trail.stale = true;
+            trail.lastUpdate = Date.now();
+            staleTrails.set(hex, trail);
+            trails.delete(hex);
+            // Trail stays in the scene - don't remove or dispose!
+        }
     }
 }
 
@@ -8724,6 +9097,59 @@ function getAltitudeColor(altitudeSceneUnits) {
  * @param {number} groundSpeed - Ground speed in knots
  * @returns {number} RGB color value as hex number (e.g., 0x00ff00 for green)
  */
+/**
+ * Get color based on altitude (matches tar1090 color scheme)
+ * @param {number} altitudeValue - Altitude (in scene units for 3D, or feet for UI)
+ * @param {boolean} returnAsString - Return as CSS color string for canvas
+ * @param {boolean} isRawFeet - True if altitude is in feet, false if in scene units
+ * @returns {string|number} RGB color value as CSS string for canvas or hex for Three.js
+ */
+function getAltitudeColor(altitudeValue, returnAsString = false, isRawFeet = false) {
+    let altFeet;
+
+    if (isRawFeet) {
+        // Direct feet value (from aircraft data for UI/sidebar)
+        altFeet = altitudeValue;
+    } else {
+        // Scene units (for 3D rendering) - convert back to feet
+        // Scene units = feet * 0.3048 * scale * exaggeration
+        altFeet = altitudeValue / (0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration);
+    }
+
+    const saturation = 88;
+    const lightness = 44;
+    let hue;
+    let colorValue;
+
+    if (altFeet < 500) {
+        colorValue = 0x737373; // Gray for ground/unknown
+    } else if (altFeet <= 2000) {
+        hue = 20; // Orange
+        colorValue = hslToRgb(hue, saturation, lightness);
+    } else if (altFeet <= 10000) {
+        // Interpolate from 20 (orange) to 140 (light green)
+        const ratio = (altFeet - 2000) / (10000 - 2000);
+        hue = 20 + ratio * (140 - 20);
+        colorValue = hslToRgb(hue, saturation, lightness);
+    } else if (altFeet <= 40000) {
+        // Interpolate from 140 (light green) to 300 (magenta)
+        const ratio = (altFeet - 10000) / (40000 - 10000);
+        hue = 140 + ratio * (300 - 140);
+        colorValue = hslToRgb(hue, saturation, lightness);
+    } else {
+        hue = 300; // Magenta for >40000ft
+        colorValue = hslToRgb(hue, saturation, lightness);
+    }
+
+    // Return as CSS color string if requested (for canvas rendering)
+    if (returnAsString) {
+        const color = new THREE.Color(colorValue);
+        return `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
+    }
+
+    return colorValue;
+}
+
 function getSpeedColor(groundSpeed) {
     // Speed-based color scheme: Green → Yellow-green → Yellow-orange → Orange-red
     // 0-100 kts: Green (H=120)
@@ -8765,67 +9191,81 @@ function updateUI(data) {
     const totalAircraft = data.aircraft?.length || 0;
 
     // Update both main count and header count
-    document.getElementById('aircraft-count').textContent = totalAircraft;
-    document.getElementById('aircraft-count-header').textContent = `(${totalAircraft})`;
+    const countEl = document.getElementById('aircraft-count');
+    const headerEl = document.getElementById('aircraft-count-header');
+    if (countEl) countEl.textContent = totalAircraft;
+    if (headerEl) headerEl.textContent = `(${totalAircraft})`;
 
     const now = new Date();
-    document.getElementById('last-update').textContent = now.toLocaleTimeString();
+    const updateEl = document.getElementById('last-update');
+    if (updateEl) updateEl.textContent = now.toLocaleTimeString();
 
-    // Update aircraft list
+    // Update sidebar stats
+    updateSidebarLiveStats(data);
+
+    // Update old aircraft list (legacy - only if element exists)
     const listContainer = document.getElementById('aircraft-items');
-    listContainer.innerHTML = '';
+    if (listContainer) {
+        listContainer.innerHTML = '';
+    }
 
     // Find highest/fastest/closest BEFORE rendering list
     const validAircraft = (data.aircraft || []).filter(ac => ac.lat && ac.lon && ac.alt_baro);
 
-    // Update aircraft with positions count
-    document.getElementById('aircraft-with-positions').textContent = validAircraft.length;
-
-    // Edge case: No aircraft detected
-    if (validAircraft.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.style.cssText = `
-            padding: 20px;
-            text-align: center;
-            color: var(--text-secondary);
-            font-size: 13px;
-            line-height: 1.6;
-        `;
-        emptyMessage.innerHTML = `
-            <div style="font-size: 32px; margin-bottom: 10px; opacity: 0.5;">✈️</div>
-            <div style="font-weight: bold; margin-bottom: 5px;">No Aircraft Detected</div>
-            <div style="font-size: 12px; opacity: 0.7;">
-                Waiting for aircraft to appear in range...<br>
-                <span style="font-size: 11px;">Check your ADS-B receiver is running</span>
-            </div>
-        `;
-        listContainer.appendChild(emptyMessage);
-        return; // Exit early, no aircraft to render
+    // Update aircraft with positions count (legacy - only if element exists)
+    const positionsEl = document.getElementById('aircraft-with-positions');
+    if (positionsEl) {
+        positionsEl.textContent = validAircraft.length;
     }
 
-    // Edge case: Very high aircraft count (500+)
-    // Add performance warning to help users understand potential lag
-    if (validAircraft.length >= 500) {
-        const perfWarning = document.createElement('div');
-        perfWarning.style.cssText = `
-            padding: 8px 12px;
-            margin-bottom: 10px;
-            background: rgba(255, 165, 0, 0.15);
-            border-left: 3px solid #ff9500;
-            border-radius: 4px;
-            font-size: 12px;
-            line-height: 1.5;
-            color: var(--text-primary);
-        `;
-        perfWarning.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 3px;">⚡ High Traffic Detected</div>
-            <div style="font-size: 11px; opacity: 0.9;">
-                ${validAircraft.length} aircraft in range. Performance may be affected.
-                <br><span style="font-size: 10px; opacity: 0.7;">Tip: Reduce update frequency if experiencing lag</span>
-            </div>
-        `;
-        listContainer.appendChild(perfWarning);
+    // Old aircraft list rendering (legacy - only if listContainer exists)
+    if (listContainer) {
+        // Edge case: No aircraft detected
+        if (validAircraft.length === 0) {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.style.cssText = `
+                padding: 20px;
+                text-align: center;
+                color: var(--text-secondary);
+                font-size: 13px;
+                line-height: 1.6;
+            `;
+            emptyMessage.innerHTML = `
+                <div style="font-size: 32px; margin-bottom: 10px; opacity: 0.5;">✈️</div>
+                <div style="font-weight: bold; margin-bottom: 5px;">No Aircraft Detected</div>
+                <div style="font-size: 12px; opacity: 0.7;">
+                    Waiting for aircraft to appear in range...<br>
+                    <span style="font-size: 11px;">Check your ADS-B receiver is running</span>
+                </div>
+            `;
+            listContainer.appendChild(emptyMessage);
+        }
+
+        // Edge case: Very high aircraft count (500+)
+        // Add performance warning to help users understand potential lag
+        if (validAircraft.length >= 500) {
+            const perfWarning = document.createElement('div');
+            perfWarning.style.cssText = `
+                padding: 8px 12px;
+                margin-bottom: 10px;
+                background: rgba(255, 165, 0, 0.15);
+                border-left: 3px solid #ff9500;
+                border-radius: 4px;
+                font-size: 12px;
+                line-height: 1.5;
+                color: var(--text-primary);
+            `;
+            perfWarning.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 3px;">⚡ High Traffic Detected</div>
+                <div style="font-size: 11px; opacity: 0.9;">
+                    ${validAircraft.length} aircraft in range. Performance may be affected.
+                    <br><span style="font-size: 10px; opacity: 0.7;">Tip: Reduce update frequency if experiencing lag</span>
+                </div>
+            `;
+            listContainer.appendChild(perfWarning);
+        }
     }
+
     let highestHex = null, fastestHex = null, closestHex = null;
 
     if (validAircraft.length > 0) {
@@ -8848,11 +9288,13 @@ function updateUI(data) {
         }
     }
 
-    (data.aircraft || [])
-        .filter(ac => ac.lat && ac.lon)
-        .sort((a, b) => (a.r_dst || 999) - (b.r_dst || 999))
-        .slice(0, 20)
-        .forEach(ac => {
+    // Render old aircraft list items (legacy - only if listContainer exists)
+    if (listContainer) {
+        (data.aircraft || [])
+            .filter(ac => ac.lat && ac.lon)
+            .sort((a, b) => (a.r_dst || 999) - (b.r_dst || 999))
+            .slice(0, 20)
+            .forEach(ac => {
             const item = document.createElement('div');
             item.className = 'aircraft-item';
 
@@ -8935,18 +9377,19 @@ function updateUI(data) {
             listContainer.appendChild(item);
         });
 
-    // Reapply highlight if user was hovering over an aircraft when list rebuilt
-    if (currentlyHoveredListItem) {
-        // Check if the hovered aircraft still exists in the new list
-        const hoveredStillExists = (data.aircraft || []).some(ac => ac.hex === currentlyHoveredListItem);
-        if (hoveredStillExists) {
-            // Reapply highlight immediately to prevent flash
-            highlightAircraft(currentlyHoveredListItem, true);
-        } else {
-            // Aircraft disappeared, clear hover state
-            currentlyHoveredListItem = null;
+        // Reapply highlight if user was hovering over an aircraft when list rebuilt
+        if (currentlyHoveredListItem) {
+            // Check if the hovered aircraft still exists in the new list
+            const hoveredStillExists = (data.aircraft || []).some(ac => ac.hex === currentlyHoveredListItem);
+            if (hoveredStillExists) {
+                // Reapply highlight immediately to prevent flash
+                highlightAircraft(currentlyHoveredListItem, true);
+            } else {
+                // Aircraft disappeared, clear hover state
+                currentlyHoveredListItem = null;
+            }
         }
-    }
+    } // End if (listContainer)
 
     // Update mini statistics
     updateMiniStatistics(data.aircraft || []);
@@ -9011,6 +9454,11 @@ function selectAircraft(hex) {
 
     // Highlight the aircraft visually
     highlightAircraft(hex, true);
+
+    // Load full trail if not already loaded (only in live mode with Track API available)
+    if (currentMode === 'live' && AppFeatures.historical && !FullTrailsState.icaos.has(hex)) {
+        loadFullTrailForAircraft(hex);
+    }
 }
 
 function focusOnAircraft(hex) {
@@ -9019,6 +9467,11 @@ function focusOnAircraft(hex) {
 
     // Show aircraft details
     showAircraftDetail(hex);
+
+    // Load full trail if not already loaded (only in live mode with Track API available)
+    if (currentMode === 'live' && AppFeatures.historical && !FullTrailsState.icaos.has(hex)) {
+        loadFullTrailForAircraft(hex);
+    }
 
     // Smooth camera transition to aircraft
     const targetPos = mesh.position;
@@ -9190,10 +9643,9 @@ function highlightAircraft(hex, highlight) {
     const statElements = document.querySelectorAll(`[data-hex="${hex}"]`);
     statElements.forEach(el => {
         if (highlight) {
-            el.style.fontWeight = 'bold';
+            // Only change color, not font-weight (prevents flicker)
             el.style.color = '#4a9eff';
         } else {
-            el.style.fontWeight = '';
             el.style.color = '';
         }
     });
@@ -9255,13 +9707,18 @@ function updateLabelAppearance(hex, highlighted) {
 }
 
 // Update mini statistics panel
+// Global variables for stat tracking (highest/fastest/closest aircraft)
+let statHighestHex = null;
+let statFastestHex = null;
+let statClosestHex = null;
+
 function updateMiniStatistics(aircraftList) {
     const validAircraft = aircraftList.filter(ac => ac.lat && ac.lon && ac.alt_baro);
 
     if (validAircraft.length === 0) {
-        document.getElementById('stat-highest').textContent = '--';
-        document.getElementById('stat-fastest').textContent = '--';
-        document.getElementById('stat-closest').textContent = '--';
+        statHighestHex = null;
+        statFastestHex = null;
+        statClosestHex = null;
         return;
     }
 
@@ -9269,14 +9726,7 @@ function updateMiniStatistics(aircraftList) {
     const highest = validAircraft.reduce((max, ac) =>
         (ac.alt_baro > max.alt_baro) ? ac : max
     );
-    const highestCallsign = highest.flight?.trim() || highest.hex.slice(-4).toUpperCase();
-    const highestEl = document.getElementById('stat-highest');
-    highestEl.textContent = `${highestCallsign} @ ${highest.alt_baro.toLocaleString()}ft`;
-    highestEl.dataset.hex = highest.hex;
-    highestEl.style.cursor = 'pointer';
-    highestEl.onclick = () => focusOnAircraft(highest.hex);
-    highestEl.onmouseenter = () => highlightAircraft(highest.hex, true);
-    highestEl.onmouseleave = () => highlightAircraft(highest.hex, false);
+    statHighestHex = highest.hex;
 
     // Find fastest aircraft
     const withSpeed = validAircraft.filter(ac => ac.gs);
@@ -9284,22 +9734,9 @@ function updateMiniStatistics(aircraftList) {
         const fastest = withSpeed.reduce((max, ac) =>
             (ac.gs > max.gs) ? ac : max
         );
-        const fastestCallsign = fastest.flight?.trim() || fastest.hex.slice(-4).toUpperCase();
-        const fastestEl = document.getElementById('stat-fastest');
-        fastestEl.textContent = `${fastestCallsign} @ ${fastest.gs.toFixed(0)}kts`;
-        fastestEl.dataset.hex = fastest.hex;
-        fastestEl.style.cursor = 'pointer';
-        fastestEl.onclick = () => focusOnAircraft(fastest.hex);
-        fastestEl.onmouseenter = () => highlightAircraft(fastest.hex, true);
-        fastestEl.onmouseleave = () => highlightAircraft(fastest.hex, false);
+        statFastestHex = fastest.hex;
     } else {
-        const fastestEl = document.getElementById('stat-fastest');
-        fastestEl.textContent = '--';
-        fastestEl.dataset.hex = '';
-        fastestEl.style.cursor = '';
-        fastestEl.onclick = null;
-        fastestEl.onmouseenter = null;
-        fastestEl.onmouseleave = null;
+        statFastestHex = null;
     }
 
     // Find closest aircraft
@@ -9308,204 +9745,15 @@ function updateMiniStatistics(aircraftList) {
         const closest = withDistance.reduce((min, ac) =>
             (ac.r_dst < min.r_dst) ? ac : min
         );
-        const closestCallsign = closest.flight?.trim() || closest.hex.slice(-4).toUpperCase();
-        const closestEl = document.getElementById('stat-closest');
-        closestEl.textContent = `${closestCallsign} @ ${closest.r_dst.toFixed(1)}nmi`; // r_dst is already in nautical miles
-        closestEl.dataset.hex = closest.hex;
-        closestEl.style.cursor = 'pointer';
-        closestEl.onclick = () => focusOnAircraft(closest.hex);
-        closestEl.onmouseenter = () => highlightAircraft(closest.hex, true);
-        closestEl.onmouseleave = () => highlightAircraft(closest.hex, false);
+        statClosestHex = closest.hex;
     } else {
-        const closestEl = document.getElementById('stat-closest');
-        closestEl.textContent = '--';
-        closestEl.dataset.hex = '';
-        closestEl.style.cursor = '';
-        closestEl.onclick = null;
-        closestEl.onmouseenter = null;
-        closestEl.onmouseleave = null;
+        statClosestHex = null;
     }
 }
 
 // Last sky update time
 let lastSkyUpdate = 0;
 let lastStaleTrailCleanup = 0;
-
-// Mini Radar Rendering
-function updateMiniRadar(cameraYawDegrees) {
-    if (!showMiniRadar) return; // Don't render if disabled
-
-    const canvas = document.getElementById('radar-canvas');
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const maxRange = 150; // nautical miles (150nm scale)
-
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
-
-    // Save context for rotation
-    ctx.save();
-
-    // Rotate canvas based on camera yaw (negative for counter-rotation like compass)
-    ctx.translate(centerX, centerY);
-    ctx.rotate((-cameraYawDegrees * Math.PI) / 180);
-    ctx.translate(-centerX, -centerY);
-
-    // Draw range rings (50nm, 100nm, 150nm)
-    const ringColor = CONFIG.distanceRing1Color || 0x4a9eff;
-    const rgbColor = `rgba(${(ringColor >> 16) & 255}, ${(ringColor >> 8) & 255}, ${ringColor & 255}, 0.3)`;
-
-    ctx.strokeStyle = rgbColor;
-    ctx.lineWidth = 1;
-
-    [50, 100, 150].forEach(range => {
-        const radius = (range / maxRange) * (width / 2 - 10);
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        ctx.stroke();
-    });
-
-    // Draw crosshairs for home position
-    ctx.strokeStyle = rgbColor;
-    ctx.lineWidth = 2;
-    const crossSize = 6;
-    ctx.beginPath();
-    ctx.moveTo(centerX - crossSize, centerY);
-    ctx.lineTo(centerX + crossSize, centerY);
-    ctx.moveTo(centerX, centerY - crossSize);
-    ctx.lineTo(centerX, centerY + crossSize);
-    ctx.stroke();
-
-    // Draw north indicator (fixed at top after rotation)
-    ctx.fillStyle = CONFIG.compassNorth || '#ff4444';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('N', centerX, 15);
-
-    // Draw aircraft dots (always use live data, even in historical mode)
-    const homeLatLon = CONFIG.homeLocation;
-
-    liveRadarData.forEach((ac) => {
-        if (!ac || !ac.lat || !ac.lon || typeof ac.alt_baro !== 'number') return;
-
-        const lat = ac.lat;
-        const lon = ac.lon;
-        const altFeet = ac.alt_baro; // Altitude in feet
-        const isMilitary = isMilitaryAircraft(ac.hex); // Check if military using hex code
-
-        // Calculate distance and bearing from home
-        const latDiff = (lat - homeLatLon.lat) * 60; // Convert to nautical miles (1 deg lat ≈ 60nm)
-        const lonDiff = (lon - homeLatLon.lon) * 60 * Math.cos((homeLatLon.lat * Math.PI) / 180);
-
-        const distance = Math.sqrt(latDiff * latDiff + lonDiff * lonDiff);
-
-        // Skip if out of range
-        if (distance > maxRange) return;
-
-        // Calculate position on radar (North = -Y, East = +X)
-        const scale = (width / 2 - 10) / maxRange;
-        const x = centerX + lonDiff * scale;
-        const y = centerY - latDiff * scale; // Invert Y (North is up)
-
-        // Use same color logic as aircraft meshes
-        let colorValue;
-        if (CONFIG.highlightMilitary && isMilitary) {
-            colorValue = CONFIG.militaryColor;
-        } else {
-            // Use altitude in feet directly - same as tar1090 color scheme
-            const saturation = 88;
-            const lightness = 44;
-            let hue;
-
-            if (altFeet < 500) {
-                colorValue = 0x737373; // Gray for ground/unknown
-            } else if (altFeet <= 2000) {
-                hue = 20; // Orange
-                colorValue = hslToRgb(hue, saturation, lightness);
-            } else if (altFeet <= 10000) {
-                // Interpolate from 20 (orange) to 140 (light green)
-                const ratio = (altFeet - 2000) / (10000 - 2000);
-                hue = 20 + ratio * (140 - 20);
-                colorValue = hslToRgb(hue, saturation, lightness);
-            } else if (altFeet <= 40000) {
-                // Interpolate from 140 (light green) to 300 (magenta)
-                const ratio = (altFeet - 10000) / (40000 - 10000);
-                hue = 140 + ratio * (300 - 140);
-                colorValue = hslToRgb(hue, saturation, lightness);
-            } else {
-                hue = 300; // Magenta for >40000ft
-                colorValue = hslToRgb(hue, saturation, lightness);
-            }
-        }
-
-        // Convert hex color to CSS
-        const color = new THREE.Color(colorValue);
-        const dotColor = `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
-
-        // Always draw aircraft sprites on mini radar if texture is loaded
-        if (spriteTexture && spriteTexture.image && spriteTexture.image.complete) {
-            // Get aircraft heading
-            const heading = ac.track || 0;
-
-            // Get sprite position (for now, use default twin jet for all)
-            const spritePos = getSpritePosition('jet_twin');
-            const spriteWidth = SPRITE_CONFIG.spriteWidth;
-            const spriteHeight = SPRITE_CONFIG.spriteHeight;
-
-            // Calculate source position in sprite sheet
-            const sourceX = spritePos.col * spriteWidth;
-            const sourceY = spritePos.row * spriteHeight;
-
-            // Save context state for rotation
-            ctx.save();
-
-            // Move to aircraft position and rotate
-            ctx.translate(x, y);
-            ctx.rotate((-heading * Math.PI) / 180); // Negative for correct heading
-
-            // Draw colored background circle first
-            ctx.fillStyle = dotColor;
-            ctx.beginPath();
-            ctx.arc(0, 0, 6, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Draw the sprite on top (slightly larger, no tint)
-            const drawSize = 10; // Size on radar (10px square)
-            ctx.drawImage(
-                spriteTexture.image,
-                sourceX, sourceY, spriteWidth, spriteHeight, // source
-                -drawSize/2, -drawSize/2, drawSize, drawSize  // destination (centered)
-            );
-
-            // Restore context
-            ctx.restore();
-        } else {
-            // Fallback to dots if sprites not available
-            ctx.fillStyle = dotColor;
-            ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Add smaller glow for visibility (3px radius instead of 5px)
-            ctx.strokeStyle = dotColor;
-            ctx.lineWidth = 1;
-            ctx.globalAlpha = 0.4;
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        }
-    });
-
-    // Restore context
-    ctx.restore();
-}
 
 // Frame rate limiting variables
 let lastFrameTime = 0;
@@ -9536,7 +9784,19 @@ function animate() {
     if (now - lastStaleTrailCleanup > 60000) { // Check every minute
         const thirtyMinutes = 30 * 60 * 1000;
         staleTrails.forEach((trail, hex) => {
-            if (now - trail.lastUpdate > thirtyMinutes) {
+            // Determine fade time (in milliseconds)
+            // If trailFadeTime is 0 (Never) or auto-fade is disabled, use 30 minutes as fallback
+            let fadeTimeMs;
+            if (!autoFadeTrails || trailFadeTime === 0) {
+                fadeTimeMs = thirtyMinutes;
+            } else if (trailFadeTime === -1) {
+                // Immediate mode: should have been cleaned already, but just in case
+                fadeTimeMs = 0;
+            } else {
+                fadeTimeMs = trailFadeTime * 1000;
+            }
+
+            if (now - trail.lastUpdate > fadeTimeMs) {
                 // Remove from scene
                 scene.remove(trail.line);
                 if (trail.gapLine) scene.remove(trail.gapLine);
@@ -9568,34 +9828,10 @@ function animate() {
         window.homeBeacon.material.emissiveIntensity = intensity;
     }
 
-    // Update compass rose rotation based on camera orientation
-    const compassRose = document.getElementById('compass-rose');
-    if (compassRose) {
-        // Calculate camera's yaw angle (horizontal rotation)
-        const cameraDirection = new THREE.Vector3();
-        camera.getWorldDirection(cameraDirection);
-
-        // Calculate angle from north (-Z axis)
-        // atan2 gives us the angle in radians, we convert to degrees
-        const yaw = Math.atan2(cameraDirection.x, -cameraDirection.z);
-        let yawDegrees = yaw * 180 / Math.PI;
-
-        // Normalize to 0-360 range for heading indicator
-        let heading = yawDegrees;
-        if (heading < 0) heading += 360;
-        heading = Math.round(heading) % 360;
-
-        // Update heading indicator (aviation format: 3 digits)
-        const headingIndicator = document.getElementById('heading-indicator');
-        if (headingIndicator) {
-            headingIndicator.textContent = heading.toString().padStart(3, '0');
-        }
-
-        // Rotate compass rose opposite to camera direction
-        compassRose.style.transform = `rotate(${-yawDegrees}deg)`;
-
-        // Update mini radar with same rotation
-        updateMiniRadar(yawDegrees);
+    // Update sidebar mini radar and heading (every frame for smooth updates)
+    if (camera && CONFIG && CONFIG.homeLocation) {
+        updateSidebarMiniRadar();
+        updateSidebarHeading();
     }
 
     // Handle follow mode camera
@@ -9698,10 +9934,30 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+function updateRendererSize() {
+    const isLocked = document.body.classList.contains('sidebar-locked');
+    const sidebar = document.getElementById('unified-sidebar');
+    const sidebarWidth = sidebar ? parseInt(getComputedStyle(sidebar).width, 10) : 320;
+
+    let width, height;
+
+    if (isLocked) {
+        // When locked, use remaining space to left of sidebar
+        width = window.innerWidth - sidebarWidth;
+        height = window.innerHeight;
+    } else {
+        // When unlocked, use full window
+        width = window.innerWidth;
+        height = window.innerHeight;
+    }
+
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(width, height);
+}
+
+function onWindowResize() {
+    updateRendererSize();
 }
 
 // Setup aircraft click interaction
@@ -9871,8 +10127,13 @@ function setupAircraftClick() {
         const allClickableObjects = [...aircraftArray, ...labelArray, ...airportMeshes, ...historicalTracksArray, ...endpointsArray];
         const intersects = raycaster.intersectObjects(allClickableObjects, true);
 
-        if (intersects.length > 0) {
-            const clickedObject = intersects[0].object;
+        // Filter out Tron curtains - they should not be clickable
+        const nonCurtainIntersects = intersects.filter(intersect =>
+            !intersect.object.userData?.isTronCurtain
+        );
+
+        if (nonCurtainIntersects.length > 0) {
+            const clickedObject = nonCurtainIntersects[0].object;
 
             // Check if we clicked a historical endpoint
             if (clickedObject.userData && clickedObject.userData.isHistoricalEndpoint) {
@@ -10181,129 +10442,169 @@ async function showAircraftDetail(hex) {
     // Use textContent (not innerHTML) for callsign to prevent XSS
     document.getElementById('detail-callsign').textContent = callsign;
 
-    // Build detail grid
-    const details = [];
+    // Build detail sections - separated into categories
+    const liveData = [];      // Live ADSB data from antenna
+    const airframeData = [];  // Static aircraft/airframe information
+    const signalData = [];    // Signal quality and reception info
 
-    // Add MLAT status at the top if applicable
-    // Signal Quality Information
+    // ========== SIGNAL & RECEPTION DATA (Top Section) ==========
     const signalQuality = mesh.userData.signalQuality || getSignalQuality(data);
     if (signalQuality) {
-        // Create quality badge with color based on score
+        // Compact signal quality display
         let qualityColor = '#4caf50'; // Green for good
         if (signalQuality.score < 40) qualityColor = '#f44336'; // Red for poor
         else if (signalQuality.score < 60) qualityColor = '#ff9800'; // Orange for fair
         else if (signalQuality.score < 80) qualityColor = '#ffc107'; // Yellow for moderate
 
-        const qualityBadge = `<span style="background: ${qualityColor}; padding: 2px 6px; border-radius: 3px; color: white;">${signalQuality.quality} (${signalQuality.score}%)</span>`;
-        details.push({ label: 'Signal Quality', value: qualityBadge });
+        signalData.push({
+            label: 'Signal',
+            value: `<span style="background: ${qualityColor}; padding: 1px 4px; border-radius: 2px; color: white; font-size: 10px;">${signalQuality.quality}</span>`
+        });
 
-        // Add RSSI if available
         if (signalQuality.rssi !== undefined) {
             const rssiColor = signalQuality.rssi < -38 ? '#ff9800' : '#4caf50';
-            details.push({ label: 'Signal Strength', value: `<span style="color: ${rssiColor}">${signalQuality.rssi.toFixed(1)} dBm</span>` });
+            signalData.push({ label: 'RSSI', value: `<span style="color: ${rssiColor}">${signalQuality.rssi.toFixed(0)} dBm</span>` });
         }
 
-        // Add data age
         if (signalQuality.seen !== undefined) {
             const seenColor = signalQuality.seen > 10 ? '#ff9800' : '#4caf50';
-            details.push({ label: 'Data Age', value: `<span style="color: ${seenColor}">${signalQuality.seen.toFixed(1)}s ago</span>` });
-        }
-
-        // Add any issues as a note
-        if (signalQuality.issues && signalQuality.issues.length > 0) {
-            const issuesText = signalQuality.issues.join(', ');
-            details.push({ label: 'Data Issues', value: `<span style="color: #ff9800; font-size: 11px">${issuesText}</span>` });
+            signalData.push({ label: 'Age', value: `<span style="color: ${seenColor}">${signalQuality.seen.toFixed(0)}s</span>` });
         }
     }
 
     const isMLAT = data.mlat && data.mlat.length > 0;
     if (isMLAT) {
-        details.push({ label: 'Position Source', value: `<span style="background: #ff6600; padding: 2px 6px; border-radius: 3px; color: white;">MLAT</span>` });
+        signalData.push({
+            label: 'Src',
+            value: `<span style="background: #ff6600; padding: 1px 4px; border-radius: 2px; color: white; font-size: 10px;">MLAT</span>`
+        });
     }
 
+    // ========== LIVE ADSB DATA (Flight Data Section) ==========
     // Add military status if applicable
     const isMilitary = mesh.userData.isMilitary || false;
-    const militaryInfo = mesh.userData.militaryInfo;
     if (isMilitary) {
         const militaryBgColor = getCSSVar('military-color');
-        const militaryLabel = `<span style="background: ${militaryBgColor}; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold;">MILITARY AIRCRAFT</span>`;
-        details.push({ label: 'Classification', value: militaryLabel });
-
-        if (militaryInfo) {
-            if (militaryInfo.tail) details.push({ label: 'Military Tail', value: sanitizeHTML(militaryInfo.tail) });
-            if (militaryInfo.type) details.push({ label: 'Military Type', value: sanitizeHTML(militaryInfo.type) });
-            if (militaryInfo.description) details.push({ label: 'Description', value: sanitizeHTML(militaryInfo.description) });
-        }
+        liveData.push({
+            label: 'Type',
+            value: `<span style="background: ${militaryBgColor}; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold;">MILITARY</span>`
+        });
     }
 
-    // Aircraft info (like tar1090) - sanitize all external data
+    // Core identifiers
+    if (data.hex) liveData.push({ label: 'ICAO', value: sanitizeHTML(data.hex.toUpperCase()) });
+    if (data.squawk) liveData.push({ label: 'Squawk', value: data.squawk });
+
+    // Position & Movement
+    if (data.alt_baro) liveData.push({ label: 'Altitude', value: `${data.alt_baro.toLocaleString()} ft` });
+    if (data.gs) liveData.push({ label: 'Speed', value: `${data.gs.toFixed(0)} kts` });
+    if (data.track) liveData.push({ label: 'Track', value: `${data.track.toFixed(0)}°` });
+
+    // Vertical rate
+    const vertRate = data.baro_rate ?? data.geom_rate;
+    if (vertRate) liveData.push({ label: 'V/Rate', value: `${vertRate > 0 ? '+' : ''}${vertRate} fpm` });
+
+    if (data.r_dst) liveData.push({ label: 'Distance', value: `${data.r_dst.toFixed(1)} nm` });
+
+    // ========== AIRFRAME DATA (Aircraft Details Section) ==========
+    if (data.r) airframeData.push({ label: 'Reg', value: sanitizeHTML(data.r) });
+    if (data.t) airframeData.push({ label: 'Type', value: sanitizeHTML(data.t) });
+
+    // Combined aircraft description
     if (data.desc) {
-        // Show year + description if available (e.g., "2019 BOEING 757-200")
         const year = data.year ? sanitizeHTML(String(data.year)) : '';
         const desc = sanitizeHTML(data.desc);
         const aircraftInfo = year ? `${year} ${desc}` : desc;
-        details.push({ label: 'Aircraft', value: aircraftInfo });
+        airframeData.push({ label: 'Aircraft', value: aircraftInfo });
     }
-    if (data.ownOp) details.push({ label: 'Operator', value: sanitizeHTML(data.ownOp) });
-    if (data.r) details.push({ label: 'Registration', value: sanitizeHTML(data.r) });
-    if (data.t) details.push({ label: 'Type Code', value: sanitizeHTML(data.t) });
 
-    // === Aircraft Specifications ===
+    if (data.ownOp) airframeData.push({ label: 'Operator', value: sanitizeHTML(data.ownOp) });
+
+    // Performance specs if available
     if (data.t) {
         const specs = getAircraftSpecs(data.t);
         if (specs) {
-            // Add section header
-            details.push({ label: 'Performance Specifications', value: '', header: true });
-
-            details.push({
-                label: 'Cruise Speed',
-                value: `${specs.cruise} kts`
-            });
-
-            details.push({
-                label: 'Max Altitude',
-                value: `${specs.maxAlt.toLocaleString()} ft`
-            });
-
-            details.push({
-                label: 'Range',
-                value: `${specs.range.toLocaleString()} nm`
-            });
+            airframeData.push({ label: 'Cruise', value: `${specs.cruise} kts` });
+            airframeData.push({ label: 'Ceiling', value: `FL${Math.floor(specs.maxAlt/100)}` });
+            airframeData.push({ label: 'Range', value: `${specs.range.toLocaleString()} nm` });
         }
     }
 
-    // Add route placeholder (will be populated async)
-    details.push({ label: 'Route', value: '<span id="route-loading">Loading...</span>' });
+    // ========== BUILD HTML WITH SECTIONS ==========
+    let contentHtml = '<div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">';
 
-    // Flight data
-    if (data.alt_baro) details.push({ label: 'Altitude', value: `${data.alt_baro.toLocaleString()} ft` });
-    if (data.alt_geom) details.push({ label: 'Geometric Alt', value: `${data.alt_geom.toLocaleString()} ft` });
-    if (data.gs) details.push({ label: 'Ground Speed', value: `${data.gs.toFixed(0)} knots` });
-    if (data.tas) details.push({ label: 'True Airspeed', value: `${data.tas.toFixed(0)} knots` });
-    if (data.track) details.push({ label: 'Track/Heading', value: `${data.track.toFixed(0)}°` });
+    // Signal section (compact inline)
+    if (signalData.length > 0) {
+        contentHtml += '<div class="signal-bar">';
+        signalData.forEach(item => {
+            contentHtml += `<div class="signal-item">
+                <span style="color: var(--text-secondary);">${item.label}:</span>
+                <span>${item.value}</span>
+            </div>`;
+        });
+        contentHtml += '</div>';
+    }
 
-    // Show vertical rate (prefer baro_rate, fall back to geom_rate)
-    const vertRate = data.baro_rate ?? data.geom_rate;
-    if (vertRate) details.push({ label: 'Vertical Rate', value: `${vertRate > 0 ? '+' : ''}${vertRate} ft/min` });
+    // Live ADSB Data section
+    if (liveData.length > 0) {
+        contentHtml += '<div>';
+        contentHtml += '<div class="section-header">FLIGHT DATA</div>';
+        contentHtml += '<div class="detail-grid">';
+        liveData.forEach(item => {
+            contentHtml += `<div class="detail-item">
+                           <span class="detail-label">${item.label}:</span>
+                           <span class="detail-value">${item.value}</span>
+                           </div>`;
+        });
+        contentHtml += '</div></div>';
+    }
 
-    if (data.r_dst) details.push({ label: 'Distance', value: `${data.r_dst.toFixed(1)} nmi` }); // r_dst is already in nautical miles
-    if (data.category) details.push({ label: 'Category', value: data.category });
-    if (data.squawk) details.push({ label: 'Squawk', value: data.squawk });
-    if (data.emergency) details.push({ label: 'Emergency', value: data.emergency });
+    // Airframe Data section
+    if (airframeData.length > 0) {
+        contentHtml += '<div>';
+        contentHtml += '<div class="section-header">AIRFRAME</div>';
+        contentHtml += '<div class="detail-grid">';
+        airframeData.forEach(item => {
+            contentHtml += `<div class="detail-item">
+                           <span class="detail-label">${item.label}:</span>
+                           <span class="detail-value">${item.value}</span>
+                           </div>`;
+        });
+        contentHtml += '</div></div>';
+    }
 
-    const contentHtml = details.map(d => {
-        if (d.header) {
-            // Header row for sections (e.g., "Performance Specifications")
-            return `<div class="detail-header">${d.label}</div>`;
-        } else {
-            // Regular label:value pair
-            return `<div class="detail-label">${d.label}:</div><div class="detail-value">${d.value}</div>`;
-        }
-    }).join('');
+    // Route section (placeholder)
+    contentHtml += '<div>';
+    contentHtml += '<div class="section-header">ROUTE</div>';
+    contentHtml += '<div class="detail-grid">';
+    contentHtml += '<div class="detail-item">';
+    contentHtml += '<span class="detail-label">Route:</span>';
+    contentHtml += '<span class="detail-value" id="route-loading" style="color: var(--text-secondary); font-style: italic;">Loading...</span>';
+    contentHtml += '</div>';
+    contentHtml += '</div></div>';
 
-    document.getElementById('detail-content').innerHTML = contentHtml +
-        '<div id="aircraft-photo-container" style="grid-column: 1 / -1; margin-top: 10px; text-align: center;"></div>';
+    // Photo container
+    contentHtml += '<div id="aircraft-photo-container" style="margin-top: 8px;"></div>';
+
+    // Add bottom padding to ensure all content is scrollable on mobile
+    contentHtml += '<div style="padding-bottom: 20px;"></div>';
+    contentHtml += '</div>';
+
+    document.getElementById('detail-content').innerHTML = contentHtml;
     panel.style.display = 'block';
+
+    // Check if content is scrollable and add visual indicator
+    const detailBody = panel.querySelector('.detail-body');
+    if (detailBody) {
+        // Small delay to ensure content is rendered
+        setTimeout(() => {
+            if (detailBody.scrollHeight > detailBody.clientHeight) {
+                detailBody.classList.add('scrollable');
+            } else {
+                detailBody.classList.remove('scrollable');
+            }
+        }, 10);
+    }
 
     // Show and configure the detail panel Follow button
     // Only show in live mode or historical playback mode (not in historical show-all)
@@ -10423,6 +10724,17 @@ function showHistoricalTrackDetail(userData) {
     const icao = userData.icao;
     const panel = document.getElementById('aircraft-detail');
 
+    // Debug: Log track fields to identify data structure
+    console.log(`[HistoricalDetail] Track ${icao}:`, {
+        callsign: track.callsign,
+        registration: track.registration,
+        t: track.t,
+        type: track.type,
+        aircraft_type: track.aircraft_type,
+        type_designator: track.type_designator,
+        positions: track.positions?.length
+    });
+
     // Use callsign or ICAO as title
     const displayName = track.callsign?.trim() || track.registration || icao || 'Unknown';
     document.getElementById('detail-callsign').textContent = displayName;
@@ -10442,8 +10754,12 @@ function showHistoricalTrackDetail(userData) {
     if (track.registration) details.push({ label: 'Registration', value: track.registration });
     details.push({ label: 'ICAO Hex', value: icao });
 
-    // Aircraft type info
-    if (track.aircraft_type) details.push({ label: 'Aircraft Type', value: track.aircraft_type });
+    // Aircraft type info - try multiple field names
+    // Some historical APIs use 't', others use 'aircraft_type', 'type', etc.
+    const aircraftType = track.t || track.type || track.aircraft_type || track.type_designator;
+    if (aircraftType) {
+        details.push({ label: 'Aircraft Type', value: aircraftType });
+    }
 
     // Position count
     if (track.positions && track.positions.length > 0) {
@@ -10652,8 +10968,1301 @@ initializeApp();
 // Load military aircraft database (async, non-blocking)
 loadMilitaryDatabase();
 
+// Note: setupSidebarEventHandlers() now called from init() after DOM is ready
+
+// Function to update stale aircraft appearance
+function updateStaleAircraft() {
+    if (currentMode !== 'live') return; // Only in live mode
+
+    aircraftMeshes.forEach((mesh, hex) => {
+        const ac = mesh.userData;
+        if (!ac) return;
+
+        // Check if aircraft is stale
+        const isStale = ac.seen > 15 || ac.seen_pos > 15;
+        const signalQuality = ac.signalQuality || getSignalQuality(ac);
+        const isPoorSignal = signalQuality.score < 50;
+
+        // Update appearance if stale or poor signal
+        mesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+                // Clone material if not already cloned
+                if (!child.material.userData?.cloned) {
+                    child.material = child.material.clone();
+                    child.material.userData = { cloned: true };
+                }
+
+                if (isStale || isPoorSignal) {
+                    // Gray out stale/poor signal aircraft
+                    if (child.material.uniforms && child.material.uniforms.tintColor) {
+                        // For shader material sprites
+                        child.material.uniforms.tintColor.value.setHex(0x808080);
+                    } else if (child.material.color) {
+                        // For standard materials (spheres)
+                        child.material.color.setHex(0x808080);
+                        if (child.material.emissive) {
+                            child.material.emissive.setHex(0x404040);
+                        }
+                    }
+                    child.material.opacity = Math.min(signalQuality.opacity, 0.7);
+                    child.material.transparent = true;
+                } else {
+                    // Restore normal colors if no longer stale
+                    const altitude = mesh.position.y;
+                    const isMilitary = ac.isMilitary || isMilitaryAircraft(hex);
+                    const originalColor = isMilitary ? CONFIG.militaryColor : getAltitudeColor(altitude);
+
+                    if (child.material.uniforms && child.material.uniforms.tintColor) {
+                        // For shader material sprites
+                        child.material.uniforms.tintColor.value.setHex(originalColor);
+                    } else if (child.material.color) {
+                        // For standard materials (spheres)
+                        child.material.color.setHex(originalColor);
+                        if (child.material.emissive) {
+                            child.material.emissive.setHex(originalColor);
+                            child.material.emissiveIntensity = 0.3;
+                        }
+                    }
+                    child.material.opacity = signalQuality.opacity;
+                }
+            }
+        });
+
+        // Also update altitude line color if it exists
+        const altLine = altitudeLines.get(hex);
+        if (altLine && altLine.material) {
+            if (isStale || isPoorSignal) {
+                altLine.material.color.setHex(0x808080);
+                altLine.material.opacity = 0.3;
+            } else {
+                const altitude = mesh.position.y;
+                const isMilitary = ac.isMilitary || isMilitaryAircraft(hex);
+                const originalColor = isMilitary ? CONFIG.militaryColor : getAltitudeColor(altitude);
+                altLine.material.color.setHex(originalColor);
+                altLine.material.opacity = 0.5;
+            }
+        }
+
+        // Update trail color if it exists
+        const trail = trails.get(hex);
+        if (trail && trail.line && trail.line.material) {
+            if (isStale || isPoorSignal) {
+                trail.line.material.opacity = Math.min(trail.line.material.opacity, 0.3);
+            }
+        }
+    });
+}
+
+// Start checking for stale aircraft periodically
+setInterval(updateStaleAircraft, 2000); // Check every 2 seconds
+
 // ============================================================================
-// THEME UI EVENT LISTENERS
+// SIDEBAR EVENT HANDLERS
+// ============================================================================
+
+/**
+ * Format Date object to datetime-local input format (YYYY-MM-DDTHH:MM)
+ */
+function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+/**
+ * Update the duration display for custom time range
+ */
+function updateCustomDuration() {
+    const startInput = document.getElementById('custom-start-time');
+    const endInput = document.getElementById('custom-end-time');
+    const durationDisplay = document.getElementById('custom-duration-display');
+
+    if (!startInput || !endInput || !durationDisplay) return;
+    if (!startInput.value || !endInput.value) {
+        durationDisplay.textContent = 'Duration: --';
+        return;
+    }
+
+    const startTime = new Date(startInput.value);
+    const endTime = new Date(endInput.value);
+    const diffMs = endTime - startTime;
+
+    if (diffMs <= 0) {
+        durationDisplay.textContent = 'Duration: Invalid';
+        durationDisplay.style.color = 'var(--danger-color)';
+        return;
+    }
+
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+
+    let durationText = 'Duration: ';
+    if (hours > 0) {
+        durationText += `${hours}h `;
+    }
+    if (minutes > 0 || hours === 0) {
+        durationText += `${minutes}m`;
+    }
+
+    durationDisplay.textContent = durationText;
+    durationDisplay.style.color = 'var(--text-secondary)';
+}
+
+/**
+ * Load historical tracks with custom date/time range
+ */
+async function loadHistoricalTracksCustom(startTime, endTime) {
+    const maxTracks = HistoricalState.settings.maxTracks;
+
+    console.log('[Historical] Loading tracks for custom range:', {
+        start: startTime.toISOString(),
+        end: endTime.toISOString()
+    });
+
+    // Clear existing tracks first to prevent stacking
+    clearHistoricalTracks();
+
+    try {
+        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
+
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks from custom range`);
+
+        // Store tracks in both global variable (for backwards compat) and HistoricalState
+        historicalTracks = {};
+        HistoricalState.tracks = [];
+        playbackStartTime = null;
+        playbackEndTime = null;
+
+        if (data.tracks) {
+            data.tracks.forEach(track => {
+                const icao = track.hex || track.icao;
+                if (icao) {
+                    historicalTracks[icao] = track;
+                }
+                HistoricalState.tracks.push(track);
+
+                // Update time bounds
+                track.positions.forEach(pos => {
+                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
+                    if (!playbackStartTime || timestamp < playbackStartTime) {
+                        playbackStartTime = timestamp;
+                    }
+                    if (!playbackEndTime || timestamp > playbackEndTime) {
+                        playbackEndTime = timestamp;
+                    }
+                });
+            });
+
+            // Render the tracks visually
+            renderHistoricalTracks();
+        }
+
+        // Set current time to start
+        playbackCurrentTime = playbackStartTime;
+
+        return data.tracks || [];
+    } catch (error) {
+        console.error('[Historical] Error loading tracks:', error);
+        throw error;
+    }
+}
+
+function setupSidebarEventHandlers() {
+    console.log('[Sidebar] Setting up event handlers...');
+
+    // Sidebar toggle
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('unified-sidebar');
+    if (sidebarToggle && sidebar) {
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            const icon = sidebarToggle.querySelector('.toggle-icon');
+            icon.textContent = sidebar.classList.contains('collapsed') ? '‹' : '›';
+        });
+    }
+
+    // Sidebar resize handle
+    const resizeHandle = document.querySelector('.sidebar-resize-handle');
+    if (resizeHandle && sidebar) {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = parseInt(getComputedStyle(sidebar).width, 10);
+            document.body.style.cursor = 'ew-resize';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const deltaX = startX - e.clientX; // Inverted because sidebar is on right
+            const newWidth = Math.max(250, Math.min(600, startWidth + deltaX));
+            sidebar.style.width = newWidth + 'px';
+
+            // Live update viewport while dragging (if locked)
+            if (document.body.classList.contains('sidebar-locked')) {
+                updateRendererSize();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+
+                // Update viewport size when locked (after resizing sidebar)
+                if (document.body.classList.contains('sidebar-locked')) {
+                    updateRendererSize();
+                }
+            }
+        });
+    }
+
+    // Sidebar lock/pin button
+    const lockButton = document.getElementById('sidebar-lock');
+    if (lockButton) {
+        // Load lock state from localStorage
+        const isLocked = localStorage.getItem('sidebarLocked') === 'true';
+        if (isLocked) {
+            document.body.classList.add('sidebar-locked');
+            lockButton.classList.add('locked');
+            const lockIcon = lockButton.querySelector('.lock-icon');
+            lockIcon.className = 'lock-icon mdi mdi-lock';
+            lockButton.title = 'Unlock sidebar';
+            updateRendererSize();
+        }
+
+        lockButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const wasLocked = document.body.classList.contains('sidebar-locked');
+            const lockIcon = lockButton.querySelector('.lock-icon');
+
+            if (wasLocked) {
+                // Unlock
+                document.body.classList.remove('sidebar-locked');
+                lockButton.classList.remove('locked');
+                lockIcon.className = 'lock-icon mdi mdi-lock-open-variant';
+                lockButton.title = 'Lock sidebar open';
+                localStorage.setItem('sidebarLocked', 'false');
+
+                // Show toggle button when unlocked
+                if (sidebarToggle) {
+                    sidebarToggle.style.display = 'flex';
+                }
+            } else {
+                // Lock
+                document.body.classList.add('sidebar-locked');
+                lockButton.classList.add('locked');
+                lockIcon.className = 'lock-icon mdi mdi-lock';
+                lockButton.title = 'Unlock sidebar';
+                localStorage.setItem('sidebarLocked', 'true');
+
+                // Ensure sidebar is visible when locking
+                if (sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    const icon = sidebarToggle.querySelector('.toggle-icon');
+                    icon.textContent = '›';
+                }
+
+                // Hide toggle button when locked
+                if (sidebarToggle) {
+                    sidebarToggle.style.display = 'none';
+                }
+            }
+
+            // Update renderer size to match new layout
+            updateRendererSize();
+        });
+
+        // Hide toggle button on initial load if locked
+        if (isLocked && sidebarToggle) {
+            sidebarToggle.style.display = 'none';
+        }
+    }
+
+    // Mode tabs
+    const liveTab = document.getElementById('sidebar-tab-live');
+    const historicalTab = document.getElementById('sidebar-tab-historical');
+
+    if (liveTab) {
+        liveTab.addEventListener('click', () => {
+            if (currentMode !== 'live') {
+                switchToLiveMode();
+            }
+        });
+    }
+
+    if (historicalTab) {
+        historicalTab.addEventListener('click', () => {
+            if (currentMode !== 'historical') {
+                switchToHistoricalMode();
+            }
+        });
+    }
+
+    // Time mode toggle (Quick presets vs Custom date/time)
+    const timeModePresetBtn = document.getElementById('time-mode-preset');
+    const timeModeCustomBtn = document.getElementById('time-mode-custom');
+    const timePresetSection = document.getElementById('time-preset-section');
+    const timeCustomSection = document.getElementById('time-custom-section');
+
+    if (timeModePresetBtn && timeModeCustomBtn && timePresetSection && timeCustomSection) {
+        timeModePresetBtn.addEventListener('click', () => {
+            timeModePresetBtn.classList.add('sidebar-button-active');
+            timeModeCustomBtn.classList.remove('sidebar-button-active');
+            timePresetSection.style.display = 'block';
+            timeCustomSection.style.display = 'none';
+        });
+
+        timeModeCustomBtn.addEventListener('click', () => {
+            timeModeCustomBtn.classList.add('sidebar-button-active');
+            timeModePresetBtn.classList.remove('sidebar-button-active');
+            timePresetSection.style.display = 'none';
+            timeCustomSection.style.display = 'block';
+
+            // Set default values if empty
+            const startInput = document.getElementById('custom-start-time');
+            const endInput = document.getElementById('custom-end-time');
+            if (startInput && !startInput.value) {
+                // Default: 1 hour ago
+                const now = new Date();
+                const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+                startInput.value = formatDateTimeLocal(oneHourAgo);
+                endInput.value = formatDateTimeLocal(now);
+                updateCustomDuration();
+            }
+        });
+
+        // Update duration display when times change
+        const startInput = document.getElementById('custom-start-time');
+        const endInput = document.getElementById('custom-end-time');
+        if (startInput && endInput) {
+            startInput.addEventListener('change', updateCustomDuration);
+            endInput.addEventListener('change', updateCustomDuration);
+        }
+    }
+
+    // Load tracks button
+    const loadTracksBtn = document.getElementById('sidebar-load-tracks');
+    if (loadTracksBtn) {
+        loadTracksBtn.addEventListener('click', async () => {
+            const resultsInfo = document.getElementById('sidebar-results-info');
+
+            resultsInfo.textContent = 'Loading tracks...';
+
+            try {
+                // Check if we're in custom mode or preset mode
+                const isCustomMode = timeCustomSection && timeCustomSection.style.display !== 'none';
+
+                if (isCustomMode) {
+                    // Load with custom date/time range
+                    const startInput = document.getElementById('custom-start-time');
+                    const endInput = document.getElementById('custom-end-time');
+
+                    if (!startInput.value || !endInput.value) {
+                        resultsInfo.textContent = 'Please select start and end times';
+                        return;
+                    }
+
+                    const startTime = new Date(startInput.value);
+                    const endTime = new Date(endInput.value);
+
+                    if (startTime >= endTime) {
+                        resultsInfo.textContent = 'Start time must be before end time';
+                        return;
+                    }
+
+                    await loadHistoricalTracksCustom(startTime, endTime);
+                } else {
+                    // Load with preset (hours ago)
+                    const timePreset = document.getElementById('sidebar-time-preset').value;
+                    await loadHistoricalTracks(parseInt(timePreset));
+                }
+
+                // Show display mode selector and track sections
+                const displayModeEl = document.getElementById('sidebar-display-mode');
+                const tracksSectionEl = document.getElementById('sidebar-tracks-section');
+                const filtersEl = document.getElementById('historical-filters');
+
+                if (displayModeEl) displayModeEl.style.display = 'block';
+                if (tracksSectionEl) tracksSectionEl.style.display = 'block';
+                if (filtersEl) filtersEl.style.display = 'block';
+
+                // Update track count from both sources to verify
+                const trackCount = Object.keys(historicalTracks || {}).length;
+                const trackMeshCount = HistoricalState.trackMeshes.size;
+                const trackArrayCount = HistoricalState.tracks.length;
+
+                console.log('[Sidebar] Track count verification:', {
+                    historicalTracks: trackCount,
+                    trackMeshes: trackMeshCount,
+                    tracksArray: trackArrayCount
+                });
+
+                const trackCountEl = document.getElementById('sidebar-track-count');
+                if (trackCountEl) trackCountEl.textContent = `(${trackCount})`;
+                resultsInfo.textContent = `Loaded ${trackCount} track${trackCount === 1 ? '' : 's'}`;
+
+                // Populate track list
+                updateSidebarTrackList();
+            } catch (error) {
+                console.error('Error loading tracks:', error);
+                resultsInfo.textContent = 'Error loading tracks';
+            }
+        });
+    }
+
+    // Display mode buttons
+    const modeAllBtn = document.getElementById('sidebar-mode-all');
+    const modePlaybackBtn = document.getElementById('sidebar-mode-playback');
+
+    if (modeAllBtn && modePlaybackBtn) {
+        modeAllBtn.addEventListener('click', () => {
+            modeAllBtn.classList.add('sidebar-button-active');
+            modePlaybackBtn.classList.remove('sidebar-button-active');
+            document.getElementById('sidebar-playback-controls').style.display = 'none';
+
+            // Switch to show all tracks mode
+            if (historicalTracks) {
+                displayAllTracks();
+            }
+        });
+
+        modePlaybackBtn.addEventListener('click', () => {
+            modePlaybackBtn.classList.add('sidebar-button-active');
+            modeAllBtn.classList.remove('sidebar-button-active');
+            document.getElementById('sidebar-playback-controls').style.display = 'block';
+
+            // Switch to playback mode
+            if (historicalTracks) {
+                initializePlayback();
+            }
+        });
+    }
+
+    // Playback controls
+    const playPauseBtn = document.getElementById('sidebar-play-pause');
+    if (playPauseBtn) {
+        playPauseBtn.addEventListener('click', () => {
+            if (PlaybackState.isPlaying) {
+                pausePlayback();
+                playPauseBtn.innerHTML = '▶️ Play';
+            } else {
+                startPlayback();
+                playPauseBtn.innerHTML = '⏸ Pause';
+            }
+        });
+    }
+
+    const restartBtn = document.getElementById('sidebar-restart');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', () => {
+            restartPlayback();
+            document.getElementById('sidebar-play-pause').innerHTML = '▶️ Play';
+        });
+    }
+
+    // Speed control
+    const speedSelect = document.getElementById('sidebar-playback-speed');
+    if (speedSelect) {
+        speedSelect.addEventListener('change', () => {
+            playbackSpeed = parseFloat(speedSelect.value);
+        });
+    }
+
+    // Skip controls
+    const skipButtons = [
+        { id: 'sidebar-skip-back-10', minutes: -10 },
+        { id: 'sidebar-skip-back-1', minutes: -1 },
+        { id: 'sidebar-skip-forward-1', minutes: 1 },
+        { id: 'sidebar-skip-forward-10', minutes: 10 }
+    ];
+
+    skipButtons.forEach(({ id, minutes }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                skipPlayback(minutes * 60);
+            });
+        }
+    });
+
+    // Timeline scrubber
+    const timeline = document.getElementById('sidebar-timeline');
+    if (timeline) {
+        timeline.addEventListener('input', () => {
+            const progress = parseFloat(timeline.value) / 100;
+            if (playbackStartTime && playbackEndTime) {
+                playbackCurrentTime = playbackStartTime + (playbackEndTime - playbackStartTime) * progress;
+                updatePlaybackPosition(playbackCurrentTime);
+            }
+        });
+    }
+
+    // Track search
+    const trackSearch = document.getElementById('sidebar-track-search');
+    if (trackSearch) {
+        trackSearch.addEventListener('input', () => {
+            filterSidebarTracks();
+        });
+    }
+
+    // Apply Filters button (comprehensive filters in historical mode)
+    const applyFiltersBtn = document.getElementById('apply-filters');
+    if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener('click', () => {
+            console.log('[Sidebar] Apply Filters button clicked');
+            applyHistoricalFilters();
+        });
+    }
+
+    // Aircraft search (live mode)
+    const aircraftSearch = document.getElementById('sidebar-aircraft-search');
+    const searchClear = document.getElementById('sidebar-search-clear');
+
+    if (aircraftSearch) {
+        aircraftSearch.addEventListener('input', () => {
+            filterSidebarAircraft();
+        });
+    }
+
+    if (searchClear) {
+        searchClear.addEventListener('click', () => {
+            aircraftSearch.value = '';
+            filterSidebarAircraft();
+        });
+    }
+
+    // Footer toggle
+    const footerToggle = document.getElementById('sidebar-footer-toggle');
+    const footerContent = document.getElementById('sidebar-footer-content');
+
+    if (footerToggle && footerContent) {
+        footerToggle.addEventListener('click', () => {
+            const isCollapsed = footerContent.style.display === 'none';
+            footerContent.style.display = isCollapsed ? 'block' : 'none';
+            // Arrow shows action: ⬆ to collapse (when visible), ⬇ to expand (when hidden)
+            footerToggle.querySelector('span').textContent = isCollapsed ? '⬆' : '⬇';
+        });
+    }
+}
+
+function updateSidebarMode() {
+    const liveContent = document.getElementById('sidebar-live-content');
+    const historicalContent = document.getElementById('sidebar-historical-content');
+    const liveTab = document.getElementById('sidebar-tab-live');
+    const historicalTab = document.getElementById('sidebar-tab-historical');
+
+    if (currentMode === 'historical') {
+        if (liveContent) liveContent.style.display = 'none';
+        if (historicalContent) historicalContent.style.display = 'block';
+        if (liveTab) liveTab.classList.remove('active');
+        if (historicalTab) historicalTab.classList.add('active');
+    } else {
+        if (liveContent) liveContent.style.display = 'block';
+        if (historicalContent) historicalContent.style.display = 'none';
+        if (liveTab) liveTab.classList.add('active');
+        if (historicalTab) historicalTab.classList.remove('active');
+    }
+}
+
+function updateSidebarLiveStats(data) {
+    const totalAircraft = data.aircraft?.length || 0;
+    const validAircraft = (data.aircraft || []).filter(ac => ac.lat && ac.lon && ac.alt_baro);
+    const now = new Date();
+
+    // Update sidebar stats
+    const sidebarCount = document.getElementById('sidebar-aircraft-count');
+    const sidebarPositioned = document.getElementById('sidebar-aircraft-positioned');
+    const sidebarUpdate = document.getElementById('sidebar-last-update');
+
+    if (sidebarCount) sidebarCount.textContent = totalAircraft;
+    if (sidebarPositioned) sidebarPositioned.textContent = validAircraft.length;
+    if (sidebarUpdate) sidebarUpdate.textContent = now.toLocaleTimeString();
+
+    // Update sidebar aircraft list (only in live mode)
+    if (currentMode !== 'live') return;
+
+    const sidebarList = document.getElementById('sidebar-aircraft-list');
+    if (!sidebarList) return;
+
+    // Preserve currently hovered/selected items to prevent flicker
+    const currentHovered = sidebarList.querySelector('.sidebar-aircraft-item.highlighted')?.dataset.hex;
+    const currentSelected = sidebarList.querySelector('.sidebar-aircraft-item.selected')?.dataset.hex;
+
+    sidebarList.innerHTML = '';
+
+    // Sort aircraft by distance from center (closest first)
+    const sortedAircraft = validAircraft.sort((a, b) => {
+        const distA = Math.sqrt(a.lat * a.lat + a.lon * a.lon);
+        const distB = Math.sqrt(b.lat * b.lat + b.lon * b.lon);
+        return distA - distB;
+    });
+
+    // Show top 50 aircraft in sidebar
+    sortedAircraft.slice(0, 50).forEach(ac => {
+        const item = document.createElement('div');
+        item.className = 'sidebar-aircraft-item';
+        item.dataset.hex = ac.hex;
+
+        // Restore hover/selected state to prevent flicker
+        if (ac.hex === currentHovered) {
+            item.classList.add('highlighted');
+            // Don't re-apply highlightAircraft() here - it causes color flicker
+            // The highlight is already active from the mouseenter event
+        }
+        if (ac.hex === currentSelected) {
+            item.classList.add('selected');
+        }
+
+        const flight = (ac.flight || ac.hex || 'Unknown').trim();
+        const isMilitary = isMilitaryAircraft(ac.hex);
+        const altitude = Math.round(ac.alt_baro || 0);
+        const speed = Math.round(ac.gs || 0);
+
+        // Check if stale
+        const isStale = ac.seen > 15 || ac.seen_pos > 15;
+        const signalQuality = getSignalQuality(ac);
+        const isPoorSignal = signalQuality.score < 50;
+
+        // Check data source (MLAT vs ADS-B)
+        const isMLAT = ac.mlat && ac.mlat.length > 0;
+        const dataSourceBadge = isMLAT ?
+            '<span style="background: var(--badge-mlat); color: var(--badge-mlat-text); padding: 1px 4px; border-radius: 3px; font-size: 8px; font-weight: 600; margin-left: 4px;">MLAT</span>' :
+            '<span style="background: var(--badge-stat); color: var(--badge-stat-text); padding: 1px 4px; border-radius: 3px; font-size: 8px; font-weight: 600; margin-left: 4px;">ADS-B</span>';
+
+        // Calculate distance from center
+        const distance = calculateDistance(
+            CONFIG.homeLocation.lat, CONFIG.homeLocation.lon,
+            ac.lat, ac.lon
+        );
+
+        // Use simple readable color for altitude text in sidebar (not tar1090 color scheme)
+        // White/gray for readability on dark background
+        const altitudeColor = (isStale || isPoorSignal) ?
+            'var(--text-secondary)' :
+            'var(--text-primary)';
+
+        // Signal quality indicator
+        const signalPercent = Math.round(signalQuality.score);
+        const signalColor = signalPercent >= 80 ? '#4eff9e' : signalPercent >= 50 ? '#ffaa4a' : '#ff4a4a';
+
+        // Last update text
+        const seenSeconds = Math.round(ac.seen || 0);
+        const lastUpdateText = seenSeconds === 0 ? 'now' : `${seenSeconds}s ago`;
+
+        // Add stale indicator
+        const staleIndicator = isStale ? '⚠️' : '';
+        const staleStyle = (isStale || isPoorSignal) ? 'opacity: 0.6;' : '';
+
+        // Squawk code (transponder code)
+        const squawk = ac.squawk || '----';
+
+        // Altitude trend indicator (use same threshold as plane labels: 64 ft/min)
+        let altitudeTrend = '';
+        const baroRate = ac.baro_rate ?? ac.geom_rate; // Fallback to geom_rate if baro_rate unavailable
+        if (baroRate) {
+            if (baroRate > 64) {
+                altitudeTrend = '↑'; // Climbing (>64 ft/min threshold to filter out noise)
+            } else if (baroRate < -64) {
+                altitudeTrend = '↓'; // Descending (<-64 ft/min threshold)
+            }
+        }
+
+        // Airframe type (aircraft type)
+        const airframe = ac.t || '?';
+
+        // Vertical rate (climb/descent speed)
+        let verticalRate = '';
+        if (baroRate) {
+            const rate = Math.round(baroRate);
+            if (Math.abs(rate) >= 64) { // Only show if significant vertical movement
+                verticalRate = rate > 0 ? `+${rate}` : `${rate}`;
+            }
+        }
+
+        // Add data attributes for stable styling
+        const staleClass = (isStale || isPoorSignal) ? ' stale' : '';
+
+        // Stat indicators (highest/fastest/closest)
+        let statIndicators = '';
+        if (ac.hex === statHighestHex) statIndicators += '⬆️';
+        if (ac.hex === statFastestHex) statIndicators += '⚡';
+        if (ac.hex === statClosestHex) statIndicators += '📍';
+
+        item.innerHTML = `
+            <div class="aircraft-item-content${staleClass}">
+                <!-- Row 1: 3 columns -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 4px; font-size: 10px;">
+                    <!-- Column 1: Callsign, Squawk -->
+                    <div>
+                        <div class="aircraft-callsign${staleClass}" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${flight} ${statIndicators} ${isMilitary ? '🛡️' : ''} ${staleIndicator}</div>
+                        <div style="color: var(--text-secondary); font-size: 9px;">${squawk}</div>
+                    </div>
+
+                    <!-- Column 2: Altitude with trend, Vertical Rate -->
+                    <div style="text-align: center;">
+                        <div class="aircraft-altitude${staleClass}" style="white-space: nowrap;">${altitude.toLocaleString()} ${altitudeTrend}</div>
+                        <div style="color: var(--text-secondary); font-size: 9px; min-height: 11px;">${verticalRate ? `${verticalRate} fpm` : ''}</div>
+                    </div>
+
+                    <!-- Column 3: DataSource, Signal -->
+                    <div style="text-align: right;">
+                        ${dataSourceBadge}
+                        <div class="aircraft-signal" style="font-size: 9px; color: ${signalColor};">${signalPercent}%</div>
+                    </div>
+                </div>
+
+                <!-- Row 2: 3 columns -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; font-size: 9px;">
+                    <!-- Column 1: Airframe • Distance -->
+                    <div style="color: var(--text-secondary);">
+                        ${airframe} • ${distance.toFixed(1)}nm
+                    </div>
+
+                    <!-- Column 2: Speed -->
+                    <div style="text-align: center; color: var(--text-secondary);">
+                        ${speed} kts
+                    </div>
+
+                    <!-- Column 3: Last update (fixed width) -->
+                    <div style="text-align: right; color: var(--text-secondary); opacity: 0.7; min-width: 45px;">
+                        ${lastUpdateText}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Click to follow aircraft and show detail panel
+        item.addEventListener('click', () => {
+            const mesh = aircraftMeshes.get(ac.hex);
+            if (mesh) {
+                followTarget = mesh;
+
+                // Highlight selected aircraft
+                document.querySelectorAll('.sidebar-aircraft-item').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                item.classList.add('selected');
+
+                // Show aircraft detail panel (same as clicking on the map)
+                showAircraftDetail(ac.hex);
+            }
+        });
+
+        // Hover effect - use the existing highlightAircraft function
+        item.addEventListener('mouseenter', () => {
+            if (!item.classList.contains('selected')) {
+                item.classList.add('highlighted');
+            }
+            // Use the existing highlight function that handles everything properly
+            highlightAircraft(ac.hex, true);
+        });
+
+        item.addEventListener('mouseleave', () => {
+            item.classList.remove('highlighted');
+            // Use the existing highlight function to unhighlight
+            highlightAircraft(ac.hex, false);
+        });
+
+        sidebarList.appendChild(item);
+    });
+
+    // Add empty state if no aircraft
+    if (validAircraft.length === 0) {
+        const emptyMessage = document.createElement('div');
+        emptyMessage.style.cssText = `
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 11px;
+        `;
+        emptyMessage.innerHTML = `
+            <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">✈️</div>
+            <div>No aircraft detected</div>
+        `;
+        sidebarList.appendChild(emptyMessage);
+    }
+}
+
+// Helper function to calculate distance between two coordinates
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 3440.065; // Earth radius in nautical miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+function updateSidebarTrackList() {
+    const trackList = document.getElementById('sidebar-track-list');
+    if (!trackList || !historicalTracks) return;
+
+    trackList.innerHTML = '';
+
+    console.log(`[Sidebar] Updating track list with ${Object.keys(historicalTracks).length} tracks`);
+
+    Object.entries(historicalTracks).forEach(([hex, track]) => {
+        const item = document.createElement('div');
+        item.className = 'sidebar-aircraft-item';
+        item.dataset.hex = hex;
+
+        // Try multiple field names for flight ID
+        const flight = track.flight_id || track.flight || track.callsign || hex;
+        const isMilitary = track.is_military || isMilitaryAircraft(hex);
+
+        // Debug log for first track
+        if (Object.keys(historicalTracks).length <= 3) {
+            console.log(`[Sidebar] Track ${hex}:`, {
+                flight_id: track.flight_id,
+                flight: track.flight,
+                callsign: track.callsign,
+                resolved: flight,
+                positions: track.positions?.length
+            });
+        }
+
+        // Calculate max altitude and speed from positions
+        let maxAlt = 0;
+        let maxSpeed = 0;
+        if (track.positions && track.positions.length > 0) {
+            track.positions.forEach(pos => {
+                const alt = pos.alt || pos.altitude || 0;
+                const speed = pos.gs || pos.speed || 0;
+                if (alt > maxAlt) maxAlt = alt;
+                if (speed > maxSpeed) maxSpeed = speed;
+            });
+        }
+
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="color: var(--text-accent);">
+                        ${flight} ${isMilitary ? '🛡️' : ''}
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-secondary);">
+                        ${track.positions ? track.positions.length : 0} positions
+                    </div>
+                </div>
+                <div style="text-align: right; font-size: 10px;">
+                    <div>${Math.round(maxAlt)} ft</div>
+                    <div>${Math.round(maxSpeed)} kts</div>
+                </div>
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            // Show the same flight card as clicking the end sphere
+            const userData = {
+                icao: hex,
+                track: track,
+                isMilitary: isMilitary
+            };
+            showHistoricalTrackDetail(userData);
+
+            // Also focus camera on the track
+            focusOnTrack(hex);
+        });
+
+        trackList.appendChild(item);
+    });
+}
+
+function filterSidebarTracks() {
+    const searchTerm = document.getElementById('sidebar-track-search')?.value.toLowerCase() || '';
+
+    const items = document.querySelectorAll('#sidebar-track-list .sidebar-aircraft-item');
+    items.forEach(item => {
+        const hex = item.dataset.hex;
+        const track = historicalTracks[hex];
+        if (!track) return;
+
+        const flight = (track.flight_id || track.flight || track.callsign || hex).toLowerCase();
+
+        const matchesSearch = !searchTerm || flight.includes(searchTerm) || hex.toLowerCase().includes(searchTerm);
+
+        item.style.display = matchesSearch ? 'block' : 'none';
+    });
+}
+
+/**
+ * Apply comprehensive filters to historical tracks (altitude, speed, positions, military)
+ * Filters both 3D scene visibility and sidebar list
+ */
+function applyHistoricalFilters() {
+    console.log('[Historical] Applying filters');
+
+    // Get filter values
+    const militaryOnly = document.getElementById('filter-military-only')?.checked || false;
+    const altMinInput = document.getElementById('filter-altitude-min');
+    const altMaxInput = document.getElementById('filter-altitude-max');
+    const minPosInput = document.getElementById('filter-min-positions');
+    const spdMinInput = document.getElementById('filter-speed-min');
+    const spdMaxInput = document.getElementById('filter-speed-max');
+
+    const minAlt = parseInt(altMinInput?.value) || 0;
+    const maxAlt = parseInt(altMaxInput?.value) || 999999;
+    const minPositions = parseInt(minPosInput?.value) || 0;
+    const minSpeed = parseInt(spdMinInput?.value) || 0;
+    const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
+
+    console.log('[Historical] Filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
+
+    let visibleCount = 0;
+    let hiddenCount = 0;
+
+    // Apply filters to each track mesh
+    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail, track }, icao) => {
+        // track is stored in the trackMeshes object directly
+        if (!track) {
+            console.warn(`[Historical] No track data for ${icao}`);
+            return;
+        }
+
+        let visible = true;
+
+        // Military filter
+        if (militaryOnly && !(track.is_military || isMilitaryAircraft(icao))) {
+            visible = false;
+        }
+
+        // Minimum positions filter
+        if (track.positions && track.positions.length < minPositions) {
+            visible = false;
+        }
+
+        // Altitude filter (check if ALL positions are in range)
+        if (track.positions && track.positions.length > 0) {
+            const allAltitudesInRange = track.positions.every(pos => {
+                const alt = pos.alt || pos.altitude || 0;
+                return alt >= minAlt && alt <= maxAlt;
+            });
+            if (!allAltitudesInRange) {
+                visible = false;
+            }
+        }
+
+        // Speed filter (check if ALL positions have speed in range)
+        if (track.positions && track.positions.length > 0) {
+            const allSpeedsInRange = track.positions.every(pos => {
+                const speed = pos.gs || pos.speed || 0;
+                return speed >= minSpeed && speed <= maxSpeed;
+            });
+            if (!allSpeedsInRange) {
+                visible = false;
+            }
+        }
+
+        // Update visibility in scene
+        if (visible) {
+            if (line && !line.parent) scene.add(line);
+            if (endpointMesh && !endpointMesh.parent) scene.add(endpointMesh);
+            if (trail && trail.tronCurtain && !trail.tronCurtain.parent && showTronMode) {
+                scene.add(trail.tronCurtain);
+            }
+            visibleCount++;
+        } else {
+            if (line && line.parent) scene.remove(line);
+            if (endpointMesh && endpointMesh.parent) scene.remove(endpointMesh);
+            if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
+                scene.remove(trail.tronCurtain);
+            }
+            hiddenCount++;
+        }
+    });
+
+    console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
+
+    // Also update sidebar list to match filters
+    filterSidebarTracks();
+}
+
+function filterSidebarAircraft() {
+    const searchTerm = document.getElementById('sidebar-aircraft-search').value.toLowerCase();
+
+    const items = document.querySelectorAll('#sidebar-aircraft-list .sidebar-aircraft-item');
+    items.forEach(item => {
+        const flight = item.querySelector('[data-flight]')?.textContent.toLowerCase() || '';
+        const hex = item.dataset.hex?.toLowerCase() || '';
+
+        const matches = !searchTerm || flight.includes(searchTerm) || hex.includes(searchTerm);
+        item.style.display = matches ? 'block' : 'none';
+    });
+}
+
+function skipPlayback(seconds) {
+    if (!playbackCurrentTime) return;
+
+    playbackCurrentTime += seconds;
+    playbackCurrentTime = Math.max(playbackStartTime, Math.min(playbackEndTime, playbackCurrentTime));
+    updatePlaybackPosition(playbackCurrentTime);
+
+    // Update timeline
+    const progress = (playbackCurrentTime - playbackStartTime) / (playbackEndTime - playbackStartTime);
+    document.getElementById('sidebar-timeline').value = progress * 100;
+}
+
+function focusOnTrack(hex) {
+    const track = historicalTracks[hex];
+    if (!track || track.positions.length === 0) return;
+
+    // Get middle position of track
+    const midIndex = Math.floor(track.positions.length / 2);
+    const midPos = track.positions[midIndex];
+
+    // Focus camera on this position
+    const targetPosition = new THREE.Vector3(
+        midPos.longitude * COORD_SCALE,
+        midPos.altitude * ALTITUDE_SCALE,
+        -midPos.latitude * COORD_SCALE
+    );
+
+    cameraTarget = targetPosition;
+    followTarget = null; // Stop following any aircraft
+
+    // Highlight the track
+    scene.traverse(child => {
+        if (child.userData && child.userData.hex === hex) {
+            // Highlight this track
+            if (child.material) {
+                child.material.opacity = 1;
+                child.material.linewidth = 3;
+            }
+        } else if (child.userData && child.userData.hex) {
+            // Dim other tracks
+            if (child.material) {
+                child.material.opacity = 0.3;
+            }
+        }
+    });
+}
+
+// ============================================================================
+// SIDEBAR MINI RADAR AND COMPASS
+// ============================================================================
+
+// Helper function to normalize angle difference (takes shortest path)
+function normalizeAngleDiff(targetAngle, currentAngle) {
+    let diff = targetAngle - currentAngle;
+    // Normalize to -180 to 180 range
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+    return diff;
+}
+
+// Sidebar radar and compass updates are handled in the main animate() loop
+// for smooth, synchronized updates at the same rate as 3D rendering
+
+function updateSidebarMiniRadar() {
+    const canvas = document.getElementById('sidebar-mini-radar');
+    if (!canvas || !camera || !CONFIG || !CONFIG.homeLocation) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const maxRange = 150; // 150 nautical miles range (matches old radar)
+    const radarRadius = width / 2 - 5;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Get camera rotation using world direction
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    const cameraYaw = Math.atan2(cameraDirection.x, -cameraDirection.z);
+    const cameraYawDegrees = (cameraYaw * 180 / Math.PI + 360) % 360;
+
+    // Save context for rotation
+    ctx.save();
+
+    // Rotate entire canvas based on camera yaw
+    ctx.translate(centerX, centerY);
+    ctx.rotate(-cameraYawDegrees * Math.PI / 180);
+    ctx.translate(-centerX, -centerY);
+
+    // Background circle
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radarRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Range rings at 50nm, 100nm, 150nm
+    ctx.strokeStyle = 'rgba(74, 158, 255, 0.3)';
+    ctx.lineWidth = 0.5;
+    [50, 100, 150].forEach(range => {
+        const ringRadius = (range / maxRange) * radarRadius;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+
+    // Crosshairs
+    ctx.strokeStyle = 'rgba(74, 158, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(centerX - radarRadius, centerY);
+    ctx.lineTo(centerX + radarRadius, centerY);
+    ctx.moveTo(centerX, centerY - radarRadius);
+    ctx.lineTo(centerX, centerY + radarRadius);
+    ctx.stroke();
+
+    // North indicator (fixed at top after rotation)
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', centerX, centerY - radarRadius + 8);
+
+    // Draw aircraft
+    if (liveRadarData && Array.isArray(liveRadarData)) {
+        const homeLatLon = CONFIG.homeLocation;
+        let dotsDrawn = 0;
+        let filteredNoPosition = 0;
+        let filteredOutOfRange = 0;
+
+        liveRadarData.forEach(ac => {
+            if (!ac || !ac.lat || !ac.lon || typeof ac.alt_baro !== 'number') {
+                filteredNoPosition++;
+                return;
+            }
+
+            // Calculate distance and bearing from home (in nautical miles)
+            const latDiff = (ac.lat - homeLatLon.lat) * 60; // 1 degree latitude = 60 nm
+            const lonDiff = (ac.lon - homeLatLon.lon) * 60 * Math.cos(homeLatLon.lat * Math.PI / 180);
+            const distance = Math.sqrt(latDiff * latDiff + lonDiff * lonDiff);
+
+            // Skip if out of range
+            if (distance > maxRange) {
+                filteredOutOfRange++;
+                return;
+            }
+
+            // Calculate position on radar
+            const scale = radarRadius / maxRange;
+            const x = centerX + lonDiff * scale;
+            const y = centerY - latDiff * scale; // Negative because north is up
+
+            // Get altitude color (pass raw feet value)
+            const colorHex = getAltitudeColor(ac.alt_baro, true, true); // true, true = CSS string + raw feet
+
+            // Draw aircraft dot
+            ctx.fillStyle = colorHex;
+            ctx.shadowBlur = 3;
+            ctx.shadowColor = colorHex;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2); // Increased from 2 to 3 for visibility
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            dotsDrawn++;
+        });
+
+        // Debug: log once per second
+        if (!window.lastRadarDebug || Date.now() - window.lastRadarDebug > 1000) {
+            if (liveRadarData.length > 0) {
+                console.log(`[Radar] Aircraft: ${liveRadarData.length}, Drawn: ${dotsDrawn}, No pos: ${filteredNoPosition}, Out of range: ${filteredOutOfRange}, Range: ${maxRange}nm`);
+            }
+            window.lastRadarDebug = Date.now();
+        }
+    }
+
+    // Restore context
+    ctx.restore();
+
+    // Center home position dot (drawn after restore so it's not rotated)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 2, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function updateSidebarHeading() {
+    if (!camera) return;
+
+    // Get camera rotation using world direction
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    const cameraYaw = Math.atan2(cameraDirection.x, -cameraDirection.z);
+    let cameraYawDegrees = cameraYaw * 180 / Math.PI;
+
+    // Normalize to 0-360 range
+    if (cameraYawDegrees < 0) cameraYawDegrees += 360;
+    const headingRounded = Math.round(cameraYawDegrees) % 360;
+
+    // Update sidebar heading value
+    const headingValue = document.getElementById('sidebar-heading-value');
+    if (headingValue) {
+        headingValue.textContent = String(headingRounded).padStart(3, '0') + '°';
+    }
+
+    // Update cardinal direction (both sidebar and compass)
+    let direction = '';
+    if (headingRounded >= 337.5 || headingRounded < 22.5) direction = 'N';
+    else if (headingRounded >= 22.5 && headingRounded < 67.5) direction = 'NE';
+    else if (headingRounded >= 67.5 && headingRounded < 112.5) direction = 'E';
+    else if (headingRounded >= 112.5 && headingRounded < 157.5) direction = 'SE';
+    else if (headingRounded >= 157.5 && headingRounded < 202.5) direction = 'S';
+    else if (headingRounded >= 202.5 && headingRounded < 247.5) direction = 'SW';
+    else if (headingRounded >= 247.5 && headingRounded < 292.5) direction = 'W';
+    else if (headingRounded >= 292.5 && headingRounded < 337.5) direction = 'NW';
+
+    const cardinalDirection = document.getElementById('sidebar-cardinal-direction');
+    if (cardinalDirection) {
+        cardinalDirection.textContent = direction;
+    }
+
+    // Update compass heading indicator
+    const compassHeadingValue = document.getElementById('compass-heading-value');
+    const compassCardinal = document.getElementById('compass-cardinal');
+    if (compassHeadingValue) {
+        compassHeadingValue.textContent = String(headingRounded).padStart(3, '0') + '°';
+    }
+    if (compassCardinal) {
+        compassCardinal.textContent = direction;
+    }
+
+    // Update north arrow rotation (rotate arrow opposite to camera heading so N always points north)
+    const northArrow = document.getElementById('north-arrow');
+    if (northArrow) {
+        const targetAngle = -cameraYawDegrees;
+
+        // Calculate shortest path to target angle to avoid 360° spins
+        const angleDiff = normalizeAngleDiff(targetAngle, lastNorthArrowAngle);
+
+        // Very light smoothing (lerp) for silky smooth rotation
+        // Since we're now in the animate loop (30fps), we can use light smoothing
+        const smoothedAngle = lastNorthArrowAngle + angleDiff * 0.5;
+
+        // Store for next frame
+        lastNorthArrowAngle = smoothedAngle;
+
+        // Apply rotation
+        northArrow.style.transform = `rotate(${smoothedAngle}deg)`;
+    }
+}
+
+// ============================================================================
+// THEME UI EVENT HANDLERS
 // ============================================================================
 
 function setupThemeUI() {

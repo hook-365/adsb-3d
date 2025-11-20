@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>adsb-3d</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cookie&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
     <style>
         /* ========================================
            THEME VARIABLES - Unified Design System
@@ -979,151 +981,6 @@
             font-weight: bold;
         }
 
-        #aircraft-list {
-            position: absolute;
-            top: 90px;  /* Below mode selector */
-            right: var(--spacing-xl);
-            background: var(--panel-bg);
-            padding: var(--panel-padding);
-            border-radius: var(--panel-radius);
-            backdrop-filter: var(--panel-blur);
-            border: 1px solid var(--panel-border);
-            width: 310px;  /* Fixed width to prevent expansion on hover */
-            max-height: calc(80vh - 70px);
-            overflow-y: auto;
-            font-size: var(--font-size-base);
-            touch-action: auto;
-            -webkit-overflow-scrolling: touch;
-            z-index: var(--z-panels);
-        }
-
-        #aircraft-list h2 {
-            font-size: var(--font-size-heading);
-            margin-bottom: var(--spacing-md);
-            color: var(--text-accent);
-        }
-
-        .aircraft-item {
-            padding: var(--spacing-sm);
-            margin: var(--spacing-xs) 0;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-left: 3px solid transparent;
-        }
-
-        .aircraft-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-left-color: var(--accent-primary);
-        }
-
-        .aircraft-item.selected {
-            background: var(--accent-primary-dim);
-            border-left-color: var(--accent-primary);
-        }
-
-        .aircraft-callsign {
-            font-weight: bold;
-            color: var(--text-accent);
-            margin-bottom: 3px;
-        }
-
-        .aircraft-details {
-            color: var(--text-secondary);
-            font-size: 11px;
-        }
-
-        /* Aircraft Badges */
-        .badge {
-            padding: 2px 4px;
-            border-radius: var(--badge-radius);
-            font-size: 9px;
-            margin-right: 4px;
-            display: inline-block;
-        }
-
-        .badge-military {
-            background: var(--badge-military);
-            color: var(--badge-military-text);
-            font-weight: bold;
-        }
-
-        .badge-mlat {
-            background: var(--badge-mlat);
-            color: var(--badge-mlat-text);
-            opacity: 0.8;
-        }
-
-        .badge-stat {
-            background: var(--badge-stat);
-            color: var(--badge-stat-text);
-        }
-
-        /* Aircraft Search Bar */
-        .aircraft-search-container {
-            position: relative;
-            margin-bottom: 10px;
-        }
-
-        #aircraft-search {
-            width: 100%;
-            padding: 8px 30px 8px 10px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--panel-border);
-            border-radius: var(--input-radius);
-            color: var(--text-primary);
-            font-size: 13px;
-            transition: all 0.2s ease;
-            box-sizing: border-box;
-        }
-
-        #aircraft-search:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-            background: rgba(255, 255, 255, 0.08);
-            box-shadow: 0 0 0 2px var(--accent-primary-dim);
-        }
-
-        #aircraft-search::placeholder {
-            color: var(--text-secondary);
-            opacity: 0.6;
-        }
-
-        .search-clear-btn {
-            position: absolute;
-            right: 5px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px 8px;
-            font-size: 14px;
-            opacity: 0;
-            transition: opacity 0.2s ease, color 0.2s ease;
-            pointer-events: none;
-        }
-
-        .search-clear-btn.visible {
-            opacity: 0.6;
-            pointer-events: auto;
-        }
-
-        .search-clear-btn.visible:hover {
-            opacity: 1;
-            color: var(--text-primary);
-        }
-
-        .aircraft-item.search-hidden {
-            display: none;
-        }
-
-        .aircraft-item.search-match {
-            background: var(--accent-primary-dim);
-            border-left: 3px solid var(--accent-primary);
-        }
 
         #controls {
             position: absolute;
@@ -1167,311 +1024,6 @@
             box-shadow: 0 0 20px var(--accent-primary-hover);
         }
 
-        /* Mode Selector Buttons */
-        .mode-selector {
-            position: absolute;
-            top: var(--spacing-xl);
-            right: var(--spacing-xl);
-            z-index: var(--z-panels);
-            display: flex !important;
-            gap: var(--spacing-sm);
-            touch-action: auto;
-        }
-
-        .mode-btn {
-            background: var(--mode-inactive-bg);
-            color: var(--text-primary);
-            border: 2px solid var(--mode-inactive-border);
-            padding: var(--spacing-sm) 16px;
-            border-radius: var(--button-radius);
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            backdrop-filter: var(--panel-blur);
-            box-shadow: var(--button-shadow);
-        }
-
-        .mode-btn:hover {
-            background: var(--mode-inactive-hover-bg);
-            border: 2px solid var(--mode-inactive-hover-border);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px var(--mode-inactive-hover-border);
-        }
-
-        .mode-btn.active {
-            background: var(--mode-active);
-            color: var(--text-primary);
-            border: 2px solid var(--mode-active-border);
-            box-shadow: 0 0 15px var(--mode-active-glow);
-        }
-
-        .mode-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .mode-icon {
-            margin-right: 4px;
-        }
-
-        /* Hide separate Quick Stats panel - stats are now inline in aircraft list */
-        #mini-stats {
-            display: none !important;
-        }
-
-        /* Historical Controls Styling */
-
-        #historical-controls {
-            position: absolute;
-            top: 90px;  /* Align with aircraft-list */
-            right: var(--spacing-xl);
-            bottom: 90px;  /* Leave room for footer (footer is ~70-80px tall) */
-            background: var(--panel-bg-solid);
-            padding: 10px;  /* Reduced from var(--panel-padding) which is typically 15px */
-            border-radius: var(--panel-radius);
-            backdrop-filter: var(--panel-blur);
-            width: 320px;  /* FIXED width - prevents expansion when buttons appear */
-            min-width: 320px;
-            max-width: 320px;
-            height: auto;  /* Auto height between top and bottom constraints */
-            max-height: none;  /* Let bottom constraint control max height */
-            overflow-y: scroll;  /* Always show scrollbar track */
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            box-sizing: border-box;  /* Include padding in width calculation */
-            z-index: 101;  /* Higher than aircraft-list to appear on top */
-        }
-
-        /* Custom scrollbar for historical controls */
-        #historical-controls::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        #historical-controls::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 4px;
-        }
-
-        #historical-controls::-webkit-scrollbar-thumb {
-            background: var(--accent-primary-dim);
-            border-radius: 4px;
-            border: 1px solid var(--accent-primary);
-        }
-
-        #historical-controls::-webkit-scrollbar-thumb:hover {
-            background: var(--accent-primary-active);
-        }
-
-        /* Prevent any child element from exceeding panel width */
-        #historical-controls * {
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-
-        /* Compact historical controls styling */
-        #historical-controls .panel-header {
-            margin-bottom: 8px;
-            padding-bottom: 6px;
-        }
-
-        #historical-controls h3 {
-            font-size: 12px;  /* Reduced from 13px */
-            margin: 6px 0 3px 0;  /* Tighter margins */
-        }
-
-        #historical-controls .controls-section {
-            margin-bottom: 8px;  /* Reduced from 10px */
-        }
-
-        /* Reduce all margins/padding in display mode and filter sections */
-        #display-mode-selector,
-        #historical-filters,
-        #playback-controls {
-            margin-top: 10px !important;  /* Reduced from 15-20px */
-            padding-top: 10px !important;  /* Reduced from 15px */
-        }
-
-        /* Filter tracks content - reduced padding */
-        #filter-tracks-content {
-            padding-bottom: 8px;
-            margin-bottom: 6px;
-        }
-
-        .historical-input-group {
-            margin-bottom: 8px;  /* Reduced from 12px */
-        }
-
-        .historical-input-group label {
-            display: block;
-            color: var(--text-secondary);
-            font-size: 11px;  /* Reduced from 12px */
-            margin-bottom: 3px;  /* Reduced from 4px */
-        }
-
-        .historical-input {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid var(--accent-primary-dim);
-            color: var(--text-primary);
-            padding: 6px;  /* Reduced from 8px */
-            border-radius: 4px;
-            font-size: 12px;  /* Reduced from 13px */
-        }
-
-        .historical-input:focus {
-            outline: none;
-            border-color: var(--accent-primary-active);
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .historical-load-btn {
-            width: 100%;
-            background: var(--accent-primary-active);
-            border: 1px solid var(--accent-primary);
-            color: var(--text-primary);
-            padding: 7px;  /* Reduced from 10px */
-            border-radius: 4px;
-            font-size: 12px;  /* Reduced from 14px */
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 6px;  /* Reduced from 8px */
-            transition: all 0.3s ease;
-        }
-
-        .historical-load-btn:hover {
-            background: var(--accent-primary);
-            box-shadow: 0 0 15px var(--accent-primary-active);
-        }
-
-        .historical-load-btn:active {
-            transform: scale(0.98);
-        }
-
-        .historical-status {
-            margin-top: 6px;  /* Reduced from 10px */
-            padding: 6px;  /* Reduced from 8px */
-            border-radius: 4px;
-            font-size: 11px;  /* Reduced from 12px */
-            text-align: center;
-            min-height: 16px;  /* Reduced from 20px */
-        }
-
-        .historical-status.loading {
-            color: var(--text-accent);
-            background: var(--accent-primary-dim);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .historical-status.success {
-            color: var(--status-success);
-            background: var(--status-success-bg);
-        }
-
-        .historical-status.error {
-            color: var(--status-error);
-            background: var(--status-error-bg);
-        }
-
-        .historical-status.warning {
-            color: var(--status-warning);
-            background: var(--status-warning-bg);
-        }
-
-        /* Loading Spinner */
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--accent-primary-dim);
-            border-top-color: var(--text-accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Compact form elements in historical controls */
-        #historical-controls input[type="radio"],
-        #historical-controls input[type="checkbox"] {
-            margin: 0 4px 0 0;
-        }
-
-        #historical-controls input[type="number"],
-        #historical-controls input[type="range"] {
-            padding: 4px 6px;
-            font-size: 11px;
-        }
-
-        #historical-controls select {
-            padding: 5px;
-            font-size: 11px;
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-
-        #historical-controls button {
-            padding: 5px 8px !important;  /* Override inline styles */
-            font-size: 10px !important;  /* Smaller for compact fit */
-            margin: 3px 0;
-            max-width: 100%;
-            box-sizing: border-box;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* Display mode buttons - make ultra-compact */
-        #display-mode-selector button {
-            padding: 6px 4px !important;
-            font-size: 10px !important;
-            flex: 1 1 0 !important;  /* Equal width flex items */
-            min-width: 0 !important;  /* Allow shrinking below content size */
-        }
-
-        /* Playback controls - compact layout */
-        .playback-controls {
-            display: flex;
-            gap: 4px;
-            flex-wrap: wrap;
-        }
-
-        .playback-btn {
-            flex: 1 1 auto;
-            min-width: 60px;
-        }
-
-        .playback-btn-small {
-            flex: 0 1 auto;
-            padding: 4px 6px !important;
-        }
-
-        .playback-speed-select {
-            flex: 0 0 auto;
-            width: 60px !important;
-        }
-
-        /* Reduce spacing in filter sections */
-        #historical-controls .filter-section {
-            margin-bottom: 8px;
-        }
-
-        #historical-controls .filter-section label {
-            margin-bottom: 3px;
-        }
-
-        /* Compact time range selector */
-        #historical-controls .time-range-selector {
-            margin-bottom: 8px;
-        }
-
-        #historical-controls .time-range-inputs {
-            gap: 6px;
-        }
 
         /* Mode transition effects */
         .mode-transition {
@@ -1551,8 +1103,8 @@
             background: rgba(0, 0, 0, 0.85);
             border-radius: 8px;
             backdrop-filter: blur(10px);
-            min-width: 400px;
-            max-width: 500px;
+            min-width: 380px;
+            max-width: 450px;
             display: none;
             border: 2px solid var(--accent-primary);
             touch-action: auto; /* Allow normal touch on UI panels */
@@ -1564,8 +1116,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px 10px 20px;
-            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.95);
             border-bottom: 1px solid rgba(74, 158, 255, 0.3);
             flex-shrink: 0; /* Don't shrink when body scrolls */
         }
@@ -1573,7 +1125,8 @@
         #aircraft-detail h3 {
             color: var(--text-accent);
             margin: 0;
-            font-size: 15px;
+            font-size: 14px;
+            font-weight: bold;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1582,41 +1135,125 @@
         }
 
         #aircraft-detail .detail-body {
-            padding: 15px 20px;
+            padding: 0;  /* Content will handle its own padding */
             overflow-y: auto;
+            overflow-x: hidden; /* Prevent horizontal scroll */
             max-height: 60vh; /* Limit height for scrolling */
+            /* Custom scrollbar styling for visibility */
+            scrollbar-width: thin; /* Firefox */
+            scrollbar-color: rgba(74, 158, 255, 0.5) rgba(255, 255, 255, 0.1); /* Firefox */
+        }
+
+        /* Force scrollbar to always be visible when content is scrollable */
+        #aircraft-detail .detail-body.scrollable {
+            overflow-y: scroll; /* Always show scrollbar when scrollable */
+        }
+
+        /* Webkit browsers (Chrome, Safari, Edge) scrollbar styling */
+        #aircraft-detail .detail-body::-webkit-scrollbar {
+            width: 8px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        #aircraft-detail .detail-body::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin: 4px 0;
+        }
+
+        #aircraft-detail .detail-body::-webkit-scrollbar-thumb {
+            background: rgba(74, 158, 255, 0.6);
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #aircraft-detail .detail-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(74, 158, 255, 0.8);
+        }
+
+        #aircraft-detail .detail-body::-webkit-scrollbar-thumb:active {
+            background: rgba(74, 158, 255, 1);
+        }
+
+        /* Visual indicator that content is scrollable */
+        #aircraft-detail .detail-body {
+            position: relative;
+        }
+
+        /* Add subtle shadow at bottom when scrollable */
+        #aircraft-detail .detail-body::after {
+            content: '';
+            position: sticky;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #aircraft-detail .detail-body.scrollable::after {
+            opacity: 1;
+        }
+
+        /* Section styles for organized display */
+        #aircraft-detail .section-header {
+            color: var(--text-accent);
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         #aircraft-detail .detail-grid {
             display: grid;
-            grid-template-columns: 110px 1fr;
-            gap: 6px;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
             font-size: 12px;
-            line-height: 1.4;
+            line-height: 1.5;
+        }
+
+        #aircraft-detail .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         #aircraft-detail .detail-label {
             color: var(--text-secondary);
             font-size: 11px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         #aircraft-detail .detail-value {
             color: var(--text-primary);
-            font-weight: bold;
+            font-weight: 500;
             font-size: 12px;
             word-break: break-word;
         }
 
-        #aircraft-detail .detail-header {
-            grid-column: 1 / -1;
-            background: var(--panel-border);
-            margin: 8px -8px 4px -8px;
-            padding: 6px 8px;
-            font-weight: bold;
-            font-size: 11px;
-            color: var(--text-primary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        /* Compact signal status bar */
+        #aircraft-detail .signal-bar {
+            display: flex;
+            gap: 12px;
+            padding: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            font-size: 10px;
+            margin-bottom: 8px;
+        }
+
+        #aircraft-detail .signal-item {
+            display: flex;
+            gap: 4px;
+            align-items: center;
         }
 
         #aircraft-detail .close-btn {
@@ -1717,171 +1354,40 @@
             transition: all 0.3s ease;
         }
 
-        /* Mini Radar View */
-        #mini-radar {
+        /* Floating North Arrow on 3D Canvas */
+        #north-arrow {
             position: absolute;
-            bottom: 170px;  /* Below compass with more spacing */
-            right: 30px;
-            width: 150px;
-            height: 150px;
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 50%;
-            backdrop-filter: blur(10px);
-            border: 2px solid var(--accent-primary-dim);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        #radar-canvas {
-            width: 150px;
-            height: 150px;
-            display: block;
-        }
-
-        /* Compass rose overlay */
-        #compass-rose {
-            position: absolute;
-            bottom: 340px;
-            right: 30px;
-            width: 100px;
-            height: 100px;
-            background: rgba(0, 0, 0, 0.7);
-            border-radius: 50%;
-            backdrop-filter: blur(10px);
-            border: 2px solid var(--accent-primary-dim);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            color: var(--text-primary);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        #compass-rose .direction {
-            position: absolute;
-            text-align: center;
-        }
-
-        #compass-rose .direction.n {
-            top: 5px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: var(--compass-north);
-            font-size: 16px;
-        }
-
-        #compass-rose .direction.s {
-            bottom: 5px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-
-        #compass-rose .direction.e {
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        #compass-rose .direction.w {
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        #compass-rose .center-dot {
-            width: 6px;
-            height: 6px;
-            background: var(--text-accent);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--text-accent);
-        }
-
-        /* Compass tick marks */
-        #compass-rose .tick {
-            position: absolute;
-            background: var(--text-secondary);
-            transform-origin: center;
-        }
-
-        /* Long ticks for intercardinals (NE, SE, SW, NW) */
-        #compass-rose .tick.long {
-            width: 2px;
-            height: 12px;
-        }
-
-        /* Medium ticks for secondary intercardinals */
-        #compass-rose .tick.medium {
-            width: 1.5px;
-            height: 8px;
-        }
-
-        /* Heading indicator box */
-        #heading-indicator {
-            position: absolute;
-            bottom: calc(340px + 110px);  /* Compass bottom (340px) + offset (110px) - scales together */
-            right: 30px;
-            width: 100px;  /* Match compass width */
-            background: rgba(0, 0, 0, 0.85);
-            border: 2px solid var(--accent-primary-dim);
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            font-weight: bold;
-            color: var(--text-accent);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            text-align: center;
-        }
-
-        /* Mini statistics panel */
-        #mini-stats {
-            position: absolute;
-            bottom: 340px;
+            top: 20px;
             left: 20px;
+            width: 50px;
+            height: 50px;
             background: rgba(0, 0, 0, 0.7);
-            padding: 12px 16px;
-            border-radius: 8px;
+            border-radius: 50%;
             backdrop-filter: blur(10px);
-            border: 1px solid var(--accent-primary-dim);
-            font-size: 11px;
-            min-width: 180px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            touch-action: auto; /* Allow normal touch on UI panels */
-        }
-
-        #mini-stats h4 {
-            color: var(--text-accent);
-            margin: 0 0 8px 0;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        #mini-stats .stat-row {
+            border: 2px solid var(--accent-primary-dim);
             display: flex;
-            justify-content: space-between;
-            margin: 4px 0;
-            padding: 3px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        #mini-stats .stat-row:last-child {
-            border-bottom: none;
-        }
-
-        #mini-stats .stat-label {
-            color: var(--text-secondary);
-        }
-
-        #mini-stats .stat-value {
-            color: var(--text-primary);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            transition: transform 0.1s ease-out;
         }
+
+        #north-arrow .arrow-icon {
+            font-size: 24px;
+            color: var(--compass-north);
+            line-height: 1;
+            margin-bottom: -2px;
+        }
+
+        #north-arrow .arrow-label {
+            font-size: 11px;
+            color: var(--compass-north);
+            line-height: 1;
+        }
+
 
         /* Keyboard shortcut hint */
         .keyboard-hint {
@@ -2017,26 +1523,9 @@
             display: none !important;
         }
 
-        /* Ensure historical-controls panel collapses properly */
-        #historical-controls.collapseable-panel.collapsed .panel-content {
-            display: none !important;
-        }
-
-        /* Collapse historical-controls panel height when collapsed */
-        #historical-controls.collapseable-panel.collapsed {
-            bottom: auto !important;
-            height: auto !important;
-        }
-
         /* Adjust info panel header for flex layout */
         #info .panel-header h1 {
             font-size: 18px;
-            color: var(--text-accent);
-        }
-
-        /* Adjust aircraft-list header for flex layout */
-        #aircraft-list .panel-header h2 {
-            font-size: 16px;
             color: var(--text-accent);
         }
 
@@ -2046,13 +1535,6 @@
             color: var(--text-accent);
         }
 
-        /* Adjust mini-stats header for flex layout */
-        #mini-stats .panel-header h4 {
-            color: var(--text-accent);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
 
         /* Adjust controls panel for collapseable */
         #controls.collapseable-panel {
@@ -2092,6 +1574,930 @@
         #controls.collapseable-panel .panel-content::-webkit-scrollbar-thumb:hover {
             background: var(--accent-primary-hover);
         }
+
+        /* ========================================
+           UNIFIED SIDEBAR STYLES
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 60px; /* Account for footer bar height */
+            width: 320px;
+            height: calc(100vh - 60px); /* Subtract footer height */
+            background: var(--panel-bg);
+            backdrop-filter: var(--panel-blur);
+            border-left: var(--panel-border-width) solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            z-index: var(--z-panels);
+            transition: transform 0.3s ease, width 0.1s ease;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(100%);
+        }
+
+        /* Resize Handle */
+        .sidebar-resize-handle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: transparent;
+            cursor: ew-resize;
+            transition: background 0.2s ease;
+            z-index: 10;
+        }
+
+        .sidebar-resize-handle:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-resize-handle:active {
+            background: var(--accent-primary);
+        }
+
+        /* Toggle Button */
+        .sidebar-toggle-btn {
+            position: absolute;
+            left: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 80px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--panel-blur);
+            border: var(--panel-border-width) solid var(--panel-border);
+            border-right: none;
+            border-radius: var(--panel-radius) 0 0 var(--panel-radius);
+            color: var(--text-accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background: var(--accent-primary-dim);
+        }
+
+        /* Lock/Pin Button */
+        .sidebar-lock-btn {
+            position: absolute;
+            left: -40px;
+            bottom: 80px; /* Above the footer area */
+            width: 40px;
+            height: 40px;
+            background: var(--panel-bg);
+            backdrop-filter: var(--panel-blur);
+            border: var(--panel-border-width) solid var(--panel-border);
+            border-right: none;
+            border-radius: var(--panel-radius) 0 0 var(--panel-radius);
+            color: var(--text-accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 20px;
+            z-index: 10002;
+            pointer-events: auto;
+        }
+
+        .sidebar-lock-btn:hover {
+            background: var(--accent-primary-dim);
+            color: var(--accent-primary);
+        }
+
+        .sidebar-lock-btn.locked {
+            background: var(--accent-primary-dim);
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .sidebar-lock-btn .lock-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: inherit;
+        }
+
+        /* When sidebar is locked, adjust canvas to use left side only */
+        body.sidebar-locked canvas {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+        }
+
+        /* Hide collapse button when locked */
+        body.sidebar-locked .sidebar-toggle-btn {
+            display: none !important;
+        }
+
+        /* Ensure sidebar stays visible when locked */
+        body.sidebar-locked .sidebar {
+            transform: translateX(0) !important;
+        }
+
+        /* No rotation needed - using directional symbols */
+
+        /* Sidebar Content */
+        .sidebar-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            padding: var(--spacing-lg);
+        }
+
+        /* Mode Header */
+        /* Mode Tabs */
+        .sidebar-mode-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .sidebar-mode-tab {
+            flex: 1;
+            background: var(--panel-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--panel-border);
+            padding: 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: var(--font-size-base);
+            border-radius: var(--panel-radius);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-mode-tab:hover {
+            background: var(--panel-bg-solid);
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-mode-tab.active {
+            background: var(--accent-primary-dim);
+            color: var(--text-accent);
+            border-color: var(--accent-primary);
+            box-shadow: 0 4px 8px rgba(74, 158, 255, 0.3);
+        }
+
+        .sidebar-mode-tab.active:hover {
+            transform: none;
+        }
+
+        /* Mode Content Sections */
+        .sidebar-mode-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        /* Stats */
+        .sidebar-stats {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: var(--font-size-base);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            color: var(--text-accent);
+            font-weight: bold;
+        }
+
+        /* Dividers */
+        .sidebar-divider {
+            height: 1px;
+            background: var(--panel-border);
+            margin: var(--spacing-sm) 0;
+        }
+
+        /* Section Labels */
+        .sidebar-section-label {
+            color: var(--text-accent);
+            font-size: var(--font-size-base);
+            font-weight: bold;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        /* Search */
+        .sidebar-search {
+            position: relative;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .sidebar-search input {
+            width: 100%;
+            padding: 8px 30px 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+        }
+
+        .sidebar-search input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .sidebar-search .search-clear-btn {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-search input:not(:placeholder-shown) + .search-clear-btn {
+            opacity: 1;
+        }
+
+        .sidebar-search .search-clear-btn:hover {
+            color: var(--text-accent);
+        }
+
+        /* Badge Legend */
+        .sidebar-badge-legend {
+            display: flex;
+            gap: 8px;
+            padding: 6px 8px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            font-size: 10px;
+            color: var(--text-secondary);
+        }
+
+        .legend-item {
+            flex: 1;
+            text-align: center;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+
+        /* Aircraft List */
+        .sidebar-aircraft-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px;
+            margin: -8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: var(--button-radius);
+        }
+
+        .sidebar-aircraft-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px;
+            border-radius: var(--button-radius);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow:
+                0 2px 6px rgba(0, 0, 0, 0.3),
+                0 0 8px rgba(255, 255, 255, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            margin-left: 0;
+        }
+
+        .sidebar-aircraft-item:hover,
+        .sidebar-aircraft-item.highlighted {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-primary);
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.4),
+                0 0 16px var(--accent-primary-glow),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transform: translateX(-3px);
+            margin-left: 3px;
+        }
+
+        .sidebar-aircraft-item.selected {
+            background: var(--accent-primary-dim);
+            border-color: var(--accent-primary);
+            box-shadow:
+                0 4px 16px rgba(0, 0, 0, 0.5),
+                0 0 20px var(--accent-primary-glow),
+                0 0 40px var(--accent-primary-glow),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        /* Aircraft item content styling - NO font-weight changes to prevent flicker */
+        .aircraft-item-content {
+            opacity: 1;
+        }
+
+        .aircraft-item-content.stale {
+            opacity: 0.6;
+        }
+
+        .aircraft-callsign {
+            color: var(--text-accent);
+        }
+
+        .aircraft-callsign.stale {
+            color: #999;
+        }
+
+        .aircraft-altitude {
+            color: var(--text-primary);
+        }
+
+        .aircraft-altitude.stale {
+            color: var(--text-secondary);
+        }
+
+        /* Sidebar Sections */
+        .sidebar-section {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .sidebar-section label {
+            color: var(--text-secondary);
+            font-size: var(--font-size-base);
+        }
+
+        /* Inputs */
+        .sidebar-input,
+        .sidebar-select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+        }
+
+        .sidebar-input:focus,
+        .sidebar-select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Button Groups */
+        .sidebar-button-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .sidebar-button {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--button-radius);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: var(--font-size-base);
+            text-align: center;
+        }
+
+        .sidebar-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-primary);
+        }
+
+        .sidebar-button.sidebar-button-primary {
+            background: var(--accent-primary-dim);
+            border-color: var(--accent-primary);
+            color: var(--text-accent);
+        }
+
+        .sidebar-button.sidebar-button-primary:hover {
+            background: var(--accent-primary);
+            box-shadow: 0 0 12px var(--accent-primary-glow);
+        }
+
+        .sidebar-button.sidebar-button-active {
+            background: var(--accent-primary-dim);
+            border-color: var(--accent-primary);
+            color: var(--text-accent);
+        }
+
+        .sidebar-button.sidebar-button-small {
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+
+        /* Timeline/Range Inputs */
+        .sidebar-range {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .sidebar-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .sidebar-range::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Search Input */
+        .sidebar-search-input {
+            width: 100%;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-small);
+        }
+
+        .sidebar-search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Info Text */
+        .sidebar-info {
+            font-size: var(--font-size-small);
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 4px;
+        }
+
+        /* Radio Groups */
+        .sidebar-radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sidebar-radio-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: var(--button-radius);
+            transition: background 0.2s ease;
+        }
+
+        .sidebar-radio-label:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .sidebar-radio-label input[type="radio"] {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        /* Buttons */
+        .sidebar-button {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-primary-dim);
+            border: 1px solid var(--accent-primary);
+            border-radius: var(--button-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-button:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-button-primary {
+            background: var(--accent-primary);
+            font-weight: bold;
+        }
+
+        .sidebar-button-primary:hover {
+            background: var(--accent-primary-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Info text */
+        .sidebar-info {
+            font-size: var(--font-size-base);
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 8px;
+        }
+
+        /* Footer */
+        .sidebar-footer {
+            border-top: 1px solid var(--panel-border);
+            padding-top: var(--spacing-md);
+            margin-top: auto;
+        }
+
+        .sidebar-footer-toggle {
+            width: 100%;
+            padding: 8px;
+            background: var(--accent-primary-dim);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--button-radius);
+            color: var(--text-accent);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .sidebar-footer-toggle:hover {
+            background: var(--accent-primary-hover);
+        }
+
+        .sidebar-footer-content {
+            max-height: 200px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .sidebar-footer-content.collapsed {
+            max-height: 0;
+        }
+
+        /* Historical Filters */
+        .historical-input-group {
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .historical-input-group label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: var(--font-size-small);
+            margin-bottom: 4px;
+        }
+
+        .historical-input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--panel-bg-secondary);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--input-radius);
+            color: var(--text-primary);
+            font-size: var(--font-size-base);
+            transition: all 0.2s ease;
+        }
+
+        .historical-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: var(--panel-bg);
+        }
+
+        .historical-load-btn {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--accent-primary);
+            border: none;
+            border-radius: var(--button-radius);
+            color: var(--text-contrast);
+            font-size: var(--font-size-base);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .historical-load-btn:hover {
+            background: var(--accent-primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .historical-load-btn:active {
+            transform: translateY(0);
+        }
+
+        .nested-collapse-btn {
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.2s ease;
+        }
+
+        /* Scrollbar Styling */
+        /* Scrollbar - overlay style, only visible when scrolling */
+        .sidebar-mode-content,
+        .sidebar-aircraft-list {
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-primary-dim) transparent;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar,
+        .sidebar-aircraft-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-track,
+        .sidebar-aircraft-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-thumb,
+        .sidebar-aircraft-list::-webkit-scrollbar-thumb {
+            background: var(--accent-primary-dim);
+            border-radius: 4px;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }
+
+        .sidebar-mode-content::-webkit-scrollbar-thumb:hover,
+        .sidebar-aircraft-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-primary-hover);
+            background-clip: padding-box;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 280px;
+            }
+
+            .sidebar-mode-header {
+                font-size: var(--font-size-base);
+                padding: 10px;
+            }
+
+            /* ===== SIDEBAR CORE ===== */
+            .sidebar-content {
+                padding: var(--spacing-sm);  /* 8px instead of 10px */
+            }
+
+            /* ===== MODE TABS ===== */
+            .sidebar-mode-tabs {
+                gap: 6px;
+                margin-bottom: var(--spacing-sm);
+            }
+
+            .sidebar-mode-tab {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+
+            /* ===== SECTIONS & SPACING ===== */
+            .sidebar-section {
+                gap: 5px;
+            }
+
+            .sidebar-section-label {
+                font-size: 11px;
+                margin-bottom: 5px;
+            }
+
+            .sidebar-divider {
+                margin: 5px 0;
+            }
+
+            /* ===== STATS ===== */
+            .sidebar-stats {
+                gap: 5px;
+                margin-bottom: var(--spacing-sm);
+            }
+
+            .stat-item {
+                font-size: 11px;
+            }
+
+            .stat-label {
+                font-size: 10px;
+            }
+
+            /* ===== SEARCH ===== */
+            .sidebar-search {
+                margin-bottom: var(--spacing-sm);
+            }
+
+            .sidebar-search input {
+                padding: 6px 28px 6px 8px;
+                font-size: 11px;
+            }
+
+            /* ===== BADGE LEGEND ===== */
+            .sidebar-badge-legend {
+                padding: 4px 6px;
+                margin: 6px 0;
+                font-size: 9px;
+                gap: 6px;
+            }
+
+            /* ===== AIRCRAFT LIST ===== */
+            .sidebar-aircraft-item {
+                padding: 6px;
+                margin-bottom: 4px;
+                font-size: 11px;
+            }
+
+            .sidebar-aircraft-item:hover,
+            .sidebar-aircraft-item.highlighted {
+                transform: none;
+                margin-left: 0;
+            }
+
+            /* ===== INPUTS & SELECTS ===== */
+            .sidebar-input,
+            .sidebar-select {
+                padding: 6px;
+                font-size: 11px;
+            }
+
+            .sidebar-select[type="datetime-local"] {
+                font-size: 10px;
+                padding: 5px;
+            }
+
+            /* ===== BUTTONS ===== */
+            .sidebar-button {
+                padding: 6px 8px;
+                font-size: 11px;
+            }
+
+            .sidebar-button-small {
+                padding: 3px 5px;
+                font-size: 9px;
+            }
+
+            .sidebar-button-primary {
+                padding: 7px 10px;
+            }
+
+            /* ===== BUTTON GROUPS ===== */
+            .sidebar-button-group {
+                gap: 6px;
+            }
+
+            /* ===== RADIO BUTTONS ===== */
+            .sidebar-radio-label {
+                padding: 4px 6px;
+                font-size: 10px;
+            }
+
+            /* ===== RANGE SLIDER ===== */
+            .sidebar-range::-webkit-slider-thumb {
+                width: 12px;
+                height: 12px;
+            }
+
+            .sidebar-range::-moz-range-thumb {
+                width: 12px;
+                height: 12px;
+            }
+
+            /* ===== INFO TEXT ===== */
+            .sidebar-info {
+                padding: 5px;
+                font-size: 11px;
+            }
+
+            /* ===== PLAYBACK CONTROLS ===== */
+            .sidebar-playback-speed,
+            .sidebar-skip-controls,
+            .sidebar-timeline {
+                margin-top: 6px !important;
+            }
+
+            .sidebar-timeline-info {
+                margin-top: 2px !important;
+                font-size: 9px !important;
+            }
+
+            #sidebar-playback-speed {
+                width: 80px !important;
+                font-size: 10px;
+            }
+
+            /* ===== TRACK FILTERS ===== */
+            .sidebar-track-filters > div {
+                gap: 6px !important;
+                margin-top: 5px !important;
+            }
+
+            .sidebar-track-filters label {
+                font-size: 10px;
+            }
+
+            #sidebar-track-count {
+                font-size: 10px !important;
+            }
+
+            /* ===== TOGGLE SWITCHES ===== */
+            .toggle-switch {
+                width: 34px;
+                height: 16px;
+            }
+
+            .toggle-switch::after {
+                width: 12px;
+                height: 12px;
+            }
+
+            .toggle-switch-container {
+                padding: 5px;
+            }
+
+            .toggle-switch-label {
+                font-size: 10px;
+            }
+
+            /* ===== SCROLLBAR ===== */
+            .sidebar-mode-content::-webkit-scrollbar,
+            .sidebar-aircraft-list::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            /* ===== HISTORICAL FILTERS ===== */
+            .historical-input-group {
+                margin-bottom: 6px;
+            }
+
+            .historical-input-group label {
+                font-size: 10px;
+            }
+
+            .historical-input {
+                padding: 5px 6px;
+                font-size: 11px;
+            }
+
+            .historical-load-btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+
+            /* ===== FOOTER (if enabled) ===== */
+            .sidebar-footer {
+                padding-top: var(--spacing-sm);
+            }
+
+            .sidebar-footer-toggle {
+                padding: 6px;
+                font-size: 11px;
+            }
+        }
+
+        /* Extra small phones */
+        @media (max-width: 480px) {
+            .sidebar {
+                width: 100%;
+                max-width: 300px;  /* Reduced from 320px */
+            }
+        }
+
+        @media (max-width: 360px) {
+            .sidebar {
+                max-width: 280px;
+            }
+        }
+
 
         /* Toggle Switch Styles */
         .toggle-switch-container {
@@ -2218,21 +2624,6 @@
                 /* display controlled by JavaScript mode switching - don't override */
             }
 
-            #aircraft-list h2 {
-                font-size: 14px;
-            }
-
-            .aircraft-item {
-                padding: 6px 8px;
-                font-size: 11px;
-            }
-
-            #mini-stats {
-                min-width: 150px;
-                font-size: 10px;
-                padding: 10px 12px;
-            }
-
             #controls {
                 top: auto;
                 left: 10px;
@@ -2314,47 +2705,76 @@
                 width: auto;
                 left: 20px;
                 right: 20px;
-                top: 50%;
-                transform: translateY(-50%);
+                top: 10%;  /* Position near top instead of center */
+                bottom: auto;
+                transform: none; /* Remove centering transform */
+                max-height: 85vh; /* Limit total panel height */
             }
 
             #aircraft-detail .detail-header {
-                padding: 8px 10px;
+                padding: 10px 12px;
+                background: linear-gradient(135deg, rgba(0, 0, 0, 0.98), rgba(10, 20, 30, 0.95));
+                border-bottom: 1px solid var(--accent-primary);
             }
 
             #aircraft-detail h3 {
-                font-size: 13px;
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--text-primary);
             }
 
             #aircraft-detail .detail-body {
-                padding: 10px;
-                max-height: calc(70vh - 50px); /* Subtract header height */
+                padding: 12px;
+                padding-bottom: 20px; /* Extra bottom padding */
+                max-height: calc(85vh - 50px); /* Maximum scrollable area */
+                overflow-y: auto;
+                overflow-x: hidden;
+                -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+                scroll-padding-bottom: 20px; /* Ensure bottom content is visible */
             }
 
             #aircraft-detail .detail-grid {
-                font-size: 10px;
-                gap: 4px;
-                grid-template-columns: 90px 1fr;
-                line-height: 1.3;
+                display: grid;
+                grid-template-columns: 1fr 1fr;  /* Two equal columns for mobile */
+                gap: 8px 12px;
+                font-size: 11px;
+                line-height: 1.4;
+            }
+
+            #aircraft-detail .detail-item {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
             }
 
             #aircraft-detail .detail-label {
-                font-size: 9px;
+                font-size: 10px;
+                color: var(--text-secondary);
+                opacity: 0.8;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
 
             #aircraft-detail .detail-value {
-                font-size: 10px;
+                font-size: 11px;
+                color: var(--text-primary);
+                font-weight: 500;
+                word-break: break-word;
             }
 
-            #aircraft-detail .detail-header {
-                font-size: 9px;
-                padding: 4px 8px;
-                margin: 6px -8px 3px -8px;
+            #aircraft-detail .section-header {
+                font-size: 10px;
+                padding: 6px 0 3px 0;
+                margin: 8px 0 4px 0;
+                color: var(--text-accent);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
 
             #aircraft-detail .close-btn {
-                font-size: 18px;
-                padding: 2px 8px;
+                font-size: 20px;
+                padding: 4px 8px;
+                background: transparent;
+                color: var(--text-primary);
             }
 
             #aircraft-detail #detail-follow-btn {
@@ -2398,33 +2818,36 @@
                 z-index: 110;  /* Above other panels */
             }
 
-            .mode-btn {
-                padding: 6px 10px;
-                font-size: 11px;
-                min-width: 60px;
+            /* North arrow on mobile - smaller */
+            #north-arrow {
+                top: 10px;
+                left: 10px;
+                width: 40px;
+                height: 40px;
             }
 
-            /* Mini radar on mobile - smaller and below compass */
-            #mini-radar {
-                bottom: 80px;  /* Above footer (40px footer + 40px clearance) */
-                right: 10px;
-                width: 90px;
-                height: 90px;
-                opacity: 0.7;
+            #north-arrow .arrow-icon {
+                font-size: 18px;
             }
 
-            #radar-canvas {
-                width: 90px;
-                height: 90px;
+            #north-arrow .arrow-label {
+                font-size: 9px;
             }
 
-            /* Keep compass rose visible on mobile - moved to bottom right */
-            #compass-rose {
-                bottom: 180px;  /* Above radar (80px + 90px radar + 10px spacing) */
-                right: 10px;
-                width: 60px;
-                height: 60px;
-                opacity: 0.7;  /* Slightly transparent on mobile */
+            /* Compass heading indicator on mobile - smaller and repositioned */
+            #compass-heading {
+                top: 55px !important;
+                left: 10px !important;
+                padding: 3px 6px !important;
+                gap: 4px !important;
+            }
+
+            #compass-heading-value {
+                font-size: 10px !important;
+            }
+
+            #compass-cardinal {
+                font-size: 9px !important;
             }
 
             /* Make modals mobile-friendly */
@@ -2452,17 +2875,6 @@
                 font-size: 12px;
             }
 
-            /* Mini-stats tighter spacing on mobile */
-            #mini-stats h4 {
-                font-size: 11px;
-                margin: 0 0 6px 0;
-            }
-
-            #mini-stats .stat-row {
-                margin: 3px 0;
-                padding: 2px 0;
-            }
-
             /* Info panel stats tighter spacing */
             #info .stat {
                 margin: 4px 0;
@@ -2477,111 +2889,17 @@
                 font-size: 11px;
             }
 
-            /* Historical controls - extra compact on mobile, right-aligned */
-            #historical-controls {
-                /* Override .mobile-panel-aligned - right align instead of full width */
-                top: 50px !important;
-                bottom: 90px !important;  /* Leave room for footer */
-                right: 10px !important;
-                left: auto !important;  /* Don't span full width */
-                width: 320px !important;  /* Fixed width to prevent expansion when buttons appear */
-                max-width: 320px !important;  /* Compact width */
-                min-width: 0 !important;
-                height: auto !important;  /* Auto height between top and bottom */
-                max-height: none !important;  /* Let bottom constraint control */
-                padding: 6px !important;
-                margin: 0 !important;
-                font-size: 9px;
-                overflow-y: scroll !important;  /* Always show scrollbar */
-                box-sizing: border-box;  /* Include padding in width calculation */
-            }
-
-            /* Mobile scrollbar styling */
-            #historical-controls::-webkit-scrollbar {
-                width: 6px;
-            }
-
-            #historical-controls::-webkit-scrollbar-thumb {
-                background: var(--accent-primary);
-                border-radius: 3px;
-            }
-
             /* Consistent panel header styling on mobile */
-            #historical-controls .panel-header,
-            #aircraft-list .panel-header,
             #controls .panel-header {
                 margin-bottom: 3px;
                 padding: 4px;
             }
 
-            #historical-controls .controls-title,
-            #aircraft-list .controls-title,
             #controls .controls-title {
                 font-size: 11px;
                 margin-bottom: 0;
                 white-space: nowrap;
                 flex-shrink: 0;
-            }
-
-            #historical-controls label {
-                font-size: 9px;
-                margin-bottom: 1px;
-                display: block;
-            }
-
-            #historical-controls input,
-            #historical-controls select,
-            #historical-controls button {
-                padding: 3px 5px;
-                font-size: 9px;
-                margin: 1px 0;
-                width: 100%;
-                box-sizing: border-box;  /* Include padding in width */
-            }
-
-            /* Ensure radio button grid doesn't overflow */
-            #historical-controls input[type="radio"] {
-                width: auto !important;
-                flex-shrink: 0;
-            }
-
-            /* Ensure display mode buttons fit within fixed width */
-            #historical-controls #display-mode-selector button {
-                min-width: 0;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            #historical-controls .time-range-inputs {
-                gap: 3px;
-            }
-
-            #historical-controls .filter-section {
-                margin-top: 4px;
-                padding-top: 4px;
-            }
-
-            #historical-controls .historical-input-group {
-                margin-bottom: 4px;
-            }
-
-            /* Filter tracks content - padding for visibility on mobile */
-            #filter-tracks-content {
-                padding-bottom: 20px;
-                margin-bottom: 10px;
-            }
-
-            #historical-controls .historical-status {
-                padding: 3px;
-                font-size: 8px;
-                margin-top: 4px;
-            }
-
-            #historical-controls .collapse-btn {
-                width: 24px;
-                height: 24px;
-                font-size: 14px;
             }
 
             /* Toggle switch containers tighter on mobile */
@@ -2683,13 +3001,6 @@
                 min-width: 220px !important;
             }
 
-            #mini-stats {
-                left: 10px;
-                max-width: calc(50vw - 20px);  /* Half screen for stats */
-                min-width: 160px;
-                bottom: 110px;
-            }
-
             #controls {
                 bottom: 100px;  /* Above footer */
                 padding: 0;  /* No outer padding */
@@ -2721,12 +3032,6 @@
                 font-size: 12px;
             }
 
-            .aircraft-item {
-                padding: 12px;
-                margin: 6px 0;
-                min-height: 44px;
-            }
-
             .close-btn {
                 width: 44px;
                 height: 44px;
@@ -2737,6 +3042,278 @@
 </head>
 <body>
     <canvas id="canvas"></canvas>
+
+    <!-- Unified Sidebar (replaces aircraft-list and historical-controls panels) -->
+    <div id="unified-sidebar" class="sidebar">
+        <!-- Resize Handle -->
+        <div class="sidebar-resize-handle"></div>
+
+        <!-- Collapse/Expand Button -->
+        <button class="sidebar-toggle-btn" id="sidebar-toggle" title="Toggle sidebar">
+            <span class="toggle-icon">›</span>
+        </button>
+
+        <!-- Lock/Pin Button -->
+        <button class="sidebar-lock-btn" id="sidebar-lock" title="Lock sidebar open">
+            <span class="lock-icon mdi mdi-lock-open-variant"></span>
+        </button>
+
+        <!-- Sidebar Content -->
+        <div class="sidebar-content">
+            <!-- Mode Header (clickable to toggle) -->
+            <!-- Mode Tabs -->
+            <div class="sidebar-mode-tabs">
+                <button class="sidebar-mode-tab active" id="sidebar-tab-live" data-mode="live" title="Real-time aircraft tracking">
+                    🔴 Live
+                </button>
+                <button class="sidebar-mode-tab" id="sidebar-tab-historical" data-mode="historical" title="Historical track playback">
+                    📊 Historical
+                </button>
+            </div>
+
+            <!-- Live Mode Content -->
+            <div id="sidebar-live-content" class="sidebar-mode-content">
+                <!-- Stats Summary -->
+                <div class="sidebar-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Aircraft:</span>
+                        <span class="stat-value" id="sidebar-aircraft-count">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">With position:</span>
+                        <span class="stat-value" id="sidebar-aircraft-positioned">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Updated:</span>
+                        <span class="stat-value" id="sidebar-last-update">--</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Aircraft Search -->
+                <div class="sidebar-search">
+                    <input
+                        type="text"
+                        id="sidebar-aircraft-search"
+                        placeholder="🔍 Search aircraft..."
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                    <button id="sidebar-search-clear" class="search-clear-btn" title="Clear">✕</button>
+                </div>
+
+                <!-- Badge Legend -->
+                <div class="sidebar-badge-legend">
+                    <span class="legend-item">⬆️ Highest</span>
+                    <span class="legend-item">⚡ Fastest</span>
+                    <span class="legend-item">📍 Closest</span>
+                </div>
+
+                <!-- Aircraft List -->
+                <div class="sidebar-section-label">Nearby Aircraft</div>
+                <div id="sidebar-aircraft-list" class="sidebar-aircraft-list">
+                    <!-- Aircraft items will be populated here -->
+                </div>
+            </div>
+
+            <!-- Historical Mode Content -->
+            <div id="sidebar-historical-content" class="sidebar-mode-content" style="display: none;">
+                <!-- Time Range & Load -->
+                <div class="sidebar-section">
+                    <div class="sidebar-section-label">Time Range</div>
+
+                    <!-- Mode toggle: Quick presets vs Custom range -->
+                    <div class="sidebar-button-group" style="margin-bottom: 10px;">
+                        <button id="time-mode-preset" class="sidebar-button sidebar-button-active" style="font-size: 11px;">⚡ Quick</button>
+                        <button id="time-mode-custom" class="sidebar-button" style="font-size: 11px;">📅 Custom</button>
+                    </div>
+
+                    <!-- Quick presets (default) -->
+                    <div id="time-preset-section">
+                        <select id="sidebar-time-preset" class="sidebar-select">
+                            <option value="1">Last 1 hour</option>
+                            <option value="4">Last 4 hours</option>
+                            <option value="8">Last 8 hours</option>
+                            <option value="12">Last 12 hours</option>
+                            <option value="24">Last 24 hours</option>
+                        </select>
+                    </div>
+
+                    <!-- Custom date/time picker (hidden by default) -->
+                    <div id="time-custom-section" style="display: none;">
+                        <div style="margin-bottom: 8px;">
+                            <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start Date/Time:</label>
+                            <input type="datetime-local" id="custom-start-time" class="sidebar-select" style="font-size: 11px; padding: 6px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End Date/Time:</label>
+                            <input type="datetime-local" id="custom-end-time" class="sidebar-select" style="font-size: 11px; padding: 6px;">
+                        </div>
+                        <div style="margin-top: 6px; font-size: 10px; color: var(--text-secondary);">
+                            <span id="custom-duration-display">Duration: --</span>
+                        </div>
+                    </div>
+
+                    <button id="sidebar-load-tracks" class="sidebar-button sidebar-button-primary" style="margin-top: 10px;">Load Tracks</button>
+                    <div id="sidebar-results-info" class="sidebar-info" style="margin-top: 8px;">Ready to load</div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Display Mode Selector -->
+                <div id="sidebar-display-mode" class="sidebar-section" style="display: none;">
+                    <div class="sidebar-section-label">Display Mode</div>
+                    <div class="sidebar-button-group">
+                        <button id="sidebar-mode-all" class="sidebar-button sidebar-button-active" title="Show all tracks at once">
+                            📊 All Tracks
+                        </button>
+                        <button id="sidebar-mode-playback" class="sidebar-button" title="Animate tracks over time">
+                            ▶️ Playback
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div id="sidebar-playback-controls" class="sidebar-section" style="display: none;">
+                    <div class="sidebar-section-label">Playback Controls</div>
+
+                    <!-- Main playback buttons -->
+                    <div class="sidebar-button-group">
+                        <button id="sidebar-play-pause" class="sidebar-button sidebar-button-primary">
+                            ▶️ Play
+                        </button>
+                        <button id="sidebar-restart" class="sidebar-button">
+                            ⏮ Restart
+                        </button>
+                    </div>
+
+                    <!-- Speed control -->
+                    <div class="sidebar-playback-speed" style="margin-top: 10px;">
+                        <label style="font-size: 11px; color: var(--text-secondary);">Speed:</label>
+                        <select id="sidebar-playback-speed" class="sidebar-select" style="width: 100px;">
+                            <option value="1">1x</option>
+                            <option value="2">2x</option>
+                            <option value="5">5x</option>
+                            <option value="10" selected>10x</option>
+                            <option value="30">30x</option>
+                            <option value="60">60x</option>
+                        </select>
+                    </div>
+
+                    <!-- Skip controls -->
+                    <div class="sidebar-skip-controls" style="margin-top: 10px;">
+                        <label style="font-size: 11px; color: var(--text-secondary);">Skip:</label>
+                        <div class="sidebar-button-group" style="grid-template-columns: repeat(4, 1fr);">
+                            <button id="sidebar-skip-back-10" class="sidebar-button sidebar-button-small">-10m</button>
+                            <button id="sidebar-skip-back-1" class="sidebar-button sidebar-button-small">-1m</button>
+                            <button id="sidebar-skip-forward-1" class="sidebar-button sidebar-button-small">+1m</button>
+                            <button id="sidebar-skip-forward-10" class="sidebar-button sidebar-button-small">+10m</button>
+                        </div>
+                    </div>
+
+                    <!-- Timeline -->
+                    <div class="sidebar-timeline" style="margin-top: 10px;">
+                        <input type="range" id="sidebar-timeline" class="sidebar-range" min="0" max="100" value="0" style="width: 100%;">
+                        <div class="sidebar-timeline-info" style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 4px;">
+                            <span id="sidebar-time-current">00:00</span>
+                            <span id="sidebar-time-total">00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Track List -->
+                <div id="sidebar-tracks-section" class="sidebar-section" style="display: none;">
+                    <div class="sidebar-section-label">
+                        <span>Loaded Tracks</span>
+                        <span id="sidebar-track-count" style="font-weight: normal; color: var(--text-secondary);">(0)</span>
+                    </div>
+
+                    <!-- Track filters -->
+                    <div class="sidebar-track-filters" style="margin-bottom: 10px;">
+                        <input type="text" id="sidebar-track-search" placeholder="🔍 Search tracks..." class="sidebar-search-input" style="width: 100%;">
+                    </div>
+
+                    <!-- Track list -->
+                    <div id="sidebar-track-list" class="sidebar-aircraft-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- Track items will be populated here -->
+                    </div>
+                </div>
+
+                <div class="sidebar-divider"></div>
+
+                <!-- Post-Load Filters (shown after data is loaded) -->
+                <div id="historical-filters" style="display: none; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(74, 158, 255, 0.2);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('filter-tracks-content').style.display = document.getElementById('filter-tracks-content').style.display === 'none' ? 'block' : 'none'; this.querySelector('.nested-collapse-btn').textContent = this.querySelector('.nested-collapse-btn').textContent === '−' ? '+' : '−';">
+                        <label style="font-weight: bold; color: var(--text-accent); cursor: pointer;">Filter Tracks:</label>
+                        <span class="nested-collapse-btn" style="color: var(--text-accent); font-size: 18px; user-select: none;">+</span>
+                    </div>
+                    <div id="filter-tracks-content" style="display: none;">
+
+                    <!-- Military Only -->
+                    <div class="historical-input-group">
+                        <label for="filter-military-only">
+                            <input type="checkbox" id="filter-military-only" style="width: auto; margin-right: 5px;">
+                            Military Only
+                        </label>
+                    </div>
+
+                    <!-- Altitude Range -->
+                    <div class="historical-input-group">
+                        <label for="filter-altitude-min">Min Altitude (ft):</label>
+                        <input type="number" id="filter-altitude-min" class="historical-input" min="0" max="50000" step="1000" placeholder="0">
+                    </div>
+                    <div class="historical-input-group">
+                        <label for="filter-altitude-max">Max Altitude (ft):</label>
+                        <input type="number" id="filter-altitude-max" class="historical-input" min="0" max="50000" step="1000" placeholder="50000">
+                    </div>
+
+                    <!-- Minimum Track Length -->
+                    <div class="historical-input-group">
+                        <label for="filter-min-positions">Min Positions:</label>
+                        <input type="number" id="filter-min-positions" class="historical-input" min="2" max="1000" value="10" title="Hide tracks with fewer than this many positions">
+                    </div>
+
+                    <!-- Speed Range -->
+                    <div class="historical-input-group">
+                        <label for="filter-speed-min">Min Speed (kts):</label>
+                        <input type="number" id="filter-speed-min" class="historical-input" min="0" max="1000" step="50" placeholder="0">
+                    </div>
+                    <div class="historical-input-group">
+                        <label for="filter-speed-max">Max Speed (kts):</label>
+                        <input type="number" id="filter-speed-max" class="historical-input" min="0" max="1000" step="50" placeholder="1000">
+                    </div>
+
+                    <button id="apply-filters" class="historical-load-btn" style="margin-top: 10px;">Apply Filters</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer (Mini Radar + Heading) - REMOVED: Not needed, whole map is the radar -->
+            <div class="sidebar-footer" id="sidebar-footer" style="display: none;">
+                <button class="sidebar-footer-toggle" id="sidebar-footer-toggle" title="Toggle radar/heading">
+                    <span>⬆</span>
+                </button>
+                <div class="sidebar-footer-content" id="sidebar-footer-content">
+                    <!-- Mini radar and heading container -->
+                    <div id="sidebar-mini-radar-container" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 10px;">
+                        <!-- Mini Radar -->
+                        <div style="position: relative;">
+                            <canvas id="sidebar-mini-radar" width="120" height="120" style="border: 1px solid var(--panel-border); border-radius: 50%; background: rgba(0, 0, 0, 0.5);"></canvas>
+                        </div>
+                        <!-- Heading Display -->
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            <div style="font-size: 9px; color: var(--text-secondary); text-transform: uppercase; opacity: 0.7;">Heading</div>
+                            <div id="sidebar-heading-value" style="font-size: 18px; font-weight: bold; color: var(--text-primary); font-family: 'Courier New', monospace;">000°</div>
+                            <div id="sidebar-cardinal-direction" style="font-size: 10px; color: var(--accent-primary); font-weight: 600;">N</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- About Modal -->
     <div id="about-modal">
@@ -2836,66 +3413,6 @@
         </div>
     </div>
 
-    <div id="aircraft-list" class="collapseable-panel mobile-panel-aligned mobile-compact-padding">
-        <div class="panel-header">
-            <span class="controls-title">🛩️ ADS-B 3D <span id="aircraft-count-header" style="font-size: 0.8em; color: var(--text-secondary);">(0)</span></span>
-            <button class="collapse-btn" data-panel="aircraft-list" title="Collapse panel">−</button>
-        </div>
-        <div class="panel-content">
-            <!-- Quick Stats (consolidated) -->
-            <div class="stat">
-                <span class="label">Aircraft:</span>
-                <span class="value" id="aircraft-count">0</span>
-            </div>
-            <div class="stat">
-                <span class="label">With positions:</span>
-                <span class="value" id="aircraft-with-positions">0</span>
-            </div>
-            <div class="stat">
-                <span class="label">Updated:</span>
-                <span class="value" id="last-update">--</span>
-            </div>
-
-            <!-- Live Mode Options Section (shown when Track API available and in live mode) -->
-            <div id="live-mode-options-section" style="display: none;">
-                <div style="border-top: 1px solid rgba(74, 158, 255, 0.2); margin: 12px 0;"></div>
-                <div class="section-label">Options</div>
-                <div class="historical-input-group">
-                    <label for="enable-recent-trails" style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="enable-recent-trails" checked style="width: auto; margin: 0;">
-                        <span>Pre-load recent trails:</span>
-                        <select id="recent-trails-time" style="background: rgba(74, 158, 255, 0.1); border: 1px solid rgba(74, 158, 255, 0.3); color: var(--text-primary); padding: 2px 5px; border-radius: var(--input-radius); font-size: 12px;">
-                            <option value="1">1 min</option>
-                            <option value="5" selected>5 min</option>
-                            <option value="10">10 min</option>
-                            <option value="15">15 min</option>
-                            <option value="30">30 min</option>
-                            <option value="45">45 min</option>
-                            <option value="60">1 hour</option>
-                        </select>
-                    </label>
-                </div>
-                <div id="recent-trails-status" class="historical-status" style="margin-top: 6px; min-height: 0;"></div>
-            </div>
-
-            <div style="border-top: 1px solid rgba(74, 158, 255, 0.2); margin: 8px 0 10px 0;"></div>
-            <div class="section-label" style="margin-bottom: 10px;">Nearby Aircraft</div>
-
-            <!-- Aircraft Search Bar -->
-            <div class="aircraft-search-container">
-                <input
-                    type="text"
-                    id="aircraft-search"
-                    placeholder="🔍 Search by callsign, ICAO, tail..."
-                    autocomplete="off"
-                    spellcheck="false"
-                />
-                <button id="aircraft-search-clear" class="search-clear-btn" title="Clear search">✕</button>
-            </div>
-
-            <div id="aircraft-items"></div>
-        </div>
-    </div>
 
     <!-- Unfollow Button (shown when following an aircraft) -->
     <button id="unfollow-btn">✕ Unfollow</button>
@@ -2911,219 +3428,6 @@
             <span>20k</span>
             <span>30k</span>
             <span>40k+</span>
-        </div>
-    </div>
-
-    <!-- Mode Selector (Live vs Historical) -->
-    <div id="mode-selector" class="mode-selector">
-        <button id="live-mode-btn" class="mode-btn active" data-mode="live" title="Real-time aircraft tracking">
-            <span class="mode-icon">📡</span> Live
-        </button>
-        <button id="historical-mode-btn" class="mode-btn" data-mode="historical" title="Historical track playback" style="display: none;">
-            <span class="mode-icon">🕐</span> Historical
-        </button>
-    </div>
-
-    <!-- Historical Controls (hidden by default, shown when historical mode active) -->
-    <div id="historical-controls" class="collapseable-panel mobile-panel-aligned mobile-compact-padding" style="display: none;">
-        <div class="panel-header">
-            <span class="controls-title">📊 Historical Data</span>
-            <button class="collapse-btn" data-panel="historical-controls" title="Collapse panel">−</button>
-        </div>
-        <div class="panel-content">
-            <!-- Time Range Selection -->
-            <div style="margin-bottom: 15px;">
-                <label class="label-bold">Time Range:</label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="1" checked style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Last 1 hour</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="4" style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Last 4 hours</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="8" style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Last 8 hours</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="12" style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Last 12 hours</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="24" style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Last 24 hours</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                        <input type="radio" name="time-preset" value="custom" style="width: auto; margin: 0;">
-                        <span style="font-size: 12px;">Custom</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Custom Time Range (hidden by default) -->
-            <div id="custom-time-range" style="display: none; margin-bottom: 15px;">
-                <div class="historical-input-group">
-                    <label for="start-time">Start Time:</label>
-                    <input type="datetime-local" id="start-time" class="historical-input">
-                </div>
-                <div class="historical-input-group">
-                    <label for="end-time">End Time:</label>
-                    <input type="datetime-local" id="end-time" class="historical-input">
-                </div>
-            </div>
-
-            <!-- Load Button -->
-            <button id="load-historical-data" class="historical-load-btn">Load Data</button>
-            <div id="historical-status" class="historical-status"></div>
-
-            <!-- Display Mode Selector (shown after data is loaded) -->
-            <div id="display-mode-selector" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(74, 158, 255, 0.2);">
-                <label class="label-bold">Display Mode:</label>
-                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                    <button id="display-mode-all" class="historical-load-btn active" style="flex: 1; padding: 8px 12px; font-size: 12px; background: var(--accent-primary-dim); border: 1px solid var(--accent-primary-hover);" title="Show all tracks at once (default)">
-                        📊 Show All Tracks
-                    </button>
-                    <button id="display-mode-playback" class="historical-load-btn" style="flex: 1; padding: 8px 12px; font-size: 12px;" title="Animate tracks over time">
-                        ▶️ Playback Mode
-                    </button>
-                </div>
-                <div id="display-mode-description" class="help-text">
-                    Showing all tracks at once. Click Playback Mode to animate tracks over time.
-                </div>
-
-                <!-- Visualization Mode (for Show All mode only) -->
-                <div id="visualization-mode-selector" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(74, 158, 255, 0.15);">
-                    <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Visualization:</label>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 12px; color: var(--text-primary); cursor: pointer;">
-                            <input type="radio" name="display-mode" value="tracks" checked style="margin-right: 4px;">Track Lines
-                        </label>
-                        <label style="font-size: 12px; color: var(--text-primary); cursor: pointer;">
-                            <input type="radio" name="display-mode" value="heatmap" style="margin-right: 4px;">Heat Map
-                        </label>
-                        <label style="font-size: 12px; color: var(--text-primary); cursor: pointer;">
-                            <input type="radio" name="display-mode" value="both" style="margin-right: 4px;">Both
-                        </label>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Post-Load Filters (shown after data is loaded) -->
-            <div id="historical-filters" style="display: none; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(74, 158, 255, 0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('filter-tracks-content').style.display = document.getElementById('filter-tracks-content').style.display === 'none' ? 'block' : 'none'; this.querySelector('.nested-collapse-btn').textContent = this.querySelector('.nested-collapse-btn').textContent === '−' ? '+' : '−';">
-                    <label style="font-weight: bold; color: var(--text-accent); cursor: pointer;">Filter Tracks:</label>
-                    <span class="nested-collapse-btn" style="color: var(--text-accent); font-size: 18px; user-select: none;">+</span>
-                </div>
-                <div id="filter-tracks-content" style="display: none;">
-
-                <!-- Military Only -->
-                <div class="historical-input-group">
-                    <label for="filter-military-only">
-                        <input type="checkbox" id="filter-military-only" style="width: auto; margin-right: 5px;">
-                        Military Only
-                    </label>
-                </div>
-
-                <!-- Altitude Range -->
-                <div class="historical-input-group">
-                    <label for="filter-altitude-min">Min Altitude (ft):</label>
-                    <input type="number" id="filter-altitude-min" class="historical-input" min="0" max="50000" step="1000" placeholder="0">
-                </div>
-                <div class="historical-input-group">
-                    <label for="filter-altitude-max">Max Altitude (ft):</label>
-                    <input type="number" id="filter-altitude-max" class="historical-input" min="0" max="50000" step="1000" placeholder="50000">
-                </div>
-
-                <!-- Minimum Track Length -->
-                <div class="historical-input-group">
-                    <label for="filter-min-positions">Min Positions:</label>
-                    <input type="number" id="filter-min-positions" class="historical-input" min="2" max="1000" value="10" title="Hide tracks with fewer than this many positions">
-                </div>
-
-                <!-- Speed Range -->
-                <div class="historical-input-group">
-                    <label for="filter-speed-min">Min Speed (kts):</label>
-                    <input type="number" id="filter-speed-min" class="historical-input" min="0" max="1000" step="50" placeholder="0">
-                </div>
-                <div class="historical-input-group">
-                    <label for="filter-speed-max">Max Speed (kts):</label>
-                    <input type="number" id="filter-speed-max" class="historical-input" min="0" max="1000" step="50" placeholder="1000">
-                </div>
-
-                <button id="apply-filters" class="historical-load-btn" style="margin-top: 10px;">Apply Filters</button>
-                </div>
-            </div>
-
-            <!-- Playback Controls (shown after data is loaded) -->
-            <div id="playback-controls" style="display: none; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(74, 158, 255, 0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('playback-content').style.display = document.getElementById('playback-content').style.display === 'none' ? 'block' : 'none'; this.querySelector('.nested-collapse-btn').textContent = this.querySelector('.nested-collapse-btn').textContent === '−' ? '+' : '−';">
-                    <label style="font-weight: bold; color: var(--text-accent); cursor: pointer;">Playback:</label>
-                    <span class="nested-collapse-btn" style="color: var(--text-accent); font-size: 18px; user-select: none;">−</span>
-                </div>
-                <div id="playback-content">
-
-                <!-- Play/Pause and Speed Controls -->
-                <div class="playback-controls">
-                    <button id="play-pause-btn" class="historical-load-btn playback-btn" title="Play/Pause animation">Play</button>
-                    <button id="restart-btn" class="historical-load-btn playback-btn-small" title="Restart from beginning">Restart</button>
-                    <select id="playback-speed" class="historical-input playback-speed-select" title="Playback speed multiplier">
-                        <option value="0.25">0.25x (Slow)</option>
-                        <option value="0.5">0.5x</option>
-                        <option value="1">1x (Normal)</option>
-                        <option value="2">2x</option>
-                        <option value="5">5x</option>
-                        <option value="10" selected>10x (Fast)</option>
-                        <option value="20">20x</option>
-                        <option value="30">30x</option>
-                        <option value="60">60x (Very Fast)</option>
-                        <option value="120">120x (Ultra Fast)</option>
-                    </select>
-                </div>
-
-                <!-- Skip Controls -->
-                <div style="margin: 10px 0;">
-                    <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Skip:</label>
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
-                        <button id="skip-back-10m" class="historical-load-btn playback-btn-small" style="padding: 6px; font-size: 10px;" title="Skip backward 10 minutes">-10m</button>
-                        <button id="skip-back-1m" class="historical-load-btn playback-btn-small" style="padding: 6px; font-size: 10px;" title="Skip backward 1 minute">-1m</button>
-                        <button id="skip-forward-1m" class="historical-load-btn playback-btn-small" style="padding: 6px; font-size: 10px;" title="Skip forward 1 minute">+1m</button>
-                        <button id="skip-forward-10m" class="historical-load-btn playback-btn-small" style="padding: 6px; font-size: 10px;" title="Skip forward 10 minutes">+10m</button>
-                    </div>
-                </div>
-
-                <!-- Fade Tracks Option -->
-                <div class="historical-input-group" style="margin-bottom: 10px;">
-                    <label for="fade-tracks" title="How long tracks remain visible after their end time">Fade Tracks After:</label>
-                    <select id="fade-tracks" class="historical-input">
-                        <option value="0">Immediately (default)</option>
-                        <option value="1800">30 minutes</option>
-                        <option value="3600">1 hour</option>
-                        <option value="7200">2 hours</option>
-                        <option value="never">Never (accumulate all)</option>
-                    </select>
-                </div>
-                <div class="help-text">
-                    Controls how long tracks stay visible after their end time. "Never" accumulates all tracks, slowly populating the sky.
-                </div>
-
-                <!-- Timeline Scrubber -->
-                <div style="margin-bottom: 8px;">
-                    <input type="range" id="timeline-scrubber" class="timeline-scrubber" min="0" max="100" value="0" step="0.1" title="Drag to seek">
-                </div>
-
-                <!-- Time Display -->
-                <div class="timeline-times">
-                    <span id="current-time-display">00:00:00</span>
-                    <span id="total-time-display">00:00:00</span>
-                </div>
-
-                <!-- Playback Status -->
-                <div id="playback-status" class="playback-status"></div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -3150,48 +3454,40 @@
                 <div class="toggle-switch"></div>
             </div>
 
-            <div class="toggle-switch-container active" id="toggle-mini-radar-container">
-                <span class="toggle-switch-label">Mini Radar</span>
-                <div class="toggle-switch"></div>
-            </div>
-
-            <div class="toggle-switch-container active" id="toggle-compass-container">
-                <span class="toggle-switch-label">Compass</span>
-                <div class="toggle-switch"></div>
-            </div>
-
             <div class="toggle-switch-container active" id="toggle-trails-container">
                 <span class="toggle-switch-label">Trails</span>
                 <div class="toggle-switch"></div>
             </div>
 
             <div class="toggle-switch-container" id="toggle-trail-fade-container">
-                <span class="toggle-switch-label">Auto-fade Trails</span>
+                <span class="toggle-switch-label">Trail Cleanup</span>
                 <div class="toggle-switch"></div>
             </div>
 
-            <!-- Trail Fade Time Selector (shown when auto-fade is enabled) -->
+            <!-- Trail Cleanup Time Selector (shown when trail cleanup is enabled) -->
             <div id="trail-fade-time-selector" style="display: none; margin-top: 8px; margin-bottom: 12px;">
-                <label for="trail-fade-time" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Fade after:</label>
+                <label for="trail-fade-time" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Remove trails after:</label>
                 <select id="trail-fade-time" style="width: 100%; padding: 6px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--panel-border); border-radius: var(--input-radius); font-size: 12px;">
-                    <option value="0">Never</option>
+                    <option value="-1" selected>Immediate (when aircraft leaves)</option>
+                    <option value="0">Never (accumulate all)</option>
                     <option value="60">1 minute</option>
-                    <option value="120">2 minutes</option>
-                    <option value="180">3 minutes</option>
-                    <option value="240">4 minutes</option>
                     <option value="300">5 minutes</option>
-                    <option value="360">6 minutes</option>
-                    <option value="420">7 minutes</option>
-                    <option value="480">8 minutes</option>
-                    <option value="540">9 minutes</option>
-                    <option value="600">10 minutes</option>
                     <option value="900">15 minutes</option>
-                    <option value="1200">20 minutes</option>
-                    <option value="1500">25 minutes</option>
                     <option value="1800">30 minutes</option>
-                    <option value="2400">40 minutes</option>
-                    <option value="3000">50 minutes</option>
-                    <option value="3600" selected>60 minutes (1 hour)</option>
+                    <option value="3600">60 minutes</option>
+                </select>
+            </div>
+
+            <!-- Preload Trail Time Selector -->
+            <div style="margin-top: 12px; margin-bottom: 12px;">
+                <label for="preload-trail-time" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Preload trail history:</label>
+                <select id="preload-trail-time" style="width: 100%; padding: 6px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--panel-border); border-radius: var(--input-radius); font-size: 12px;">
+                    <option value="0">Off (none)</option>
+                    <option value="1">1 minute</option>
+                    <option value="5" selected>5 minutes (Default)</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">60 minutes</option>
                 </select>
             </div>
 
@@ -3269,46 +3565,19 @@
 
     <div class="loading" id="loading">Loading...</div>
 
-    <!-- Compass Rose -->
-    <!-- Heading Indicator -->
-    <div id="heading-indicator">000</div>
-
-    <!-- Compass Rose -->
-    <div id="compass-rose">
-        <div class="direction n">N</div>
-        <div class="direction s">S</div>
-        <div class="direction e">E</div>
-        <div class="direction w">W</div>
-        <div class="center-dot"></div>
-        <!-- Tick marks will be added dynamically by JavaScript -->
+    <!-- Floating North Arrow on 3D Canvas -->
+    <div id="north-arrow">
+        <div class="arrow-icon">↑</div>
+        <div class="arrow-label">N</div>
     </div>
 
-    <!-- Mini Radar View -->
-    <div id="mini-radar">
-        <canvas id="radar-canvas" width="150" height="150"></canvas>
+    <!-- Compact Heading Indicator below Compass -->
+    <div id="compass-heading" style="position: absolute; top: 75px; left: 20px; background: rgba(0, 0, 0, 0.7); border-radius: 6px; backdrop-filter: blur(10px); border: 1px solid var(--accent-primary-dim); padding: 4px 8px; z-index: 100; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); display: flex; align-items: center; gap: 6px;">
+        <span id="compass-heading-value" style="font-size: 11px; font-weight: bold; color: var(--text-primary); font-family: 'Courier New', monospace;">000°</span>
+        <span id="compass-cardinal" style="font-size: 10px; color: var(--accent-primary); font-weight: 600;">N</span>
     </div>
 
     <!-- Mini Statistics Panel -->
-    <div id="mini-stats" class="collapseable-panel">
-        <div class="panel-header">
-            <h4>Quick Stats</h4>
-            <button class="collapse-btn" data-panel="mini-stats" title="Collapse panel">−</button>
-        </div>
-        <div class="panel-content">
-            <div class="stat-row">
-                <span class="stat-label">Highest:</span>
-                <span class="stat-value" id="stat-highest">--</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">Fastest:</span>
-                <span class="stat-value" id="stat-fastest">--</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">Closest:</span>
-                <span class="stat-value" id="stat-closest">--</span>
-            </div>
-        </div>
-    </div>
 
     <!-- Keyboard Hint (shows briefly on keypress) -->
     <div class="keyboard-hint" id="keyboard-hint"></div>
