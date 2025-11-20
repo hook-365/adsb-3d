@@ -9027,52 +9027,6 @@ function hslToRgb(h, s, l) {
 }
 
 /**
- * Get altitude-based color for aircraft and trails (tar1090 color scheme)
- * Converts scene units to feet and returns RGB color value
- * @param {number} altitudeSceneUnits - Altitude in Three.js scene units
- * @returns {number} RGB color value as hex number (e.g., 0xff0000 for red)
- */
-function getAltitudeColor(altitudeSceneUnits) {
-    // Convert scene units back to actual feet for color determination
-    // Reverse: scene units / exaggeration / scale / 0.3048 + home alt
-    const altitudeFeet = (altitudeSceneUnits / CONFIG.altitudeExaggeration / CONFIG.scale / 0.3048) + CONFIG.homeLocation.alt;
-
-    // tar1090 exact color scheme using HSL interpolation
-    // Ground/Unknown
-    if (altitudeFeet < 500) {
-        return hslToRgb(0, 0, 45); // Ground - gray
-    }
-
-    // tar1090 altitude color scale (from config.js)
-    // Key waypoints: 2000ft (H=20), 10000ft (H=140), 40000ft (H=300)
-    // Adjusted S=100%, L=65% (maximum saturation, rich vibrant colors on dark map)
-    const saturation = 100;
-    const lightness = 65;
-    let hue;
-
-    if (altitudeFeet <= 2000) {
-        hue = 20; // Orange
-    } else if (altitudeFeet <= 10000) {
-        // Interpolate from 20 (orange) to 140 (light green)
-        const ratio = (altitudeFeet - 2000) / (10000 - 2000);
-        hue = 20 + ratio * (140 - 20);
-    } else if (altitudeFeet <= 40000) {
-        // Interpolate from 140 (light green) to 300 (magenta)
-        const ratio = (altitudeFeet - 10000) / (40000 - 10000);
-        hue = 140 + ratio * (300 - 140);
-    } else {
-        hue = 300; // Magenta for >40000ft
-    }
-
-    return hslToRgb(hue, saturation, lightness);
-}
-
-/**
- * Get speed-based color for trails (green to red gradient)
- * @param {number} groundSpeed - Ground speed in knots
- * @returns {number} RGB color value as hex number (e.g., 0x00ff00 for green)
- */
-/**
  * Get color based on altitude (matches tar1090 color scheme)
  * @param {number} altitudeValue - Altitude (in scene units for 3D, or feet for UI)
  * @param {boolean} returnAsString - Return as CSS color string for canvas
