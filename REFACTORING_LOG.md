@@ -10,7 +10,7 @@
 
 | Phase | Module | Status | Lines Extracted | Commit |
 |-------|--------|--------|-----------------|--------|
-| 0 | Setup & Baseline | ⬜ Not Started | 0 | - |
+| 0 | Setup & Baseline | 🔄 In Progress | 0 | - |
 | 1 | Config & Constants | ⬜ Not Started | ~300 | - |
 | 2 | Theme Manager | ⬜ Not Started | ~755 | - |
 | 3 | URL State Manager | ⬜ Not Started | ~485 | - |
@@ -25,15 +25,16 @@
 
 ## Phase 0: Setup & Baseline Testing
 
-### Status: ⬜ Not Started
+### Status: 🔄 In Progress
 
 ### Tasks
-- [ ] Create `tests/` directory
-- [ ] Create `MANUAL_TESTS.md` baseline checklist
-- [ ] Create baseline smoke tests (`tests/smoke-test.html`)
-- [ ] Run full manual test suite and capture baseline
-- [ ] Capture performance baseline (load time, FPS, memory)
-- [ ] Document baseline results below
+- [x] Create `tests/` directory
+- [x] Create `MANUAL_TESTS.md` baseline checklist
+- [x] Create baseline smoke tests (`tests/smoke-test.html`)
+- [x] Create `BASELINE.md` template for results
+- [ ] Run full manual test suite and capture baseline (USER ACTION REQUIRED)
+- [ ] Capture performance baseline (load time, FPS, memory) (USER ACTION REQUIRED)
+- [ ] Document baseline results in BASELINE.md (USER ACTION REQUIRED)
 
 ### Baseline Results
 
@@ -58,13 +59,19 @@
 - Warnings: _______________
 
 ### Deliverables
-- [ ] `tests/` directory created
-- [ ] `tests/smoke-test.html` created
-- [ ] Baseline metrics documented
-- [ ] Ready to proceed to Phase 1
+- [x] `tests/` directory created
+- [x] `tests/smoke-test.html` created
+- [x] `tests/README.md` created
+- [x] `BASELINE.md` template created
+- [ ] Baseline metrics documented (awaiting user testing)
+- [ ] Ready to proceed to Phase 1 (awaiting user sign-off)
 
 ### Notes
-_______________
+**2025-11-20**: Created all testing infrastructure and documentation templates.
+- Confirmed app.js is 12,428 lines (484 KB)
+- Created automated smoke test suite
+- Created comprehensive manual test checklist
+- User needs to run local app and execute tests to capture baseline metrics
 
 ---
 
