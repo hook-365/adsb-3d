@@ -25,83 +25,54 @@
  *
  * Configuration:
  * - Home location set via environment variables (see entrypoint.sh)
- * - All visual/display settings configurable via CONFIG object below
+ * - All visual/display settings configurable via constants.js
  * - BASE_PATH auto-detected from URL for subdirectory deployment
  */
 
 // ============================================================================
-// THEME SYSTEM - CSS Variable Bridge
+// IMPORTS - Configuration and Constants
 // ============================================================================
-// Converts CSS custom properties to Three.js-compatible hex colors
 
-/**
- * Get CSS variable value from :root
- * @param {string} varName - CSS variable name (with or without --)
- * @returns {string} The CSS variable value
- */
-function getCSSVar(varName) {
-    const name = varName.startsWith('--') ? varName : `--${varName}`;
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+import {
+    API,
+    TIMING,
+    CACHE,
+    STORAGE_KEYS,
+    SCENE,
+    MAP,
+    DISTANCE_RINGS,
+    AIRPORTS,
+    AIRCRAFT,
+    TRAILS,
+    HISTORICAL,
+    ALTITUDE_SMOOTHING,
+    SIGNAL_QUALITY,
+    RATE_LIMIT,
+    PERFORMANCE,
+    CONVERSIONS,
+    CONFIG,
+    getCSSVar,
+    cssToThreeColor,
+    getThemeColor,
+    initializeThemeColors
+} from './constants.js';
+
+// Initialize CONFIG theme colors from CSS variables
+// (Must be called after DOM is loaded and CSS is applied)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initializeThemeColors());
+} else {
+    initializeThemeColors();
 }
 
-/**
- * Convert CSS hex color to Three.js hex number
- * @param {string} cssColor - CSS color (hex format like #4a9eff)
- * @returns {number} Three.js color number (like 0x4a9eff)
- */
-function cssToThreeColor(cssColor) {
-    // Remove # and convert to hex number
-    return parseInt(cssColor.replace('#', ''), 16);
+// Override homeLocation from dynamically generated config if available
+if (window.ENV_CONFIG?.homeLocation) {
+    CONFIG.homeLocation = window.ENV_CONFIG.homeLocation;
 }
 
-/**
- * Get theme color for Three.js from CSS variable
- * @param {string} varName - CSS variable name (e.g., 'military-color' or '--military-color')
- * @returns {number} Three.js hex color
- */
-function getThemeColor(varName) {
-    const cssValue = getCSSVar(varName);
-    return cssToThreeColor(cssValue);
-}
-
-// Configuration
-const CONFIG = {
-    // Home location loaded from environment variables (see config.js generated at container startup)
-    homeLocation: window.ENV_CONFIG?.homeLocation || { lat: 45.0000, lon: -90.0000, alt: 1234 },
-    updateInterval: 1000, // Update every 1 second
-    viewDistance: 200, // km
-    scale: 0.001, // Scale for converting meters to scene units
-    altitudeExaggeration: 4.5, // Multiply altitude by this factor for visibility (4.5x real scale)
-    mapTileProvider: 'dark', // 'dark' (CartoDB Dark), 'osm' (OpenStreetMap), 'satellite' (Esri), or 'terrain' (Stamen)
-    showDistanceRings: true,
-    distanceRingIntervals: [92.6, 185.2, 277.8], // 50, 100, 150 nautical miles in km
-    distanceRingLabels: ['50 nmi', '100 nmi', '150 nmi'], // Labels for distance rings
-    mapZoomLevel: 8, // OSM zoom level for ground texture (7-12, lower = wider area)
-    mapTileGridSize: 21, // Load NxN grid of tiles (21x21 = ~1000km+ coverage area)
-    showAirports: true, // Show airport markers
-    showRunways: true, // Show runway overlays
-    airportMaxDistance: 200, // km - load airports within this radius
-    airportMinType: 'medium_airport', // 'large_airport', 'medium_airport', 'small_airport', or 'all'
-    highlightMilitary: true, // Highlight military aircraft with different color
-
-    // Theme colors - loaded from CSS variables
-    get militaryColor() { return getThemeColor('military-color'); },
-    get compassNorth() { return getThemeColor('compass-north'); },
-    get sceneFog() { return getThemeColor('scene-fog'); },
-    get sceneAmbient() { return getThemeColor('scene-ambient'); },
-    get sceneSun() { return getThemeColor('scene-sun'); },
-    get sceneGround() { return getThemeColor('scene-ground'); },
-    get runwayColor() { return getThemeColor('runway-color'); },
-    get towerBase() { return getThemeColor('tower-base'); },
-    get towerLight() { return getThemeColor('tower-light'); },
-    get homeMarker() { return getThemeColor('home-marker'); },
-    get trailGround() { return getThemeColor('trail-ground'); },
-    get trailSelected() { return getThemeColor('trail-selected'); },
-    get distanceRing1() { return getThemeColor('distance-ring-1'); },
-    get distanceRing2() { return getThemeColor('distance-ring-2'); },
-    get gridCenter() { return getThemeColor('grid-center'); },
-    get gridLines() { return getThemeColor('grid-lines'); }
-};
+// ============================================================================
+// THEME SYSTEM - Theme Presets and Management
+// ============================================================================
 
 // ============================================================================
 // THEME ENGINE
@@ -1303,11 +1274,11 @@ const FeatureDetector = {
         try {
             // Create abort controller for timeout
             const controller = new AbortController();
-            const timeoutMs = 2000;
+            const timeoutMs = TIMING.API_TIMEOUT;
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             // Ping health endpoint (proxied through nginx /api/health)
-            const response = await fetch('/api/health', {
+            const response = await fetch(API.HEALTH, {
                 method: 'GET',
                 signal: controller.signal,
                 cache: 'no-cache',
@@ -1748,7 +1719,7 @@ let militaryDatabaseLoaded = false;
 // Load military aircraft database from tar1090-db (Mictronics/readsb-protobuf)
 async function loadMilitaryDatabase() {
     const CACHE_KEY = 'military_aircraft_db';
-    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+    const CACHE_DURATION = CACHE.MILITARY_DATABASE;
 
     try {
         // Check localStorage cache first
@@ -1783,7 +1754,7 @@ async function loadMilitaryDatabase() {
 
 async function fetchAndCacheMilitaryDatabase() {
     try {
-        const response = await fetch('https://raw.githubusercontent.com/Mictronics/readsb-protobuf/dev/webapp/src/db/aircrafts.json');
+        const response = await fetch(API.MILITARY_DATABASE);
 
         if (!response.ok) {
             console.error('Failed to fetch military database:', response.status);
@@ -2104,9 +2075,9 @@ let homeMarkerGroup = null; // Reference to the home tower marker group
 let currentlyHoveredCanvasAircraft = null; // Track which aircraft is hovered on canvas
 
 // Route API cache and rate limiting
-const ROUTE_CACHE_KEY = 'adsbdb_route_cache';
-const ROUTE_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-const API_RATE_LIMIT_MS = 1000; // Minimum 1 second between API calls
+const ROUTE_CACHE_KEY = STORAGE_KEYS.ROUTE_CACHE;
+const ROUTE_CACHE_DURATION = CACHE.ROUTE_DATA;
+const API_RATE_LIMIT_MS = RATE_LIMIT.API_MIN_INTERVAL;
 let lastAPICall = 0;
 let pendingRouteRequests = new Map(); // Track in-flight requests to avoid duplicates
 
@@ -2389,7 +2360,7 @@ async function loadHistoricalTracks(hoursAgo = 1) {
     clearHistoricalTracks();
 
     try {
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
+        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
 
         const response = await fetch(apiUrl);
         if (!response.ok) {
@@ -2455,7 +2426,7 @@ async function loadHistoricalData() {
     try {
         // Build API URL (NO filtering - filters applied after load)
         // Use resolution=full to query raw positions table (aggregated tables don't exist yet)
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
+        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
 
         console.log('[Historical] Fetching from:', apiUrl);
         const response = await fetch(apiUrl);
@@ -2778,7 +2749,7 @@ function showNotification(message, type = 'info', duration = 5000) {
     // Auto-remove after duration
     setTimeout(() => {
         notification.style.animation = 'slideUp 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), TIMING.NOTIFICATION_FADE);
     }, duration);
 }
 
@@ -2816,7 +2787,7 @@ async function loadFullTrailForAircraft(icao) {
         }
 
         // Build API URL - get last 24 hours of data
-        const apiUrl = `/api/tracks/${icao}?resolution=full`;
+        const apiUrl = `${API.TRACKS_BY_ICAO}/${icao}?resolution=full`;
 
         const response = await fetch(apiUrl);
 
@@ -2992,7 +2963,7 @@ async function loadFullTrailForAircraft(icao) {
             loadingDiv.style.background = 'rgba(0,255,0,0.15)';
             loadingDiv.style.border = '1px solid rgba(0,255,0,0.5)';
             loadingDiv.innerHTML = `✓ Loaded ${trail.positions.length} positions from last 24 hours`;
-            setTimeout(() => loadingDiv.remove(), 3000);
+            setTimeout(() => loadingDiv.remove(), TIMING.NOTIFICATION_DURATION);
         }
 
         return true;
@@ -3006,7 +2977,7 @@ async function loadFullTrailForAircraft(icao) {
             loadingDiv.style.background = 'rgba(255,0,0,0.15)';
             loadingDiv.style.border = '1px solid rgba(255,0,0,0.5)';
             loadingDiv.innerHTML = `❌ Failed to load trail: ${error.message}`;
-            setTimeout(() => loadingDiv.remove(), 3000);
+            setTimeout(() => loadingDiv.remove(), TIMING.NOTIFICATION_DURATION);
         }
 
         return false;
@@ -4719,7 +4690,7 @@ async function switchToLiveMode(skipURLUpdate = false) {
     renderer.domElement.classList.add('mode-transition', 'fading');
 
     // Wait for fade
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
 
     currentMode = 'live';
 
@@ -4749,7 +4720,7 @@ async function switchToLiveMode(skipURLUpdate = false) {
     // Start live updates
     if (!liveUpdateInterval) {
         fetchAircraftData();
-        liveUpdateInterval = setInterval(fetchAircraftData, CONFIG.updateInterval);
+        liveUpdateInterval = setInterval(fetchAircraftData, TIMING.LIVE_UPDATE_INTERVAL);
     }
 
     // Load recent trails if enabled
@@ -4761,7 +4732,7 @@ async function switchToLiveMode(skipURLUpdate = false) {
     updateSidebarMode();
 
     // Fade back in
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
     renderer.domElement.classList.remove('fading');
 
     // Update URL to reflect live mode (unless loading from URL)
@@ -4790,7 +4761,7 @@ async function switchToHistoricalMode(skipURLUpdate = false) {
     renderer.domElement.classList.add('mode-transition', 'fading');
 
     // Wait for fade
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
 
     // Clear live aircraft (meshes, labels, trails)
     clearLiveAircraft();
@@ -4817,7 +4788,7 @@ async function switchToHistoricalMode(skipURLUpdate = false) {
     updateSidebarMode();
 
     // Fade back in
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
     renderer.domElement.classList.remove('fading');
 
     // Update URL to reflect historical mode (unless loading from URL)
@@ -5323,7 +5294,7 @@ function init() {
     loadDailyStats();
 
     // Check for daily reset every minute
-    setInterval(checkDailyReset, 60000);
+    setInterval(checkDailyReset, TIMING.STATS_UPDATE_INTERVAL);
 
     // Setup aircraft click interaction
     setupAircraftClick();
@@ -5344,16 +5315,16 @@ function init() {
 
     // Start fetching aircraft data (live mode by default)
     fetchAircraftData();
-    liveUpdateInterval = setInterval(fetchAircraftData, CONFIG.updateInterval);
+    liveUpdateInterval = setInterval(fetchAircraftData, TIMING.LIVE_UPDATE_INTERVAL);
 
     // Start trail cleanup timer (runs every 60 seconds)
-    setInterval(cleanupOldTrailPositions, 60000);
+    setInterval(cleanupOldTrailPositions, TIMING.TRAIL_CLEANUP_INTERVAL);
     console.log('[TrailFade] Cleanup timer started (60s interval)');
 
     // Load recent trails on startup if enabled and Track API available
     if (RecentTrailsState.enabled && AppFeatures.historical && currentMode === 'live') {
         console.log('[RecentTrails] Auto-loading trails on startup');
-        setTimeout(() => loadRecentTrails(), 2000); // Wait 2s for initial aircraft data
+        setTimeout(() => loadRecentTrails(), TIMING.RECENT_TRAILS_DELAY); // Wait 2s for initial aircraft data
     }
 }
 
@@ -5698,7 +5669,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 async function fetchAirports() {
     try {
         console.log('Fetching airports data...');
-        const response = await fetch('https://davidmegginson.github.io/ourairports-data/airports.csv');
+        const response = await fetch(API.AIRPORTS_CSV);
         const csvText = await response.text();
         const allAirports = parseCSV(csvText);
 
@@ -5740,7 +5711,7 @@ async function fetchAirports() {
 async function fetchRunways() {
     try {
         console.log('Fetching runways data...');
-        const response = await fetch('https://davidmegginson.github.io/ourairports-data/runways.csv');
+        const response = await fetch(API.RUNWAYS_CSV);
         const csvText = await response.text();
         const allRunways = parseCSV(csvText);
 
@@ -7825,7 +7796,7 @@ async function fetchAircraftData() {
     try {
         // Use BASE_PATH from config.js, default to '' if not defined
         const basePath = window.ADSB_CONFIG?.BASE_PATH || '';
-        const response = await fetch(`${basePath}/data/aircraft.json`);
+        const response = await fetch(`${basePath}${API.AIRCRAFT_DATA}`);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -10425,7 +10396,7 @@ function showAircraftNotFoundMessage(icao) {
     // Auto-remove after 5 seconds
     setTimeout(() => {
         notification.style.animation = 'slideUp 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), TIMING.NOTIFICATION_FADE);
     }, 5000);
 
     // Clear the URL parameter
@@ -11135,7 +11106,7 @@ async function loadHistoricalTracksCustom(startTime, endTime) {
     clearHistoricalTracks();
 
     try {
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
+        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
 
         const response = await fetch(apiUrl);
         if (!response.ok) {
@@ -11243,7 +11214,7 @@ function setupSidebarEventHandlers() {
     const lockButton = document.getElementById('sidebar-lock');
     if (lockButton) {
         // Load lock state from localStorage
-        const isLocked = localStorage.getItem('sidebarLocked') === 'true';
+        const isLocked = localStorage.getItem(STORAGE_KEYS.SIDEBAR_LOCKED) === 'true';
         if (isLocked) {
             document.body.classList.add('sidebar-locked');
             lockButton.classList.add('locked');
@@ -11266,7 +11237,7 @@ function setupSidebarEventHandlers() {
                 lockButton.classList.remove('locked');
                 lockIcon.className = 'lock-icon mdi mdi-lock-open-variant';
                 lockButton.title = 'Lock sidebar open';
-                localStorage.setItem('sidebarLocked', 'false');
+                localStorage.setItem(STORAGE_KEYS.SIDEBAR_LOCKED, 'false');
 
                 // Show toggle button when unlocked
                 if (sidebarToggle) {
@@ -11278,7 +11249,7 @@ function setupSidebarEventHandlers() {
                 lockButton.classList.add('locked');
                 lockIcon.className = 'lock-icon mdi mdi-lock';
                 lockButton.title = 'Unlock sidebar';
-                localStorage.setItem('sidebarLocked', 'true');
+                localStorage.setItem(STORAGE_KEYS.SIDEBAR_LOCKED, 'true');
 
                 // Ensure sidebar is visible when locking
                 if (sidebar.classList.contains('collapsed')) {

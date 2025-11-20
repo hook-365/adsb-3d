@@ -3896,7 +3896,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Dynamically load config.js and app.js with correct path
+        // Dynamically load config.js, constants.js, and app.js with correct path
         // This handles both /3d and /3d/ correctly
         (function() {
             // Get the current path and ensure it ends with /
@@ -3905,16 +3905,28 @@
                 scriptPath = scriptPath + '/';
             }
 
-            function loadScript(src) {
+            function loadScript(src, isModule = false) {
                 const script = document.createElement('script');
                 // Add cache-busting timestamp to force fresh load
                 script.src = scriptPath + src + '?v=' + Date.now();
+                if (isModule) {
+                    script.type = 'module';
+                }
                 document.body.appendChild(script);
+                return script;
             }
 
+            // Load config.js first (dynamically generated env vars)
             loadScript('config.js');
+
+            // Load constants.js as a module (refactored constants)
+            loadScript('constants.js', true);
+
+            // Load aircraft-svg-system.js
             loadScript('aircraft-svg-system.js');
-            loadScript('app.js');
+
+            // Load app.js as a module (imports from constants.js)
+            loadScript('app.js', true);
         })();
     </script>
 </body>
