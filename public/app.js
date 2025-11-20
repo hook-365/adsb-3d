@@ -6413,6 +6413,12 @@ function latLonToXZ(lat, lon) {
 // ============================================================================
 // Wrappers for data service modules that handle dependency injection
 
+// Historical playback variables (used by loadHistoricalTracks)
+let historicalTracks = {};
+let playbackStartTime = null;
+let playbackEndTime = null;
+let playbackCurrentTime = null;
+
 // Fetch aircraft data from Ultrafeeder (wrapper for module function)
 async function fetchAircraftData() {
     await fetchAircraftDataModule({
