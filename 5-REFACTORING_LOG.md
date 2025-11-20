@@ -478,22 +478,56 @@ Successfully extracted aircraft database and specifications into self-contained 
 
 ## Phase 5: Data Services
 
-### Status: ⬜ Not Started
+### Status: ✅ Complete
 
 ### Goal
 Extract data fetching logic into `data-service-live.js` and `data-service-historical.js`.
 
 ### Files Changed
-- **New**: `public/data-service-live.js`
-- **New**: `public/data-service-historical.js`
-- **Modified**: `public/app.js`
+- **New**: `public/data-service-live.js` (129 lines)
+- **New**: `public/data-service-historical.js` (591 lines)
+- **Modified**: `public/app.js` (10,494 lines, down from 10,946)
+- **Modified**: `public/index.html` (added module loading)
 
 ### Changes Made
-_______________
+Successfully extracted all data fetching logic into two dedicated modules:
+
+**Part 1 - Live Data Service:**
+1. **Created `data-service-live.js`** with:
+   - fetchAircraftData() - Main data fetching with error handling
+   - startLiveUpdates() / stopLiveUpdates() - Interval management
+   - getLiveRadarData() - Accessor for radar display
+   - Error retry logic (MAX_FETCH_ERRORS = 5)
+
+2. **Updated `app.js`** to:
+   - Import live data service functions
+   - Create wrapper function with dependency injection
+   - Replace all liveUpdateInterval management
+
+**Part 2 - Historical Data Service:**
+1. **Created `data-service-historical.js`** with:
+   - loadHistoricalTracks() - Load tracks for X hours ago
+   - loadHistoricalData() - Load with filters and visualization
+   - loadHistoricalTracksCustom() - Custom date range loading
+   - loadFullTrailForAircraft() - On-demand 24h trail loading
+   - loadRecentTrails() - Recent trails for live mode enhancement
+
+2. **Updated `app.js`** to:
+   - Import all historical data service functions
+   - Create wrapper functions with dependency injection
+   - Remove 540 lines of old implementations
+   - Maintain backward compatibility
+
+3. **Updated `index.html`** to:
+   - Load both data service modules
+   - Correct module loading order
 
 ### Lines Extracted
 - Target: ~800 lines
-- Actual: _______________ lines
+- Actual: **720 lines** (129 live + 591 historical)
+- **Old code removed**: 540 lines
+- **New wrappers added**: 88 lines
+- **Net reduction**: 452 lines from app.js
 
 ### Testing
 
@@ -526,19 +560,39 @@ _______________
 - Regression: YES / NO
 
 ### Issues Found
-_______________
+**Bug Fixes During Implementation:**
+1. **403 Errors**: File permissions on data-service modules were 600 instead of 644
+   - Fix: `chmod 644 data-service-*.js`
+2. **ReferenceError**: Missing variable declarations for historicalTracks, playbackStartTime, etc.
+   - Fix: Added declarations in app.js before wrappers
+3. **Module Loading**: index.html wasn't loading new modules
+   - Fix: Added loadScript() calls for both data service modules
+4. **ReferenceError (playbackSpeed)**: Speed control event handler used undefined `playbackSpeed` variable
+   - Error: `ReferenceError: playbackSpeed is not defined` at app.js:9622
+   - Fix: Changed `playbackSpeed` to `PlaybackState.speed` (correct property)
 
 ### Commits
-- Commit hash: _______________
-- Commit message: _______________
+- **Part 1**: 74045af "Phase 5 Part 1: Extract live data service into data-service-live.js module"
+- **Index fix**: 56ee942 "Fix Phase 5 Part 1: Update index.html to load data service modules"
+- **Variables fix**: 2f9bcbc "Fix Phase 5 Part 1: Declare missing historical playback variables"
+- **Part 2**: eb0c2db "Phase 5 Part 2: Complete historical data service integration"
+- **Playback fix**: cd16346 "Fix playbackSpeed reference in speed control event handler"
 
 ### Sign-Off
-- Approved by: _______________
-- Date: _______________
-- Ready for Phase 6: YES / NO
+- Refactored by: Claude (2025-11-20)
+- Date: 2025-11-20
+- Ready for Phase 6: **YES** (pending user testing)
 
 ### Notes
-_______________
+**2025-11-20**: Successfully extracted all data service logic into dedicated modules.
+- **Option A (Complete Integration)** chosen - removed all old implementations
+- Live data service fully modular and working
+- Historical data service fully modular and working
+- Wrapper functions use dependency injection pattern to maintain app.js state
+- All 5 historical functions successfully replaced with module calls
+- **Module load order**: config → constants → theme → url-state → aircraft-db → **data-services** → svg → app
+- Significant code reduction achieved: 452 lines from app.js
+- **Combined Phases 1-5**: Total reduction of 1,934 lines (-15.6% from original 12,428)
 
 ---
 
