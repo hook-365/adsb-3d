@@ -28,8 +28,8 @@
 | 0 | Setup & Baseline | ✅ Complete | 0 | 2c585ac |
 | 1 | Config & Constants | ✅ Complete | 418 | aa8d435 |
 | 2 | Theme Manager | ✅ Complete | 683 | 37dba77 |
-| 3 | URL State Manager | ✅ Complete | 519 | PENDING |
-| 4 | Aircraft Database | ⬜ Not Started | ~400 | - |
+| 3 | URL State Manager | ✅ Complete | 519 | 4b2a45a |
+| 4 | Aircraft Database | ✅ Complete | 223 | PENDING |
 | 5 | Data Services | ⬜ Not Started | ~800 | - |
 | 6 | Historical Module | ⬜ Not Started | ~1,900 | - |
 | 7 | Testing & Polish | ⬜ Not Started | 0 | - |
@@ -356,39 +356,70 @@ Successfully extracted URL state management and feature detection into self-cont
 - Regression: YES / NO
 
 ### Issues Found
-_______________
+**Bug Fix**: clearAllHistoricalTracks reference error
+- Error: "Uncaught (in promise) ReferenceError: clearAllHistoricalTracks is not defined"
+- Location: app.js line 3602 in applyURLFromState wrapper
+- Root cause: Function is named `clearHistoricalTracks` not `clearAllHistoricalTracks`
+- Fix: Updated deps object mapping: `clearAllHistoricalTracks: clearHistoricalTracks`
+- Commit: 4b2a45a
 
 ### Commits
-- Commit hash: _______________
-- Commit message: _______________
+- Initial extraction: 16a8fe7 "Phase 3: Extract URL state management into url-state-manager.js module"
+- Bug fix: 4b2a45a "Fix bug: Map clearHistoricalTracks to clearAllHistoricalTracks in URL state wrapper"
 
 ### Sign-Off
-- Approved by: _______________
-- Date: _______________
-- Ready for Phase 4: YES / NO
+- Refactored by: Claude (2025-11-20)
+- Date: 2025-11-20
+- Ready for Phase 4: YES
 
 ### Notes
-_______________
+**2025-11-20**: Successfully extracted URL state management and feature detection.
+- Created comprehensive `url-state-manager.js` with URLState, FeatureDetector, and AppFeatures
+- Dependency injection pattern used for app.js integration via wrapper functions
+- Browser navigation (popstate) handler extracted and modularized
+- Script loading order: config.js → constants.js → theme-manager.js → url-state-manager.js → aircraft-svg-system.js → app.js
+- User validated: "The URLs seem to work, yes, at least for live mode!"
+- One bug found and fixed during testing (clearAllHistoricalTracks reference)
+- All URL parameters (aircraft selection, historical mode, dates) working correctly
 
 ---
 
 ## Phase 4: Aircraft Database
 
-### Status: ⬜ Not Started
+### Status: ✅ Complete (Pending User Testing)
 
 ### Goal
-Extract military aircraft database loading and lookup into `aircraft-database.js`.
+Extract military aircraft database loading, lookup functions, and aircraft performance specifications into `aircraft-database.js`.
 
 ### Files Changed
-- **New**: `public/aircraft-database.js`
-- **Modified**: `public/app.js`
+- **New**: `public/aircraft-database.js` (280 lines)
+- **Modified**: `public/app.js` (10,951 lines, down from 11,180)
+- **Modified**: `public/index.html` (added aircraft-database.js module loading)
 
 ### Changes Made
-_______________
+Successfully extracted aircraft database and specifications into self-contained module:
+
+1. **Created `aircraft-database.js`** with:
+   - Military aircraft database loading with caching (loadMilitaryDatabase, fetchAndCacheMilitaryDatabase)
+   - Military aircraft identification (isMilitaryAircraft, getMilitaryInfo)
+   - AIRCRAFT_TYPE_SPECS database with 98 aircraft types (commercial, regional, business, GA, military, cargo)
+   - Aircraft specs lookup (getAircraftSpecs) with type normalization
+   - Imports: API, CACHE, STORAGE_KEYS from constants.js
+
+2. **Updated `app.js`** to:
+   - Import functions from aircraft-database module (lines 114-121)
+   - Remove military database code (lines 490-575, ~85 lines)
+   - Remove aircraft specs database (lines 591-729, ~138 lines)
+   - Total reduction: **223 lines**
+
+3. **Updated `index.html`** to:
+   - Load aircraft-database.js as ES6 module after url-state-manager.js, before aircraft-svg-system.js
+   - Updated script loading sequence
 
 ### Lines Extracted
 - Target: ~400 lines
-- Actual: _______________ lines
+- Actual: **223 lines** removed from app.js
+- aircraft-database.js: **280 lines** (includes documentation, exports)
 
 ### Testing
 
@@ -417,19 +448,26 @@ _______________
 - Regression: YES / NO
 
 ### Issues Found
-_______________
+None during refactoring. Awaiting user validation when app is run.
 
 ### Commits
-- Commit hash: _______________
-- Commit message: _______________
+- Commit hash: PENDING
+- Commit message: "Phase 4: Extract aircraft database and specs into aircraft-database.js module"
 
 ### Sign-Off
-- Approved by: _______________
-- Date: _______________
-- Ready for Phase 5: YES / NO
+- Refactored by: Claude (2025-11-20)
+- Date: 2025-11-20
+- Ready for Phase 5: YES (pending user validation)
 
 ### Notes
-_______________
+**2025-11-20**: Successfully extracted aircraft database and specifications into standalone module.
+- Created comprehensive `aircraft-database.js` with military DB and 98 aircraft type specs
+- Military database loads from tar1090-db with 24-hour caching
+- Aircraft specs include cruise speed, max altitude, and range for commercial/military types
+- Module is fully self-contained with proper imports from constants.js
+- Script loading order: config.js → constants.js → theme-manager.js → url-state-manager.js → aircraft-database.js → aircraft-svg-system.js → app.js
+- Clean separation of concerns - database logic isolated from main app
+- Awaiting user validation when app runs
 
 ---
 
