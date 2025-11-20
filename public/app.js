@@ -9619,7 +9619,7 @@ function setupSidebarEventHandlers() {
     const speedSelect = document.getElementById('sidebar-playback-speed');
     if (speedSelect) {
         speedSelect.addEventListener('change', () => {
-            playbackSpeed = parseFloat(speedSelect.value);
+            PlaybackState.speed = parseFloat(speedSelect.value);
         });
     }
 
