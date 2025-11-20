@@ -9504,7 +9504,7 @@ initializeTheme();
 initializeApp();
 
 // Load military aircraft database (async, non-blocking)
-loadMilitaryDatabase();
+loadMilitaryDatabase(SafeStorage);
 
 // Note: setupSidebarEventHandlers() now called from init() after DOM is ready
 
