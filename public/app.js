@@ -2379,6 +2379,10 @@ async function loadHistoricalTracks(hoursAgo = 1) {
     const startTime = new Date(endTime.getTime() - (hoursAgo * 60 * 60 * 1000));
     const maxTracks = HistoricalState.settings.maxTracks;
 
+    // Update HistoricalState settings for URL persistence
+    HistoricalState.settings.startTime = startTime;
+    HistoricalState.settings.endTime = endTime;
+
     console.log('[Historical] Loading tracks for last', hoursAgo, 'hours');
 
     // Clear existing tracks first to prevent stacking
@@ -11118,6 +11122,10 @@ function updateCustomDuration() {
 async function loadHistoricalTracksCustom(startTime, endTime) {
     const maxTracks = HistoricalState.settings.maxTracks;
 
+    // Update HistoricalState settings for URL persistence
+    HistoricalState.settings.startTime = startTime;
+    HistoricalState.settings.endTime = endTime;
+
     console.log('[Historical] Loading tracks for custom range:', {
         start: startTime.toISOString(),
         end: endTime.toISOString()
@@ -11426,6 +11434,9 @@ function setupSidebarEventHandlers() {
 
                 // Populate track list
                 updateSidebarTrackList();
+
+                // Update URL state to include historical parameters and visualization mode
+                URLState.updateFromCurrentState();
             } catch (error) {
                 console.error('Error loading tracks:', error);
                 resultsInfo.textContent = 'Error loading tracks';
