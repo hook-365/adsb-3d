@@ -11398,10 +11398,16 @@ function setupSidebarEventHandlers() {
                 const displayModeEl = document.getElementById('sidebar-display-mode');
                 const tracksSectionEl = document.getElementById('sidebar-tracks-section');
                 const filtersEl = document.getElementById('historical-filters');
+                const vizModeEl = document.getElementById('sidebar-visualization-mode');
 
                 if (displayModeEl) displayModeEl.style.display = 'block';
                 if (tracksSectionEl) tracksSectionEl.style.display = 'block';
                 if (filtersEl) filtersEl.style.display = 'block';
+
+                // Show visualization mode if in "show all" mode
+                if (vizModeEl && HistoricalState.displayMode === 'show-all') {
+                    vizModeEl.style.display = 'block';
+                }
 
                 // Update track count from both sources to verify
                 const trackCount = Object.keys(historicalTracks || {}).length;
@@ -11430,12 +11436,21 @@ function setupSidebarEventHandlers() {
     // Display mode buttons
     const modeAllBtn = document.getElementById('sidebar-mode-all');
     const modePlaybackBtn = document.getElementById('sidebar-mode-playback');
+    const visualizationMode = document.getElementById('sidebar-visualization-mode');
 
     if (modeAllBtn && modePlaybackBtn) {
         modeAllBtn.addEventListener('click', () => {
             modeAllBtn.classList.add('sidebar-button-active');
             modePlaybackBtn.classList.remove('sidebar-button-active');
             document.getElementById('sidebar-playback-controls').style.display = 'none';
+
+            // Show visualization mode selector in "All Tracks" mode
+            if (visualizationMode) {
+                visualizationMode.style.display = 'block';
+            }
+
+            // Update state
+            HistoricalState.displayMode = 'show-all';
 
             // Switch to show all tracks mode
             if (historicalTracks) {
@@ -11448,12 +11463,58 @@ function setupSidebarEventHandlers() {
             modeAllBtn.classList.remove('sidebar-button-active');
             document.getElementById('sidebar-playback-controls').style.display = 'block';
 
+            // Hide visualization mode selector in playback mode (heat map not available)
+            if (visualizationMode) {
+                visualizationMode.style.display = 'none';
+            }
+
+            // Clear heat map if it exists
+            clearHeatMap();
+
+            // Update state
+            HistoricalState.displayMode = 'playback';
+
             // Switch to playback mode
             if (historicalTracks) {
                 initializePlayback();
             }
         });
     }
+
+    // Visualization mode radio buttons (Track Lines/Heat Map/Both)
+    const vizModeRadios = document.querySelectorAll('input[name="viz-mode"]');
+    vizModeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const newMode = e.target.value;
+            HistoricalState.heatmapMode = newMode;
+            console.log(`[Visualization] Mode changed to: ${newMode}`);
+
+            // Apply visibility changes based on mode
+            switch (newMode) {
+                case 'tracks':
+                    showHistoricalTracks(true);
+                    setHeatMapVisibility(false);
+                    break;
+                case 'heatmap':
+                    showHistoricalTracks(false);
+                    if (HistoricalState.heatmapMeshes.length === 0) {
+                        generateFlightCorridors(); // Generate heat map if not exists
+                    }
+                    setHeatMapVisibility(true);
+                    break;
+                case 'both':
+                    showHistoricalTracks(true);
+                    if (HistoricalState.heatmapMeshes.length === 0) {
+                        generateFlightCorridors(); // Generate heat map if not exists
+                    }
+                    setHeatMapVisibility(true);
+                    break;
+            }
+
+            // Update URL state
+            URLState.updateFromCurrentState();
+        });
+    });
 
     // Playback controls
     const playPauseBtn = document.getElementById('sidebar-play-pause');
