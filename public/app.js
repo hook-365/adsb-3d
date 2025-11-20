@@ -3599,7 +3599,7 @@ async function applyURLFromState() {
         HistoricalState,
         showTronMode,
         setShowTronMode: (value) => { showTronMode = value; },
-        clearAllHistoricalTracks,
+        clearAllHistoricalTracks: clearHistoricalTracks,
         generateFlightCorridors,
         clearFlightCorridors,
         formatForDatetimeInput
