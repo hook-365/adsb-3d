@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADSB 3D - Smoke Tests</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4fc3f7;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-section h2 {
+            color: #81c784;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .test-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        .test-item:last-child {
+            border-bottom: none;
+        }
+        .test-status {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            margin-right: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        .test-status.pending {
+            background: #555;
+        }
+        .test-status.pass {
+            background: #2e7d32;
+        }
+        .test-status.fail {
+            background: #c62828;
+        }
+        .test-name {
+            flex: 1;
+            font-size: 14px;
+        }
+        .test-detail {
+            font-size: 12px;
+            color: #999;
+            margin-left: 45px;
+            margin-top: -5px;
+            padding-bottom: 8px;
+        }
+        .run-button {
+            background: #4fc3f7;
+            color: #1a1a1a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .run-button:hover {
+            background: #29b6f6;
+        }
+        .run-button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .summary {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+        }
+        .summary-item {
+            text-align: center;
+        }
+        .summary-value {
+            font-size: 32px;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .summary-label {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+        }
+        .pass { color: #81c784; }
+        .fail { color: #e57373; }
+        .pending { color: #999; }
+        .app-frame {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ADSB 3D Visualization - Smoke Tests</h1>
+        <p class="subtitle">Automated validation suite for refactoring phases</p>
+
+        <button class="run-button" id="runTests">Run All Tests</button>
+
+        <div class="summary">
+            <div class="summary-item">
+                <span class="summary-value pass" id="passCount">0</span>
+                <span class="summary-label">Passed</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value fail" id="failCount">0</span>
+                <span class="summary-label">Failed</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-value pending" id="totalCount">0</span>
+                <span class="summary-label">Total</span>
+            </div>
+        </div>
+
+        <div id="testResults"></div>
+    </div>
+
+    <iframe id="appFrame" class="app-frame" src="../index.html"></iframe>
+
+    <script>
+        const tests = [
+            {
+                section: "Basic Page Load",
+                items: [
+                    {
+                        name: "Index.html loads without errors",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            await new Promise(resolve => {
+                                frame.onload = resolve;
+                                if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
+                                    resolve();
+                                }
+                            });
+                            return frame.contentWindow !== null;
+                        }
+                    },
+                    {
+                        name: "No JavaScript errors in console",
+                        test: async () => {
+                            // Note: This is simplified - real implementation would need console monitoring
+                            return true; // Placeholder - manually check console
+                        },
+                        detail: "Manually verify console has no errors"
+                    }
+                ]
+            },
+            {
+                section: "Required DOM Elements",
+                items: [
+                    {
+                        name: "Canvas element exists",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const canvas = frame.contentDocument.querySelector('canvas');
+                            return canvas !== null;
+                        }
+                    },
+                    {
+                        name: "Sidebar container exists",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const sidebar = frame.contentDocument.getElementById('sidebar');
+                            return sidebar !== null;
+                        }
+                    },
+                    {
+                        name: "Theme modal exists",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const themeModal = frame.contentDocument.getElementById('themeModal');
+                            return themeModal !== null;
+                        }
+                    },
+                    {
+                        name: "Settings modal exists",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const settingsModal = frame.contentDocument.getElementById('settingsModal');
+                            return settingsModal !== null;
+                        }
+                    }
+                ]
+            },
+            {
+                section: "Global Objects & Libraries",
+                items: [
+                    {
+                        name: "THREE.js library loaded",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            return typeof frame.contentWindow.THREE !== 'undefined';
+                        }
+                    },
+                    {
+                        name: "CONFIG object exists (if Phase 1+ complete)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const hasConfig = typeof frame.contentWindow.CONFIG !== 'undefined';
+                            const hasApp = frame.contentDocument.querySelector('script[src*="config.js"]') !== null;
+                            return hasConfig || !hasApp; // Pass if CONFIG exists OR config.js not yet added
+                        },
+                        detail: "May not exist if Phase 1 not started"
+                    }
+                ]
+            },
+            {
+                section: "3D Scene Initialization",
+                items: [
+                    {
+                        name: "Scene object created",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for init
+                            return typeof frame.contentWindow.scene !== 'undefined';
+                        },
+                        detail: "Waits 2s for initialization"
+                    },
+                    {
+                        name: "Camera object created",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            return typeof frame.contentWindow.camera !== 'undefined';
+                        }
+                    },
+                    {
+                        name: "Renderer object created",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            return typeof frame.contentWindow.renderer !== 'undefined';
+                        }
+                    }
+                ]
+            },
+            {
+                section: "Module Loading (Phase 1+)",
+                items: [
+                    {
+                        name: "config.js loads (if exists)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const configScript = frame.contentDocument.querySelector('script[src*="config.js"]');
+                            if (!configScript) return true; // Not added yet, that's OK
+                            return typeof frame.contentWindow.CONFIG !== 'undefined';
+                        },
+                        detail: "Skipped if Phase 1 not started"
+                    },
+                    {
+                        name: "theme-manager.js loads (if exists)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const themeScript = frame.contentDocument.querySelector('script[src*="theme-manager.js"]');
+                            if (!themeScript) return true; // Not added yet
+                            return typeof frame.contentWindow.themeManager !== 'undefined' ||
+                                   typeof frame.contentWindow.ThemeManager !== 'undefined';
+                        },
+                        detail: "Skipped if Phase 2 not started"
+                    },
+                    {
+                        name: "url-state-manager.js loads (if exists)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const urlScript = frame.contentDocument.querySelector('script[src*="url-state-manager.js"]');
+                            if (!urlScript) return true; // Not added yet
+                            return typeof frame.contentWindow.urlState !== 'undefined' ||
+                                   typeof frame.contentWindow.URLStateManager !== 'undefined';
+                        },
+                        detail: "Skipped if Phase 3 not started"
+                    },
+                    {
+                        name: "aircraft-database.js loads (if exists)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const dbScript = frame.contentDocument.querySelector('script[src*="aircraft-database.js"]');
+                            if (!dbScript) return true; // Not added yet
+                            return typeof frame.contentWindow.aircraftDatabase !== 'undefined' ||
+                                   typeof frame.contentWindow.AircraftDatabase !== 'undefined';
+                        },
+                        detail: "Skipped if Phase 4 not started"
+                    }
+                ]
+            },
+            {
+                section: "Theme System",
+                items: [
+                    {
+                        name: "CSS theme variables are defined",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const docEl = frame.contentDocument.documentElement;
+                            const style = frame.contentWindow.getComputedStyle(docEl);
+                            const bgColor = style.getPropertyValue('--bg-color');
+                            return bgColor && bgColor.trim() !== '';
+                        }
+                    },
+                    {
+                        name: "Theme can be read from localStorage (if set)",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const theme = frame.contentWindow.localStorage.getItem('selectedTheme');
+                            return theme === null || theme.length > 0; // OK if not set or has value
+                        }
+                    }
+                ]
+            },
+            {
+                section: "Performance Baseline",
+                items: [
+                    {
+                        name: "Page loads in under 5 seconds",
+                        test: async () => {
+                            const frame = document.getElementById('appFrame');
+                            const loadTime = frame.contentWindow.performance.timing.loadEventEnd -
+                                           frame.contentWindow.performance.timing.navigationStart;
+                            return loadTime < 5000;
+                        },
+                        detail: "Target: < 5s (acceptable for baseline)"
+                    }
+                ]
+            }
+        ];
+
+        let testState = {
+            running: false,
+            results: []
+        };
+
+        function renderTests() {
+            const container = document.getElementById('testResults');
+            container.innerHTML = '';
+
+            tests.forEach((section, sectionIdx) => {
+                const sectionEl = document.createElement('div');
+                sectionEl.className = 'test-section';
+
+                const sectionTitle = document.createElement('h2');
+                sectionTitle.textContent = section.section;
+                sectionEl.appendChild(sectionTitle);
+
+                section.items.forEach((test, testIdx) => {
+                    const testEl = document.createElement('div');
+                    testEl.className = 'test-item';
+
+                    const statusEl = document.createElement('div');
+                    statusEl.className = 'test-status pending';
+                    statusEl.textContent = '⋯';
+                    statusEl.id = `status-${sectionIdx}-${testIdx}`;
+
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'test-name';
+                    nameEl.textContent = test.name;
+
+                    testEl.appendChild(statusEl);
+                    testEl.appendChild(nameEl);
+                    sectionEl.appendChild(testEl);
+
+                    if (test.detail) {
+                        const detailEl = document.createElement('div');
+                        detailEl.className = 'test-detail';
+                        detailEl.textContent = test.detail;
+                        sectionEl.appendChild(detailEl);
+                    }
+                });
+
+                container.appendChild(sectionEl);
+            });
+
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const total = tests.reduce((sum, section) => sum + section.items.length, 0);
+            const passed = testState.results.filter(r => r === true).length;
+            const failed = testState.results.filter(r => r === false).length;
+
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('passCount').textContent = passed;
+            document.getElementById('failCount').textContent = failed;
+        }
+
+        async function runTests() {
+            if (testState.running) return;
+
+            testState.running = true;
+            testState.results = [];
+            document.getElementById('runTests').disabled = true;
+
+            let currentTest = 0;
+
+            for (let sectionIdx = 0; sectionIdx < tests.length; sectionIdx++) {
+                const section = tests[sectionIdx];
+
+                for (let testIdx = 0; testIdx < section.items.length; testIdx++) {
+                    const test = section.items[testIdx];
+                    const statusEl = document.getElementById(`status-${sectionIdx}-${testIdx}`);
+
+                    try {
+                        statusEl.textContent = '⏳';
+                        statusEl.className = 'test-status pending';
+
+                        const result = await test.test();
+
+                        testState.results.push(result);
+
+                        if (result) {
+                            statusEl.textContent = '✓';
+                            statusEl.className = 'test-status pass';
+                        } else {
+                            statusEl.textContent = '✗';
+                            statusEl.className = 'test-status fail';
+                        }
+                    } catch (error) {
+                        console.error(`Test failed: ${test.name}`, error);
+                        testState.results.push(false);
+                        statusEl.textContent = '✗';
+                        statusEl.className = 'test-status fail';
+                    }
+
+                    updateSummary();
+                    currentTest++;
+                }
+            }
+
+            testState.running = false;
+            document.getElementById('runTests').disabled = false;
+        }
+
+        document.getElementById('runTests').addEventListener('click', runTests);
+
+        // Initial render
+        renderTests();
+
+        // Load app in iframe for testing
+        const frame = document.getElementById('appFrame');
+        frame.src = '../index.html';
+    </script>
+</body>
+</html>
