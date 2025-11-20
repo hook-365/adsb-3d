@@ -3922,10 +3922,13 @@
             // Load constants.js as a module (refactored constants)
             loadScript('constants.js', true);
 
+            // Load theme-manager.js as a module (refactored theme system)
+            loadScript('theme-manager.js', true);
+
             // Load aircraft-svg-system.js
             loadScript('aircraft-svg-system.js');
 
-            // Load app.js as a module (imports from constants.js)
+            // Load app.js as a module (imports from constants.js and theme-manager.js)
             loadScript('app.js', true);
         })();
     </script>
