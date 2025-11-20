@@ -3925,10 +3925,13 @@
             // Load theme-manager.js as a module (refactored theme system)
             loadScript('theme-manager.js', true);
 
+            // Load url-state-manager.js as a module (refactored URL state management)
+            loadScript('url-state-manager.js', true);
+
             // Load aircraft-svg-system.js
             loadScript('aircraft-svg-system.js');
 
-            // Load app.js as a module (imports from constants.js and theme-manager.js)
+            // Load app.js as a module (imports from constants.js, theme-manager.js, and url-state-manager.js)
             loadScript('app.js', true);
         })();
     </script>
