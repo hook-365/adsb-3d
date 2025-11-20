@@ -120,6 +120,22 @@ import {
     getAircraftSpecs
 } from './aircraft-database.js';
 
+// Import data service functions
+import {
+    fetchAircraftData as fetchAircraftDataModule,
+    startLiveUpdates,
+    stopLiveUpdates,
+    getLiveRadarData
+} from './data-service-live.js';
+
+import {
+    loadHistoricalTracks as loadHistoricalTracksModule,
+    loadHistoricalData as loadHistoricalDataModule,
+    loadHistoricalTracksCustom as loadHistoricalTracksCustomModule,
+    loadFullTrailForAircraft as loadFullTrailForAircraftModule,
+    loadRecentTrails as loadRecentTrailsModule
+} from './data-service-historical.js';
+
 // Wrapper functions to handle dependencies for URLState methods
 // (These will be defined after the required functions/variables are available)
 let applyURLState, updateURLState;
@@ -130,9 +146,6 @@ let applyURLState, updateURLState;
 
 // Current active mode
 let currentMode = 'live';  // 'live' or 'historical'
-
-// Live mode update interval
-let liveUpdateInterval = null;
 
 // Historical data state
 const HistoricalState = {
@@ -3133,10 +3146,7 @@ function clearLiveAircraft() {
     console.log('[Mode] Clearing live aircraft');
 
     // Stop live updates
-    if (liveUpdateInterval) {
-        clearInterval(liveUpdateInterval);
-        liveUpdateInterval = null;
-    }
+    stopLiveUpdates();
 
     // Remove aircraft meshes (using Map methods)
     aircraftMeshes.forEach(mesh => {
@@ -3267,10 +3277,11 @@ async function switchToLiveMode(skipURLUpdate = false) {
     if (historicalModeBtn) historicalModeBtn.classList.remove('active');
 
     // Start live updates
-    if (!liveUpdateInterval) {
-        fetchAircraftData();
-        liveUpdateInterval = setInterval(fetchAircraftData, TIMING.LIVE_UPDATE_INTERVAL);
-    }
+    startLiveUpdates({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
 
     // Load recent trails if enabled
     if (RecentTrailsState.enabled) {
@@ -3297,11 +3308,8 @@ async function switchToHistoricalMode(skipURLUpdate = false) {
     console.log('[Mode] Switching to Historical mode');
 
     // CRITICAL: Stop live updates FIRST to prevent race conditions
-    if (liveUpdateInterval) {
-        clearInterval(liveUpdateInterval);
-        liveUpdateInterval = null;
-        console.log('[Mode] Stopped live update interval');
-    }
+    stopLiveUpdates();
+    console.log('[Mode] Stopped live update interval');
 
     // Set mode before fade to prevent any updates during transition
     currentMode = 'historical';
@@ -3923,8 +3931,11 @@ function init() {
     animate();
 
     // Start fetching aircraft data (live mode by default)
-    fetchAircraftData();
-    liveUpdateInterval = setInterval(fetchAircraftData, TIMING.LIVE_UPDATE_INTERVAL);
+    startLiveUpdates({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
 
     // Start trail cleanup timer (runs every 60 seconds)
     setInterval(cleanupOldTrailPositions, TIMING.TRAIL_CLEANUP_INTERVAL);
@@ -6397,56 +6408,20 @@ function latLonToXZ(lat, lon) {
     return { x, z };
 }
 
-// Fetch aircraft data from Ultrafeeder
-let fetchErrorCount = 0;
-const MAX_FETCH_ERRORS = 5;
+// ============================================================================
+// DATA FETCHING - Wrapper Functions
+// ============================================================================
+// Wrappers for data service modules that handle dependency injection
 
+// Fetch aircraft data from Ultrafeeder (wrapper for module function)
 async function fetchAircraftData() {
-    try {
-        // Use BASE_PATH from config.js, default to '' if not defined
-        const basePath = window.ADSB_CONFIG?.BASE_PATH || '';
-        const response = await fetch(`${basePath}${API.AIRCRAFT_DATA}`);
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        // Validate data structure
-        if (!data || typeof data !== 'object') {
-            throw new Error('Invalid data format received');
-        }
-
-        // Reset error count on successful fetch
-        fetchErrorCount = 0;
-
-        // Always store live data for radar (even in historical mode)
-        liveRadarData = data.aircraft || [];
-
-        // Only update 3D scene if in live mode
-        if (currentMode === 'live') {
-            updateAircraft(data.aircraft || []);
-            updateUI(data);
-        }
-    } catch (error) {
-        fetchErrorCount++;
-        console.error(`Error fetching aircraft data (${fetchErrorCount}/${MAX_FETCH_ERRORS}):`, error);
-
-        // Show error in UI if repeated failures
-        if (fetchErrorCount >= MAX_FETCH_ERRORS) {
-            const infoDiv = document.getElementById('aircraft-count');
-            const headerDiv = document.getElementById('aircraft-count-header');
-            if (infoDiv) {
-                infoDiv.textContent = 'Connection Error';
-                infoDiv.style.color = '#ff4444';
-            }
-            if (headerDiv) {
-                headerDiv.textContent = '(Error)';
-                headerDiv.style.color = '#ff4444';
-            }
-        }
-    }
+    await fetchAircraftDataModule({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
+    // Update local reference for radar display
+    liveRadarData = getLiveRadarData();
 }
 
 /**
