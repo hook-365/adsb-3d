@@ -907,149 +907,8 @@ function getAircraftCategory(aircraftData) {
 // ============================================================================
 
 // Load historical tracks for specified hours ago
-async function loadHistoricalTracks(hoursAgo = 1) {
-    const endTime = new Date();
-    const startTime = new Date(endTime.getTime() - (hoursAgo * 60 * 60 * 1000));
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    // Update HistoricalState settings for URL persistence
-    HistoricalState.settings.startTime = startTime;
-    HistoricalState.settings.endTime = endTime;
-
-    console.log('[Historical] Loading tracks for last', hoursAgo, 'hours');
-
-    // Clear existing tracks first to prevent stacking
-    clearHistoricalTracks();
-
-    try {
-        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks`);
-
-        // Store tracks in both global variable (for backwards compat) and HistoricalState
-        historicalTracks = {};
-        HistoricalState.tracks = [];
-        playbackStartTime = null;
-        playbackEndTime = null;
-
-        if (data.tracks) {
-            data.tracks.forEach(track => {
-                const icao = track.hex || track.icao;
-                if (icao) {
-                    historicalTracks[icao] = track;
-                }
-                HistoricalState.tracks.push(track);
-
-                // Update time bounds
-                track.positions.forEach(pos => {
-                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
-                    if (!playbackStartTime || timestamp < playbackStartTime) {
-                        playbackStartTime = timestamp;
-                    }
-                    if (!playbackEndTime || timestamp > playbackEndTime) {
-                        playbackEndTime = timestamp;
-                    }
-                });
-            });
-
-            // Render the tracks visually
-            renderHistoricalTracks();
-        }
-
-        // Set current time to start
-        playbackCurrentTime = playbackStartTime;
-
-        return data.tracks || [];
-    } catch (error) {
-        console.error('[Historical] Error loading tracks:', error);
-        throw error;
-    }
-}
 
 // Load historical tracks from Track API
-async function loadHistoricalData() {
-    const startTime = HistoricalState.settings.startTime;
-    const endTime = HistoricalState.settings.endTime;
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    if (!startTime || !endTime) {
-        console.error('[Historical] No time range selected');
-        return;
-    }
-
-    console.log('[Historical] Loading tracks...', {startTime, endTime, maxTracks});
-
-    try {
-        // Build API URL (NO filtering - filters applied after load)
-        // Use resolution=full to query raw positions table (aggregated tables don't exist yet)
-        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        console.log('[Historical] Fetching from:', apiUrl);
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('[Historical] API Response:', data);
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks`);
-
-        HistoricalState.tracks = data.tracks || [];
-        HistoricalState.loadedRange = { start: startTime, end: endTime };
-
-        // Store stats for display
-        HistoricalState.stats = data.stats || { unique_aircraft: 0, total_positions: 0 };
-
-        // Always render BOTH tracks and heat map, then show/hide based on mode
-        console.log('[Historical] Rendering tracks...');
-        renderHistoricalTracks();
-        applyHistoricalFilters();
-        console.log('[Historical] Tracks rendered and filtered');
-
-        console.log('[Historical] Generating heat map...');
-        generateFlightCorridors();
-        console.log('[Historical] Heat map generated');
-
-        // Now apply visibility based on current mode
-        const vizMode = HistoricalState.heatmapMode || 'tracks';
-        console.log(`[Historical] Applying visualization mode: ${vizMode}`);
-
-        if (vizMode === 'tracks') {
-            showHistoricalTracks(true);
-            setHeatMapVisibility(false);
-        } else if (vizMode === 'heatmap') {
-            showHistoricalTracks(false);
-            setHeatMapVisibility(true);
-        } else if (vizMode === 'both') {
-            showHistoricalTracks(true);
-            setHeatMapVisibility(true);
-        }
-
-        // Update URL with current app state for shareable links
-        updateURLFromCurrentState();
-
-        // Return stats for caller
-        return data.stats;
-
-    } catch (error) {
-        console.error('[Historical] Error loading data:', error);
-
-        // Show error in status UI instead of blocking alert
-        const statusEl = document.getElementById('historical-status');
-        if (statusEl) {
-            statusEl.className = 'historical-status error';
-            statusEl.textContent = `Failed to load data: ${error.message}`;
-        }
-
-        throw error; // Re-throw so caller can handle if needed
-    }
-}
 
 /**
  * Properly dispose of a Three.js geometry with GPU resource cleanup
@@ -1317,341 +1176,7 @@ function showNotification(message, type = 'info', duration = 5000) {
 
 // Load recent trails for live mode (last X minutes)
 // Load full historical trail for a specific aircraft (on-demand)
-async function loadFullTrailForAircraft(icao) {
-    // Check if Track API is available
-    if (!AppFeatures.historical) {
-        console.log('[FullTrail] Track API not available');
-        return false;
-    }
 
-    // Check if already loaded
-    if (FullTrailsState.icaos.has(icao)) {
-        return true;
-    }
-
-    // Check if already loading
-    if (FullTrailsState.loading.has(icao)) {
-        return false;
-    }
-
-    // Mark as loading
-    FullTrailsState.loading.add(icao);
-
-    try {
-        // Show loading indicator in detail panel
-        const detailPanel = document.getElementById('aircraft-detail');
-        if (detailPanel) {
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = `trail-loading-${icao}`;
-            loadingDiv.style.cssText = 'padding: 5px; background: rgba(0,255,0,0.1); border: 1px solid rgba(0,255,0,0.3); border-radius: 4px; margin: 5px 0; font-size: 11px;';
-            loadingDiv.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 5px;"></div><span>Loading full trail history...</span>';
-            detailPanel.insertBefore(loadingDiv, detailPanel.firstChild);
-        }
-
-        // Build API URL - get last 24 hours of data
-        const apiUrl = `${API.TRACKS_BY_ICAO}/${icao}?resolution=full`;
-
-        const response = await fetch(apiUrl);
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        // Check if we got valid data
-        if (!data.positions || data.positions.length === 0) {
-            throw new Error('No historical data available');
-        }
-
-        // Smooth altitudes
-        const smoothedPositions = smoothAltitudes(data.positions);
-
-        // Get or create trail for this aircraft
-        let trail = trails.get(icao);
-        if (!trail) {
-            trail = {
-                positions: [],
-                line: null,
-                material: null,
-                lastUpdate: Date.now()
-            };
-            trails.set(icao, trail);
-        }
-
-        // Clear existing positions and add historical data
-        trail.positions = [];
-
-        smoothedPositions.forEach(pos => {
-            // Validate position data (Track API can return lat/lon or latitude/longitude)
-            const lat = pos.lat || pos.latitude;
-            const lon = pos.lon || pos.longitude;
-            // Single aircraft endpoint returns 'alt_baro', bulk returns 'alt'
-            const alt = pos.alt_baro || pos.alt || pos.altitude || 0;
-
-            // Skip invalid positions
-            if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
-                return;
-            }
-
-            // Use the same coordinate conversion as live mode (latLonToXZ function)
-            const posXZ = latLonToXZ(lat, lon);
-
-            // Use the same altitude calculation as live mode
-            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
-
-            // Validate coordinates aren't NaN
-            if (isNaN(posXZ.x) || isNaN(altitude) || isNaN(posXZ.z)) {
-                return;
-            }
-
-            // Add position to trail (with same minimum altitude as live mode)
-            // Single aircraft endpoint returns 'time', bulk returns 'timestamp'
-            const posTimestamp = pos.time ? new Date(pos.time).getTime() :
-                                pos.timestamp ? new Date(pos.timestamp).getTime() :
-                                Date.now();
-            const groundSpeed = pos.gs || pos.speed || 0;
-            trail.positions.push({
-                x: posXZ.x,
-                y: Math.max(1.0, altitude),
-                z: posXZ.z,
-                altFeet: alt,
-                groundSpeed: groundSpeed,
-                timestamp: posTimestamp
-            });
-        });
-
-        // Only update if we have enough valid positions
-        if (trail.positions.length < 2) {
-            throw new Error(`Only ${trail.positions.length} valid positions found`);
-        }
-
-        // Create the trail line geometry if it doesn't exist
-        if (!trail.line) {
-            const trailGeometry = new THREE.BufferGeometry();
-            const initialCapacity = Math.max(1000, trail.positions.length);
-            const positions = new Float32Array(initialCapacity * 3);
-            const colors = new Float32Array(initialCapacity * 3);
-
-            // Fill in the positions and colors
-            trail.positions.forEach((pos, i) => {
-                positions[i * 3] = pos.x;
-                positions[i * 3 + 1] = pos.y;
-                positions[i * 3 + 2] = pos.z;
-
-                // Get color based on current trail color mode
-                let colorValue;
-                if (trailColorMode === 'speed') {
-                    colorValue = getSpeedColor(pos.groundSpeed || 0);
-                } else {
-                    colorValue = getAltitudeColor(pos.y);
-                }
-                const trailColor = new THREE.Color(colorValue);
-                colors[i * 3] = trailColor.r;
-                colors[i * 3 + 1] = trailColor.g;
-                colors[i * 3 + 2] = trailColor.b;
-            });
-
-            trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            trailGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-            const trailMaterial = new THREE.LineBasicMaterial({
-                vertexColors: true,
-                transparent: true,
-                opacity: 0.6
-            });
-
-            const line = new THREE.Line(trailGeometry, trailMaterial);
-            line.visible = showTrails;
-            line.geometry.setDrawRange(0, trail.positions.length);
-            scene.add(line);
-
-            // Update trail object with line and capacity
-            trail.line = line;
-            trail.capacity = initialCapacity;
-
-            // Create Tron curtain if Tron mode is enabled
-            if (showTronMode && trail.positions.length >= 2) {
-                updateTronCurtain(trail);
-            }
-        } else {
-            // Trail line already exists, update it with new positions
-            const positions = trail.line.geometry.attributes.position.array;
-            const colors = trail.line.geometry.attributes.color.array;
-
-            // Check if we need to grow the buffer
-            if (trail.positions.length > trail.capacity) {
-                trail.capacity = Math.max(trail.capacity * 2, trail.positions.length);
-                const newPositions = new Float32Array(trail.capacity * 3);
-                const newColors = new Float32Array(trail.capacity * 3);
-                trail.line.geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
-                trail.line.geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
-            }
-
-            // Update all positions and colors
-            trail.positions.forEach((pos, i) => {
-                positions[i * 3] = pos.x;
-                positions[i * 3 + 1] = pos.y;
-                positions[i * 3 + 2] = pos.z;
-
-                let colorValue;
-                if (trailColorMode === 'speed') {
-                    colorValue = getSpeedColor(pos.groundSpeed || 0);
-                } else {
-                    colorValue = getAltitudeColor(pos.y);
-                }
-                const trailColor = new THREE.Color(colorValue);
-                colors[i * 3] = trailColor.r;
-                colors[i * 3 + 1] = trailColor.g;
-                colors[i * 3 + 2] = trailColor.b;
-            });
-
-            trail.line.geometry.attributes.position.needsUpdate = true;
-            trail.line.geometry.attributes.color.needsUpdate = true;
-            trail.line.geometry.setDrawRange(0, trail.positions.length);
-
-            // Update Tron curtain if enabled
-            if (showTronMode) {
-                updateTronCurtain(trail);
-            }
-        }
-
-        // Mark as loaded
-        FullTrailsState.icaos.add(icao);
-
-        // Update loading indicator
-        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
-        if (loadingDiv) {
-            loadingDiv.style.background = 'rgba(0,255,0,0.15)';
-            loadingDiv.style.border = '1px solid rgba(0,255,0,0.5)';
-            loadingDiv.innerHTML = `✓ Loaded ${trail.positions.length} positions from last 24 hours`;
-            setTimeout(() => loadingDiv.remove(), TIMING.NOTIFICATION_DURATION);
-        }
-
-        return true;
-
-    } catch (error) {
-        console.error(`[FullTrail] Error loading trail for ${icao}:`, error);
-
-        // Update loading indicator
-        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
-        if (loadingDiv) {
-            loadingDiv.style.background = 'rgba(255,0,0,0.15)';
-            loadingDiv.style.border = '1px solid rgba(255,0,0,0.5)';
-            loadingDiv.innerHTML = `❌ Failed to load trail: ${error.message}`;
-            setTimeout(() => loadingDiv.remove(), TIMING.NOTIFICATION_DURATION);
-        }
-
-        return false;
-    } finally {
-        // Always remove from loading set
-        FullTrailsState.loading.delete(icao);
-    }
-}
-
-async function loadRecentTrails() {
-    if (!RecentTrailsState.enabled) {
-        console.log('[RecentTrails] Feature not enabled');
-        return;
-    }
-
-    // Skip if preload time is set to 0 (off)
-    if (RecentTrailsState.minutes === 0) {
-        console.log('[RecentTrails] Preload disabled (set to 0 minutes)');
-        return;
-    }
-
-    // Race condition guard: prevent concurrent loads
-    if (RecentTrailsState.loading) {
-        console.log('[RecentTrails] Load already in progress, skipping duplicate request');
-        return;
-    }
-
-    // Don't load recent trails when in historical mode with active filters
-    // This prevents mixing live current data with historical filtered data
-    const altMaxInput = document.getElementById('filter-altitude-max');
-    const altMinInput = document.getElementById('filter-altitude-min');
-    const minPosInput = document.getElementById('filter-min-positions');
-    const spdMinInput = document.getElementById('filter-speed-min');
-    const spdMaxInput = document.getElementById('filter-speed-max');
-    const militaryInput = document.getElementById('filter-military-only');
-
-    const hasActiveFilters = (altMaxInput?.value && parseInt(altMaxInput.value) < 999999) ||
-                            (altMinInput?.value && parseInt(altMinInput.value) > 0) ||
-                            (minPosInput?.value && parseInt(minPosInput.value) > 0) ||
-                            (spdMinInput?.value && parseInt(spdMinInput.value) > 0) ||
-                            (spdMaxInput?.value && parseInt(spdMaxInput.value) < 999999) ||
-                            (militaryInput?.checked);
-
-    if (currentMode === 'historical' && hasActiveFilters) {
-        console.log('[RecentTrails] Skipping - historical mode with active filters detected');
-        return;
-    }
-
-    // Set loading flag
-    RecentTrailsState.loading = true;
-
-    const minutes = RecentTrailsState.minutes;
-    const endTime = new Date();
-    const startTime = new Date(endTime.getTime() - (minutes * 60 * 1000));
-
-    console.log(`[RecentTrails] Loading last ${minutes} minutes of trails...`, {startTime, endTime});
-
-    try {
-        // Update status in sidebar (prefer sidebar-preload-status, fallback to recent-trails-status)
-        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
-        if (statusDiv) {
-            statusDiv.innerHTML = '<div class="spinner"></div><span>Loading recent trails...</span>';
-            statusDiv.className = 'historical-status loading';
-        }
-
-        // CRITICAL: Clear all existing trails before loading historical data
-        // This prevents mixing old live data with historical data which causes rendering artifacts
-        console.log('[RecentTrails] Clearing existing trails before loading historical data');
-        clearAllTrails();
-
-        // Build API URL - load all tracks from recent time period
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=200&resolution=full`;
-
-        console.log('[RecentTrails] Fetching from:', apiUrl);
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('[RecentTrails] API Response:', data);
-        console.log(`[RecentTrails] Loaded ${data.tracks?.length || 0} tracks`);
-
-        // Add these positions to existing live mode trails
-        if (data.tracks && data.tracks.length > 0) {
-            addRecentTrailsToLiveMode(data.tracks);
-            RecentTrailsState.loaded = true;
-
-            // Update status
-            if (statusDiv) {
-                statusDiv.innerHTML = `✓ Loaded ${data.tracks.length} recent trails (${data.stats?.total_positions || 0} positions)`;
-                statusDiv.className = 'historical-status success';
-            }
-        } else {
-            if (statusDiv) {
-                statusDiv.innerHTML = `No recent activity in the last ${minutes} minute${minutes > 1 ? 's' : ''}`;
-                statusDiv.className = 'historical-status warning';
-            }
-        }
-
-    } catch (error) {
-        console.error('[RecentTrails] Error loading data:', error);
-        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
-        if (statusDiv) {
-            statusDiv.innerHTML = `❌ Failed to load recent trails: ${error.message}`;
-            statusDiv.className = 'historical-status error';
-        }
-    } finally {
-        // Always clear loading flag, even on error
-        RecentTrailsState.loading = false;
-    }
-}
 
 // Add recent historical trails to live mode
 function addRecentTrailsToLiveMode(tracks) {
@@ -6430,6 +5955,97 @@ async function fetchAircraftData() {
     liveRadarData = getLiveRadarData();
 }
 
+// ============================================================================
+// HISTORICAL DATA SERVICE WRAPPERS
+// ============================================================================
+// These wrappers inject app.js dependencies into the historical data module
+
+// Wrapper for loadHistoricalTracks (replaces old implementation at line 910)
+async function loadHistoricalTracks(hoursAgo = 1) {
+    const deps = {
+        HistoricalState,
+        historicalTracks,
+        playbackStartTime,
+        playbackEndTime,
+        playbackCurrentTime,
+        renderHistoricalTracks,
+        clearHistoricalTracks
+    };
+
+    const result = await loadHistoricalTracksModule(hoursAgo, deps);
+
+    // Sync modified values back to local variables
+    playbackStartTime = deps.playbackStartTime;
+    playbackEndTime = deps.playbackEndTime;
+    playbackCurrentTime = deps.playbackCurrentTime;
+
+    return result;
+}
+
+// Wrapper for loadHistoricalData (replaces old implementation at line 976)
+async function loadHistoricalData() {
+    return await loadHistoricalDataModule({
+        HistoricalState,
+        renderHistoricalTracks,
+        applyHistoricalFilters,
+        generateFlightCorridors,
+        showHistoricalTracks,
+        setHeatMapVisibility,
+        updateURLFromCurrentState
+    });
+}
+
+// Wrapper for loadHistoricalTracksCustom (replaces old implementation at line 9637)
+async function loadHistoricalTracksCustom(startTime, endTime) {
+    const deps = {
+        HistoricalState,
+        historicalTracks,
+        playbackStartTime,
+        playbackEndTime,
+        playbackCurrentTime,
+        renderHistoricalTracks,
+        clearHistoricalTracks
+    };
+
+    const result = await loadHistoricalTracksCustomModule(startTime, endTime, deps);
+
+    // Sync modified values back to local variables
+    playbackStartTime = deps.playbackStartTime;
+    playbackEndTime = deps.playbackEndTime;
+    playbackCurrentTime = deps.playbackCurrentTime;
+
+    return result;
+}
+
+// Wrapper for loadFullTrailForAircraft (replaces old implementation at line 1320)
+async function loadFullTrailForAircraft(icao) {
+    return await loadFullTrailForAircraftModule(icao, {
+        AppFeatures,
+        FullTrailsState,
+        API,
+        smoothAltitudes,
+        trails,
+        latLonToXZ,
+        CONFIG,
+        scene,
+        THREE,
+        showTrails,
+        trailColorMode,
+        getSpeedColor,
+        getAltitudeColor
+    });
+}
+
+// Wrapper for loadRecentTrails (replaces old implementation at line 1552)
+async function loadRecentTrails() {
+    return await loadRecentTrailsModule({
+        RecentTrailsState,
+        currentMode,
+        clearAllTrails,
+        addRecentTrailsToLiveMode
+    });
+}
+
 /**
  * Update aircraft positions and render them in the 3D scene
  * Main function called every second to update all aircraft from ADS-B data
@@ -9634,71 +9250,6 @@ function updateCustomDuration() {
 /**
  * Load historical tracks with custom date/time range
  */
-async function loadHistoricalTracksCustom(startTime, endTime) {
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    // Update HistoricalState settings for URL persistence
-    HistoricalState.settings.startTime = startTime;
-    HistoricalState.settings.endTime = endTime;
-
-    console.log('[Historical] Loading tracks for custom range:', {
-        start: startTime.toISOString(),
-        end: endTime.toISOString()
-    });
-
-    // Clear existing tracks first to prevent stacking
-    clearHistoricalTracks();
-
-    try {
-        let apiUrl = `${API.TRACKS_BULK}?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks from custom range`);
-
-        // Store tracks in both global variable (for backwards compat) and HistoricalState
-        historicalTracks = {};
-        HistoricalState.tracks = [];
-        playbackStartTime = null;
-        playbackEndTime = null;
-
-        if (data.tracks) {
-            data.tracks.forEach(track => {
-                const icao = track.hex || track.icao;
-                if (icao) {
-                    historicalTracks[icao] = track;
-                }
-                HistoricalState.tracks.push(track);
-
-                // Update time bounds
-                track.positions.forEach(pos => {
-                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
-                    if (!playbackStartTime || timestamp < playbackStartTime) {
-                        playbackStartTime = timestamp;
-                    }
-                    if (!playbackEndTime || timestamp > playbackEndTime) {
-                        playbackEndTime = timestamp;
-                    }
-                });
-            });
-
-            // Render the tracks visually
-            renderHistoricalTracks();
-        }
-
-        // Set current time to start
-        playbackCurrentTime = playbackStartTime;
-
-        return data.tracks || [];
-    } catch (error) {
-        console.error('[Historical] Error loading tracks:', error);
-        throw error;
-    }
-}
 
 function setupSidebarEventHandlers() {
     console.log('[Sidebar] Setting up event handlers...');
