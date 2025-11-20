@@ -11,7 +11,7 @@
 | Phase | Module | Status | Lines Extracted | Commit |
 |-------|--------|--------|-----------------|--------|
 | 0 | Setup & Baseline | ✅ Complete | 0 | 2c585ac |
-| 1 | Config & Constants | ✅ Complete | 418 | TBD |
+| 1 | Config & Constants | ✅ Complete | 418 | aa8d435 |
 | 2 | Theme Manager | ⬜ Not Started | ~755 | - |
 | 3 | URL State Manager | ⬜ Not Started | ~485 | - |
 | 4 | Aircraft Database | ⬜ Not Started | ~400 | - |
@@ -158,8 +158,8 @@ Updated index.html to:
 None during refactoring. Awaiting user validation when app is run.
 
 ### Commits
-- Commit hash: TBD (pending)
-- Commit message: "Phase 1: Extract constants and config into constants.js module"
+- Commit hash: aa8d435
+- Commit message: "Phase 1: Extract constants and configuration into constants.js module"
 
 ### Sign-Off
 - Refactored by: Claude (2025-11-20)
