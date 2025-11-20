@@ -3,6 +3,11 @@
 **Date**: 2025-11-20
 **Branch**: `claude/refactor-app-structure-01KEBDze3qHgPehGyTCP7Jcu`
 **Purpose**: Establish baseline before refactoring begins
+**Status**: ⚠️ SKIPPED - Dev environment not accessible via browser
+
+**Note**: Baseline testing could not be performed because the development environment
+is not accessible via browser. We will proceed with refactoring and validate
+functionality after Phase 1 (Config & Constants extraction) is complete.
 
 ---
 

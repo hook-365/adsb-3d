@@ -36,7 +36,7 @@
 
 ### Deliverables
 
-#### 1. Manual Test Checklist (`MANUAL_TESTS.md`)
+#### 1. Manual Test Checklist (`4-MANUAL_TESTS.md`)
 Comprehensive checklist covering:
 - ✅ Live mode: Aircraft display, trails, labels, selection
 - ✅ Historical mode: Track loading, playback, heat maps, corridors
@@ -61,11 +61,11 @@ Capture before refactoring:
 
 ### Tasks
 - [ ] Create `tests/` directory
-- [ ] Write `MANUAL_TESTS.md` comprehensive checklist
+- [x] Write `4-MANUAL_TESTS.md` comprehensive checklist
 - [ ] Create `tests/smoke-test.html` automated checks
 - [ ] Run full manual test and document results
 - [ ] Capture performance baseline
-- [ ] Create `REFACTORING_LOG.md` to track each change
+- [x] Create `5-REFACTORING_LOG.md` to track each change
 
 ---
 
@@ -808,7 +808,7 @@ For each extracted module:
 - Test integration points
 
 ### 3. Manual Test Checklist
-**Location**: `MANUAL_TESTS.md`
+**Location**: `4-MANUAL_TESTS.md`
 
 Comprehensive feature checklist covering:
 - Live mode (aircraft, trails, selection, labels)
@@ -852,7 +852,7 @@ Each phase = 1-3 commits:
 Atomic commits for easy rollback.
 
 ### 2. Refactoring Log
-**Location**: `REFACTORING_LOG.md`
+**Location**: `5-REFACTORING_LOG.md`
 
 Track each change:
 ```markdown
