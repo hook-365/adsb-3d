@@ -1625,16 +1625,10 @@ export function initHistoricalMode(deps) {
 
 
     // ============================================================================
-    // UTILITY FUNCTIONS
+    // RETURN PUBLIC API
     // ============================================================================
 
-    /**
-     * Clear the DOM element cache
-     */
-    function clearDOMCache() {
-        Object.keys(domCache).forEach(key => delete domCache[key]);
-    }
-
+    return {
         // Track rendering
         renderHistoricalTracks,
         createHistoricalTrack,
