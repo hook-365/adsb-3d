@@ -2143,25 +2143,7 @@ function init() {
     // Window resize
     window.addEventListener('resize', onWindowResize);
 
-    // Setup UI controls
-    setupUIControls();
-
-    // Load daily statistics
-    loadDailyStats();
-
-    // Check for daily reset every minute
-    setInterval(checkDailyReset, TIMING.STATS_UPDATE_INTERVAL);
-
-    // Setup aircraft click interaction
-    setupAircraftClick();
-
-    // Initialize sidebar event handlers
-    setupSidebarEventHandlers();
-
-    // Ensure sidebar is in correct mode
-    updateSidebarMode();
-
-    // Initialize Historical Mode module with dependencies
+    // Initialize Historical Mode module with dependencies (must be before setupUIControls)
     HistoricalMode = initHistoricalMode({
         scene,
         camera,
@@ -2192,6 +2174,24 @@ function init() {
         filterSidebarTracks
     });
     console.log('[HistoricalMode] Module initialized');
+
+    // Setup UI controls
+    setupUIControls();
+
+    // Load daily statistics
+    loadDailyStats();
+
+    // Check for daily reset every minute
+    setInterval(checkDailyReset, TIMING.STATS_UPDATE_INTERVAL);
+
+    // Setup aircraft click interaction
+    setupAircraftClick();
+
+    // Initialize sidebar event handlers
+    setupSidebarEventHandlers();
+
+    // Ensure sidebar is in correct mode
+    updateSidebarMode();
 
     // Hide loading
     document.getElementById('loading').style.display = 'none';
