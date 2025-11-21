@@ -1346,7 +1346,8 @@ export function initHistoricalMode(deps) {
     /**
      * Switch from live mode to historical mode
      */
-    if (currentMode === 'historical') return;
+    async function switchToHistoricalMode(skipURLUpdate = false) {
+        if (currentMode === 'historical') return;
 
     console.log('[Mode] Switching to Historical mode');
 
@@ -1397,58 +1398,6 @@ export function initHistoricalMode(deps) {
     }
 }
 
-// ============================================================================
-// URL STATE WRAPPERS
-// ============================================================================
-// Wrapper functions to bridge between app.js and url-state-manager.js module
-
-/**
- * Helper to format date for datetime-local input (YYYY-MM-DDTHH:mm)
- * @param {string} dateStr - ISO date string
- * @returns {string} Formatted date string for datetime-local input
- */
-function formatForDatetimeInput(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '';
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-/**
- * Apply URL parameters to app state (wrapper for URLState.applyFromURL)
- * @returns {Promise<boolean>} True if URL state was applied
- */
-async function applyURLFromState() {
-    const deps = {
-        AppFeatures,
-        switchToLiveMode,
-        switchToHistoricalMode,
-        HistoricalState,
-        showTronMode,
-        setShowTronMode: (value) => { showTronMode = value; },
-        clearAllHistoricalTracks: clearHistoricalTracks,
-        generateFlightCorridors,
-        clearFlightCorridors,
-        formatForDatetimeInput
-    };
-    return await URLState.applyFromURL(deps);
-}
-
-/**
- * Update URL from current app state (wrapper for URLState.updateFromCurrentState)
- */
-function updateURLFromCurrentState() {
-    const deps = {
-        currentMode,
-        HistoricalState,
-        showTronMode,
-
     // ============================================================================
     // TRACK DETAIL & FILTERS
     // ============================================================================
@@ -1456,255 +1405,236 @@ function updateURLFromCurrentState() {
     /**
      * Show detailed information for a historical track
      */
-    const track = userData.track;
-    const icao = userData.icao;
-    const panel = document.getElementById('aircraft-detail');
+    function showHistoricalTrackDetail(userData) {
+        const track = userData.track;
+        const icao = userData.icao;
+        const panel = document.getElementById('aircraft-detail');
 
-    // Debug: Log track fields to identify data structure
-    console.log(`[HistoricalDetail] Track ${icao}:`, {
-        callsign: track.callsign,
-        registration: track.registration,
-        t: track.t,
-        type: track.type,
-        aircraft_type: track.aircraft_type,
-        type_designator: track.type_designator,
-        positions: track.positions?.length
-    });
+        // Debug: Log track fields to identify data structure
+        console.log(`[HistoricalDetail] Track ${icao}:`, {
+            callsign: track.callsign,
+            registration: track.registration,
+            t: track.t,
+            type: track.type,
+            aircraft_type: track.aircraft_type,
+            type_designator: track.type_designator,
+            positions: track.positions?.length
+        });
 
-    // Use callsign or ICAO as title
-    const displayName = track.callsign?.trim() || track.registration || icao || 'Unknown';
-    document.getElementById('detail-callsign').textContent = displayName;
+        // Use callsign or ICAO as title
+        const displayName = track.callsign?.trim() || track.registration || icao || 'Unknown';
+        document.getElementById('detail-callsign').textContent = displayName;
 
-    // Build detail grid
-    const details = [];
+        // Build detail grid
+        const details = [];
 
-    // Add military status if applicable
-    if (userData.isMilitary) {
-        const militaryBgColor = getCSSVar('military-color');
-        const militaryLabel = `<span style="background: ${militaryBgColor}; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold;">MILITARY AIRCRAFT</span>`;
-        details.push({ label: 'Classification', value: militaryLabel });
-    }
-
-    // Basic track info
-    if (track.callsign) details.push({ label: 'Callsign', value: track.callsign.trim() });
-    if (track.registration) details.push({ label: 'Registration', value: track.registration });
-    details.push({ label: 'ICAO Hex', value: icao });
-
-    // Aircraft type info - try multiple field names
-    // Some historical APIs use 't', others use 'aircraft_type', 'type', etc.
-    const aircraftType = track.t || track.type || track.aircraft_type || track.type_designator;
-    if (aircraftType) {
-        details.push({ label: 'Aircraft Type', value: aircraftType });
-    }
-
-    // Position count
-    if (track.positions && track.positions.length > 0) {
-        details.push({ label: 'Positions', value: `${track.positions.length} data points` });
-
-        // Time range
-        const firstPos = track.positions[0];
-        const lastPos = track.positions[track.positions.length - 1];
-
-        if (firstPos.time && lastPos.time) {
-            const startTime = new Date(firstPos.time);
-            const endTime = new Date(lastPos.time);
-            const duration = (endTime - startTime) / 1000 / 60; // minutes
-
-            details.push({
-                label: 'First Seen',
-                value: startTime.toLocaleTimeString()
-            });
-            details.push({
-                label: 'Last Seen',
-                value: endTime.toLocaleTimeString()
-            });
-            details.push({
-                label: 'Duration',
-                value: `${Math.round(duration)} minutes`
-            });
+        // Add military status if applicable
+        if (userData.isMilitary) {
+            const militaryBgColor = getCSSVar('military-color');
+            const militaryLabel = `<span style="background: ${militaryBgColor}; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold;">MILITARY AIRCRAFT</span>`;
+            details.push({ label: 'Classification', value: militaryLabel });
         }
 
-        // Altitude range
-        const altitudes = track.positions
-            .map(p => p.alt || p.altitude)
-            .filter(a => a != null);
+        // Basic track info
+        if (track.callsign) details.push({ label: 'Callsign', value: track.callsign.trim() });
+        if (track.registration) details.push({ label: 'Registration', value: track.registration });
+        details.push({ label: 'ICAO Hex', value: icao });
 
-        if (altitudes.length > 0) {
-            const minAlt = Math.min(...altitudes);
-            const maxAlt = Math.max(...altitudes);
-            details.push({
-                label: 'Altitude Range',
-                value: `${Math.round(minAlt).toLocaleString()} - ${Math.round(maxAlt).toLocaleString()} ft`
-            });
+        // Aircraft type info - try multiple field names
+        // Some historical APIs use 't', others use 'aircraft_type', 'type', etc.
+        const aircraftType = track.t || track.type || track.aircraft_type || track.type_designator;
+        if (aircraftType) {
+            details.push({ label: 'Aircraft Type', value: aircraftType });
         }
 
-        // Speed (if available in any position)
-        const speeds = track.positions
-            .map(p => p.gs || p.ground_speed)
-            .filter(s => s != null);
+        // Position count
+        if (track.positions && track.positions.length > 0) {
+            details.push({ label: 'Positions', value: `${track.positions.length} data points` });
 
-        if (speeds.length > 0) {
-            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-            details.push({
-                label: 'Avg Speed',
-                value: `${Math.round(avgSpeed)} kts`
-            });
+            // Time range
+            const firstPos = track.positions[0];
+            const lastPos = track.positions[track.positions.length - 1];
+
+            if (firstPos.time && lastPos.time) {
+                const startTime = new Date(firstPos.time);
+                const endTime = new Date(lastPos.time);
+                const duration = (endTime - startTime) / 1000 / 60; // minutes
+
+                details.push({
+                    label: 'First Seen',
+                    value: startTime.toLocaleTimeString()
+                });
+                details.push({
+                    label: 'Last Seen',
+                    value: endTime.toLocaleTimeString()
+                });
+                details.push({
+                    label: 'Duration',
+                    value: `${Math.round(duration)} minutes`
+                });
+            }
+
+            // Altitude range
+            const altitudes = track.positions
+                .map(p => p.alt || p.altitude)
+                .filter(a => a != null);
+
+            if (altitudes.length > 0) {
+                const minAlt = Math.min(...altitudes);
+                const maxAlt = Math.max(...altitudes);
+                details.push({
+                    label: 'Altitude Range',
+                    value: `${Math.round(minAlt).toLocaleString()} - ${Math.round(maxAlt).toLocaleString()} ft`
+                });
+            }
+
+            // Speed (if available in any position)
+            const speeds = track.positions
+                .map(p => p.gs || p.ground_speed)
+                .filter(s => s != null);
+
+            if (speeds.length > 0) {
+                const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+                details.push({
+                    label: 'Avg Speed',
+                    value: `${Math.round(avgSpeed)} kts`
+                });
+            }
         }
+
+        // Render detail grid
+        const detailGrid = document.getElementById('detail-content');
+        if (!detailGrid) {
+            console.error('[Historical] detail-content element not found in DOM');
+            return;
+        }
+        detailGrid.innerHTML = details.map(d => `
+            <div class="detail-label">${d.label}</div>
+            <div class="detail-value">${d.value}</div>
+        `).join('');
+
+        // Show panel
+        panel.style.display = 'block';
+
+        // Hide follow button for historical tracks
+        const followBtn = document.getElementById('toggle-follow');
+        if (followBtn) {
+            followBtn.style.display = 'none';
+        }
+
+        // Hide photo section for historical tracks
+        const photoContainer = document.getElementById('aircraft-photo');
+        if (photoContainer) {
+            photoContainer.innerHTML = '<div style="font-size: 11px; color: #888; margin-top: 8px;">Historical track data</div>';
+        }
+
+        console.log('[Historical] Showing detail for track:', icao);
     }
 
-    // Render detail grid
-    const detailGrid = document.getElementById('detail-content');
-    if (!detailGrid) {
-        console.error('[Historical] detail-content element not found in DOM');
-        return;
-    }
-    detailGrid.innerHTML = details.map(d => `
-        <div class="detail-label">${d.label}</div>
-        <div class="detail-value">${d.value}</div>
-    `).join('');
-
-    // Show panel
-    panel.style.display = 'block';
-
-    // Hide follow button for historical tracks
-    const followBtn = document.getElementById('toggle-follow');
-    if (followBtn) {
-        followBtn.style.display = 'none';
-    }
-
-    // Hide photo section for historical tracks
-    const photoContainer = document.getElementById('aircraft-photo');
-    if (photoContainer) {
-        photoContainer.innerHTML = '<div style="font-size: 11px; color: #888; margin-top: 8px;">Historical track data</div>';
-    }
-
-    console.log('[Historical] Showing detail for track:', icao);
-}
-
-// Show airport detail panel when airport label is clicked
-async function showAirportDetail(airport) {
-    const panel = document.getElementById('aircraft-detail');
-    const name = airport.name || 'Unknown Airport';
-    const ident = airport.ident || airport.icao_code || 'N/A';
-
-    document.getElementById('detail-callsign').textContent = `${ident} - ${name}`;
-
-    // Build detail grid
-    const details = [];
-
-    // Airport information
-    if (airport.type) {
-        const typeLabel = airport.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        details.push({ label: 'Type', value: typeLabel });
-    }
-    if (airport.municipality) details.push({ label: 'City', value: airport.municipality });
-    if (airport.iso_region) details.push({ label: 'Region', value: airport.iso_region });
 
     /**
      * Apply filters to historical tracks
      */
-    console.log('[Historical] Applying filters');
+    function applyHistoricalFilters() {
+        console.log('[Historical] Applying filters');
 
-    // Get filter values
-    const militaryOnly = document.getElementById('filter-military-only')?.checked || false;
-    const altMinInput = document.getElementById('filter-altitude-min');
-    const altMaxInput = document.getElementById('filter-altitude-max');
-    const minPosInput = document.getElementById('filter-min-positions');
-    const spdMinInput = document.getElementById('filter-speed-min');
-    const spdMaxInput = document.getElementById('filter-speed-max');
+        // Get filter values
+        const militaryOnly = document.getElementById('filter-military-only')?.checked || false;
+        const altMinInput = document.getElementById('filter-altitude-min');
+        const altMaxInput = document.getElementById('filter-altitude-max');
+        const minPosInput = document.getElementById('filter-min-positions');
+        const spdMinInput = document.getElementById('filter-speed-min');
+        const spdMaxInput = document.getElementById('filter-speed-max');
 
-    const minAlt = parseInt(altMinInput?.value) || 0;
-    const maxAlt = parseInt(altMaxInput?.value) || 999999;
-    const minPositions = parseInt(minPosInput?.value) || 0;
-    const minSpeed = parseInt(spdMinInput?.value) || 0;
-    const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
+        const minAlt = parseInt(altMinInput?.value) || 0;
+        const maxAlt = parseInt(altMaxInput?.value) || 999999;
+        const minPositions = parseInt(minPosInput?.value) || 0;
+        const minSpeed = parseInt(spdMinInput?.value) || 0;
+        const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
 
-    console.log('[Historical] Filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
+        console.log('[Historical] Filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
 
-    let visibleCount = 0;
-    let hiddenCount = 0;
+        let visibleCount = 0;
+        let hiddenCount = 0;
 
-    // Apply filters to each track mesh
-    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail, track }, icao) => {
-        // track is stored in the trackMeshes object directly
-        if (!track) {
-            console.warn(`[Historical] No track data for ${icao}`);
-            return;
-        }
+        // Apply filters to each track mesh
+        HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail, track }, icao) => {
+            // track is stored in the trackMeshes object directly
+            if (!track) {
+                console.warn(`[Historical] No track data for ${icao}`);
+                return;
+            }
 
-        let visible = true;
+            let visible = true;
 
-        // Military filter
-        if (militaryOnly && !(track.is_military || isMilitaryAircraft(icao))) {
-            visible = false;
-        }
-
-        // Minimum positions filter
-        if (track.positions && track.positions.length < minPositions) {
-            visible = false;
-        }
-
-        // Altitude filter (check if ALL positions are in range)
-        if (track.positions && track.positions.length > 0) {
-            const allAltitudesInRange = track.positions.every(pos => {
-                const alt = pos.alt || pos.altitude || 0;
-                return alt >= minAlt && alt <= maxAlt;
-            });
-            if (!allAltitudesInRange) {
+            // Military filter
+            if (militaryOnly && !(track.is_military || isMilitaryAircraft(icao))) {
                 visible = false;
             }
-        }
 
-        // Speed filter (check if ALL positions have speed in range)
-        if (track.positions && track.positions.length > 0) {
-            const allSpeedsInRange = track.positions.every(pos => {
-                const speed = pos.gs || pos.speed || 0;
-                return speed >= minSpeed && speed <= maxSpeed;
-            });
-            if (!allSpeedsInRange) {
+            // Minimum positions filter
+            if (track.positions && track.positions.length < minPositions) {
                 visible = false;
             }
-        }
 
-        // Update visibility in scene
-        if (visible) {
-            if (line && !line.parent) scene.add(line);
-            if (endpointMesh && !endpointMesh.parent) scene.add(endpointMesh);
-            if (trail && trail.tronCurtain && !trail.tronCurtain.parent && showTronMode) {
-                scene.add(trail.tronCurtain);
+            // Altitude filter (check if ALL positions are in range)
+            if (track.positions && track.positions.length > 0) {
+                const allAltitudesInRange = track.positions.every(pos => {
+                    const alt = pos.alt || pos.altitude || 0;
+                    return alt >= minAlt && alt <= maxAlt;
+                });
+                if (!allAltitudesInRange) {
+                    visible = false;
+                }
             }
-            visibleCount++;
-        } else {
-            if (line && line.parent) scene.remove(line);
-            if (endpointMesh && endpointMesh.parent) scene.remove(endpointMesh);
-            if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
-                scene.remove(trail.tronCurtain);
+
+            // Speed filter (check if ALL positions have speed in range)
+            if (track.positions && track.positions.length > 0) {
+                const allSpeedsInRange = track.positions.every(pos => {
+                    const speed = pos.gs || pos.speed || 0;
+                    return speed >= minSpeed && speed <= maxSpeed;
+                });
+                if (!allSpeedsInRange) {
+                    visible = false;
+                }
             }
-            hiddenCount++;
-        }
-    });
 
-    console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
+            // Update visibility in scene
+            if (visible) {
+                if (line && !line.parent) scene.add(line);
+                if (endpointMesh && !endpointMesh.parent) scene.add(endpointMesh);
+                if (trail && trail.tronCurtain && !trail.tronCurtain.parent && showTronMode) {
+                    scene.add(trail.tronCurtain);
+                }
+                visibleCount++;
+            } else {
+                if (line && line.parent) scene.remove(line);
+                if (endpointMesh && endpointMesh.parent) scene.remove(endpointMesh);
+                if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
+                    scene.remove(trail.tronCurtain);
+                }
+                hiddenCount++;
+            }
+        });
 
-    // Also update sidebar list to match filters
-    filterSidebarTracks();
-}
+        console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
 
-function filterSidebarAircraft() {
-    const searchTerm = document.getElementById('sidebar-aircraft-search').value.toLowerCase();
+        // Also update sidebar list to match filters
+        filterSidebarTracks();
+    }
 
-    const items = document.querySelectorAll('#sidebar-aircraft-list .sidebar-aircraft-item');
-    items.forEach(item => {
-        const flight = item.querySelector('[data-flight]')?.textContent.toLowerCase() || '';
-        const hex = item.dataset.hex?.toLowerCase() || '';
 
-        const matches = !searchTerm || flight.includes(searchTerm) || hex.includes(searchTerm);
-        item.style.display = matches ? 'block' : 'none';
-    });
-}
+    // ============================================================================
+    // UTILITY FUNCTIONS
+    // ============================================================================
 
-    // Return public API
-    return {
+    /**
+     * Clear the DOM element cache
+     */
+    function clearDOMCache() {
+        Object.keys(domCache).forEach(key => delete domCache[key]);
+    }
+
         // Track rendering
         renderHistoricalTracks,
         createHistoricalTrack,
