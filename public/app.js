@@ -4715,7 +4715,11 @@ async function loadHistoricalTracks(hoursAgo = 1) {
         playbackEndTime,
         playbackCurrentTime,
         renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
-        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility
     };
 
     const result = await loadHistoricalTracksModule(hoursAgo, deps);
@@ -4750,7 +4754,11 @@ async function loadHistoricalTracksCustom(startTime, endTime) {
         playbackEndTime,
         playbackCurrentTime,
         renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
-        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility
     };
 
     const result = await loadHistoricalTracksCustomModule(startTime, endTime, deps);
@@ -8187,7 +8195,7 @@ function setupSidebarEventHandlers() {
             HistoricalState.heatmapMode = newMode;
             console.log(`[Visualization] Mode changed to: ${newMode}`);
 
-            // Apply visibility changes based on mode
+            // Apply visibility changes based on mode (visualizations already generated on load)
             switch (newMode) {
                 case 'tracks':
                     HistoricalMode.showHistoricalTracks(true);
@@ -8195,16 +8203,10 @@ function setupSidebarEventHandlers() {
                     break;
                 case 'heatmap':
                     HistoricalMode.showHistoricalTracks(false);
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        HistoricalMode.generateFlightCorridors(); // Generate heat map if not exists
-                    }
                     HistoricalMode.setHeatMapVisibility(true);
                     break;
                 case 'both':
                     HistoricalMode.showHistoricalTracks(true);
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        HistoricalMode.generateFlightCorridors(); // Generate heat map if not exists
-                    }
                     HistoricalMode.setHeatMapVisibility(true);
                     break;
             }

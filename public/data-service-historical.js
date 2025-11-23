@@ -24,7 +24,11 @@ export async function loadHistoricalTracks(hoursAgo = 1, deps) {
         playbackEndTime,
         playbackCurrentTime,
         renderHistoricalTracks,
-        clearHistoricalTracks
+        clearHistoricalTracks,
+        applyHistoricalFilters,
+        generateFlightCorridors,
+        showHistoricalTracks,
+        setHeatMapVisibility
     } = deps;
 
     const endTime = new Date();
@@ -77,8 +81,30 @@ export async function loadHistoricalTracks(hoursAgo = 1, deps) {
                 });
             });
 
-            // Render the tracks visually
+            // Always render BOTH tracks and heat map, then show/hide based on mode
+            console.log('[Historical] Rendering tracks...');
             renderHistoricalTracks();
+            applyHistoricalFilters();
+            console.log('[Historical] Tracks rendered and filtered');
+
+            console.log('[Historical] Generating heat map...');
+            generateFlightCorridors();
+            console.log('[Historical] Heat map generated');
+
+            // Now apply visibility based on current mode
+            const vizMode = HistoricalState.heatmapMode || 'tracks';
+            console.log(`[Historical] Applying visualization mode: ${vizMode}`);
+
+            if (vizMode === 'tracks') {
+                showHistoricalTracks(true);
+                setHeatMapVisibility(false);
+            } else if (vizMode === 'heatmap') {
+                showHistoricalTracks(false);
+                setHeatMapVisibility(true);
+            } else if (vizMode === 'both') {
+                showHistoricalTracks(true);
+                setHeatMapVisibility(true);
+            }
         }
 
         // Set current time to start
@@ -199,7 +225,11 @@ export async function loadHistoricalTracksCustom(startTime, endTime, deps) {
         playbackEndTime,
         playbackCurrentTime,
         renderHistoricalTracks,
-        clearHistoricalTracks
+        clearHistoricalTracks,
+        applyHistoricalFilters,
+        generateFlightCorridors,
+        showHistoricalTracks,
+        setHeatMapVisibility
     } = deps;
 
     const maxTracks = HistoricalState.settings.maxTracks;
@@ -253,8 +283,30 @@ export async function loadHistoricalTracksCustom(startTime, endTime, deps) {
                 });
             });
 
-            // Render the tracks visually
+            // Always render BOTH tracks and heat map, then show/hide based on mode
+            console.log('[Historical] Rendering tracks...');
             renderHistoricalTracks();
+            applyHistoricalFilters();
+            console.log('[Historical] Tracks rendered and filtered');
+
+            console.log('[Historical] Generating heat map...');
+            generateFlightCorridors();
+            console.log('[Historical] Heat map generated');
+
+            // Now apply visibility based on current mode
+            const vizMode = HistoricalState.heatmapMode || 'tracks';
+            console.log(`[Historical] Applying visualization mode: ${vizMode}`);
+
+            if (vizMode === 'tracks') {
+                showHistoricalTracks(true);
+                setHeatMapVisibility(false);
+            } else if (vizMode === 'heatmap') {
+                showHistoricalTracks(false);
+                setHeatMapVisibility(true);
+            } else if (vizMode === 'both') {
+                showHistoricalTracks(true);
+                setHeatMapVisibility(true);
+            }
         }
 
         // Set current time to start
