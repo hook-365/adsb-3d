@@ -1624,13 +1624,13 @@ async function applyURLFromState() {
     const deps = {
         AppFeatures,
         switchToLiveMode,
-        switchToHistoricalMode,
+        switchToHistoricalMode: HistoricalMode.switchToHistoricalMode,
         HistoricalState,
         showTronMode,
         setShowTronMode: (value) => { showTronMode = value; },
-        clearAllHistoricalTracks: clearHistoricalTracks,
-        generateFlightCorridors,
-        clearFlightCorridors,
+        clearAllHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        clearFlightCorridors: HistoricalMode.clearFlightCorridors,
         formatForDatetimeInput
     };
     return await URLState.applyFromURL(deps);
@@ -4714,8 +4714,8 @@ async function loadHistoricalTracks(hoursAgo = 1) {
         playbackStartTime,
         playbackEndTime,
         playbackCurrentTime,
-        renderHistoricalTracks,
-        clearHistoricalTracks
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks
     };
 
     const result = await loadHistoricalTracksModule(hoursAgo, deps);
@@ -4732,11 +4732,11 @@ async function loadHistoricalTracks(hoursAgo = 1) {
 async function loadHistoricalData() {
     return await loadHistoricalDataModule({
         HistoricalState,
-        renderHistoricalTracks,
-        applyHistoricalFilters,
-        generateFlightCorridors,
-        showHistoricalTracks,
-        setHeatMapVisibility,
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility,
         updateURLFromCurrentState
     });
 }
@@ -4749,8 +4749,8 @@ async function loadHistoricalTracksCustom(startTime, endTime) {
         playbackStartTime,
         playbackEndTime,
         playbackCurrentTime,
-        renderHistoricalTracks,
-        clearHistoricalTracks
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks
     };
 
     const result = await loadHistoricalTracksCustomModule(startTime, endTime, deps);
