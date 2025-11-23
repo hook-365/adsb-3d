@@ -56,7 +56,6 @@ export function initHistoricalMode(deps) {
         renderer,
         HistoricalState,
         PlaybackState,
-        currentTheme,
         latLonToXZ,
         smoothAltitudes,
         updateAircraft,

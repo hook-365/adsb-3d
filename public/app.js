@@ -2150,7 +2150,6 @@ function init() {
         renderer,
         HistoricalState,
         PlaybackState,
-        currentTheme,
         latLonToXZ,
         smoothAltitudes,
         updateAircraft,
