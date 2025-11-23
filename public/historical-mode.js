@@ -65,7 +65,19 @@ export function initHistoricalMode(deps) {
         updateTronCurtain,
         trailColorMode,
         showTronMode,
-        SafeStorage
+        SafeStorage,
+        clearLiveAircraft,
+        stopLiveUpdates,
+        startLiveUpdates,
+        loadHistoricalData,
+        updateSidebarMode,
+        updateURLFromCurrentState,
+        getCurrentMode,
+        setCurrentMode,
+        AppFeatures,
+        TIMING,
+        isMilitaryAircraft,
+        filterSidebarTracks
     } = deps;
 
     // Cache DOM element references for performance
@@ -1146,7 +1158,7 @@ export function initHistoricalMode(deps) {
                 filtersPanel.style.display = 'block';
 
                 // Automatically switch to historical mode to display tracks
-                if (currentMode !== 'historical') {
+                if (getCurrentMode() !== 'historical') {
                     await switchToHistoricalMode();
                 }
             } else {
@@ -1159,7 +1171,7 @@ export function initHistoricalMode(deps) {
                 filtersPanel.style.display = 'block';
 
                 // Automatically switch to historical mode to display tracks
-                if (currentMode !== 'historical') {
+                if (getCurrentMode() !== 'historical') {
                     await switchToHistoricalMode();
                 }
             }
@@ -1346,7 +1358,7 @@ export function initHistoricalMode(deps) {
      * Switch from live mode to historical mode
      */
     async function switchToHistoricalMode(skipURLUpdate = false) {
-        if (currentMode === 'historical') return;
+        if (getCurrentMode() === 'historical') return;
 
     console.log('[Mode] Switching to Historical mode');
 
@@ -1355,7 +1367,7 @@ export function initHistoricalMode(deps) {
     console.log('[Mode] Stopped live update interval');
 
     // Set mode before fade to prevent any updates during transition
-    currentMode = 'historical';
+    setCurrentMode('historical');
 
     // Add fade transition
     renderer.domElement.classList.add('mode-transition', 'fading');
