@@ -194,10 +194,10 @@
                         }
                     },
                     {
-                        name: "Sidebar container exists",
+                        name: "Sidebar toggle exists",
                         test: async () => {
                             const frame = document.getElementById('appFrame');
-                            const sidebar = frame.contentDocument.getElementById('sidebar');
+                            const sidebar = frame.contentDocument.getElementById('sidebar-toggle');
                             return sidebar !== null;
                         }
                     },
@@ -205,16 +205,16 @@
                         name: "Theme modal exists",
                         test: async () => {
                             const frame = document.getElementById('appFrame');
-                            const themeModal = frame.contentDocument.getElementById('themeModal');
+                            const themeModal = frame.contentDocument.getElementById('theme-modal');
                             return themeModal !== null;
                         }
                     },
                     {
-                        name: "Settings modal exists",
+                        name: "About modal exists",
                         test: async () => {
                             const frame = document.getElementById('appFrame');
-                            const settingsModal = frame.contentDocument.getElementById('settingsModal');
-                            return settingsModal !== null;
+                            const aboutModal = frame.contentDocument.getElementById('about-modal');
+                            return aboutModal !== null;
                         }
                     }
                 ]
@@ -326,8 +326,8 @@
                             const frame = document.getElementById('appFrame');
                             const docEl = frame.contentDocument.documentElement;
                             const style = frame.contentWindow.getComputedStyle(docEl);
-                            const bgColor = style.getPropertyValue('--bg-color');
-                            return bgColor && bgColor.trim() !== '';
+                            const textPrimary = style.getPropertyValue('--text-primary');
+                            return textPrimary && textPrimary.trim() !== '';
                         }
                     },
                     {

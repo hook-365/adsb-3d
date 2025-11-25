@@ -622,3 +622,11 @@ export function initializeBrowserNavigation(applyCallback) {
         }
     });
 }
+
+// Expose URLStateManager globally for smoke tests
+window.URLStateManager = {
+    URLState,
+    FeatureDetector,
+    AppFeatures,
+    initializeBrowserNavigation
+};

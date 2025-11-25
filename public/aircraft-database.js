@@ -257,3 +257,12 @@ export function getAircraftSpecs(typeCode) {
 
     return AIRCRAFT_TYPE_SPECS[normalizedType] || null;
 }
+
+// Expose AircraftDatabase globally for smoke tests
+window.AircraftDatabase = {
+    loadMilitaryDatabase,
+    isMilitaryAircraft,
+    getMilitaryInfo,
+    getAircraftSpecs,
+    AIRCRAFT_TYPE_SPECS
+};

@@ -712,3 +712,13 @@ export function getThemes() {
 export function getTheme(themeName) {
     return THEMES[themeName] || null;
 }
+
+// Expose ThemeManager globally for smoke tests and backward compatibility
+window.ThemeManager = {
+    applyTheme,
+    updateSceneColors,
+    getCurrentTheme,
+    initializeTheme,
+    getThemes,
+    getTheme
+};

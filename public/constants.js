@@ -416,3 +416,6 @@ export default {
     getThemeColor,
     initializeThemeColors,
 };
+
+// Expose CONFIG globally for smoke tests and backward compatibility
+window.CONFIG = CONFIG;

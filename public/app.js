@@ -1870,6 +1870,11 @@ function init() {
     // Limit pixel ratio to 2 max (4K/5K displays don't need >2x)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+    // Expose globals for smoke tests and debugging
+    window.scene = scene;
+    window.camera = camera;
+    window.renderer = renderer;
+
     // Lights - Daylight simulation
     const ambientLight = new THREE.AmbientLight(CONFIG.sceneAmbient, 0.6);
     scene.add(ambientLight);
