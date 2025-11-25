@@ -3901,8 +3901,15 @@
         (function() {
             // Get the current path and ensure it ends with /
             let scriptPath = window.location.pathname;
-            if (!scriptPath.endsWith('/')) {
+            // If path ends with .html file, use the directory part
+            if (scriptPath.endsWith('.html')) {
+                scriptPath = scriptPath.substring(0, scriptPath.lastIndexOf('/') + 1);
+            } else if (!scriptPath.endsWith('/')) {
                 scriptPath = scriptPath + '/';
+            }
+            // Ensure we have at least root path
+            if (!scriptPath || scriptPath === '') {
+                scriptPath = '/';
             }
 
             function loadScript(src, isModule = false) {
