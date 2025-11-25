@@ -38,7 +38,8 @@ export function initCameraRendering(deps) {
         updateFollowButtonText,
         hideUnfollowButton,
         showAircraftContextMenu,
-        showAircraftDetail
+        showAircraftDetail,
+        selectAircraft
     } = deps;
 
     // ============================================================================
@@ -231,7 +232,16 @@ export function initCameraRendering(deps) {
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            touchMoved = true;
+
+            // Only consider it "moved" if finger moved more than 10 pixels (tap tolerance)
+            if (touchStartPositions.length > 0 && e.touches.length > 0) {
+                const dx = e.touches[0].clientX - touchStartPositions[0].x;
+                const dy = e.touches[0].clientY - touchStartPositions[0].y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > 10) {
+                    touchMoved = true;
+                }
+            }
 
             if (longPressTimer) {
                 clearTimeout(longPressTimer);
@@ -284,27 +294,39 @@ export function initCameraRendering(deps) {
             const touchDuration = Date.now() - touchStartTime;
             const now = Date.now();
 
-            if (e.changedTouches.length === 1 && !touchMoved && touchDuration < 200) {
+            // Capture drag state before checking for tap
+            const wasTap = !touchMoved && touchDuration < 300;
+
+            if (e.changedTouches.length === 1 && wasTap) {
                 if (now - lastTapTime < DOUBLE_TAP_TIME) {
                     resetCamera();
                     lastTapTime = 0;
                 } else {
                     const touch = e.changedTouches[0];
+                    const raycaster = new THREE.Raycaster();
+                    const mouse = new THREE.Vector2();
 
-                    if (!wasTouchDragging) {
-                        const raycaster = new THREE.Raycaster();
-                        const mouse = new THREE.Vector2();
+                    // Use canvas bounds for accurate touch coordinates
+                    const rect = canvas.getBoundingClientRect();
+                    mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
 
-                        mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                        mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
 
-                        raycaster.setFromCamera(mouse, camera);
-                        const intersects = raycaster.intersectObjects(scene.children, true);
+                    // Raycast against aircraft meshes
+                    const aircraftArray = Array.from(aircraftMeshes.values());
+                    const intersects = raycaster.intersectObjects(aircraftArray, true);
 
-                        if (intersects.length > 0) {
-                            const mesh = intersects[0].object;
-                            if (mesh.userData && mesh.userData.hex) {
-                                showAircraftDetail(mesh.userData);
+                    if (intersects.length > 0) {
+                        const tappedObject = intersects[0].object;
+
+                        // Find the hex - check tapped object and all ancestors
+                        for (const [hex, mesh] of aircraftMeshes.entries()) {
+                            if (mesh === tappedObject ||
+                                mesh.children.includes(tappedObject) ||
+                                tappedObject.parent === mesh) {
+                                selectAircraft(hex);
+                                break;
                             }
                         }
                     }

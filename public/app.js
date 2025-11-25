@@ -633,6 +633,9 @@ let showLabels = true;
 let showAltitudeLines = true;
 let showHomeTower = true; // Home tower marker (on by default)
 let showTronMode = true; // Tron mode: vertical altitude curtains beneath trails (on by default)
+let followMode = false; // Whether camera is following an aircraft
+let followedAircraftHex = null; // Hex of aircraft being followed
+let followLocked = true; // When true, camera locked behind aircraft; when false, free orbit
 
 // Follow mode state - consolidated object for camera-rendering.js module
 const FollowState = {
@@ -1962,7 +1965,8 @@ function init() {
         updateFollowButtonText,
         hideUnfollowButton,
         showAircraftContextMenu,
-        showAircraftDetail
+        showAircraftDetail,
+        selectAircraft
     });
     console.log('[CameraRendering] Module initialized');
 
@@ -3366,6 +3370,7 @@ function setupUIControls() {
                     CameraRendering.syncCameraAnglesFromPosition();
                 }
                 followLocked = !followLocked;
+                FollowState.locked = followLocked; // Sync for camera-rendering module
                 updateFollowButtonText();
             }
         } else {
@@ -3380,6 +3385,12 @@ function setupUIControls() {
                     followedAircraftHex = selectedAircraft;
                     followLocked = true; // Start in locked mode
                     cameraReturnInProgress = false;
+
+                    // Sync FollowState for camera-rendering module
+                    FollowState.mode = true;
+                    FollowState.hex = selectedAircraft;
+                    FollowState.locked = true;
+
                     // Hide aircraft detail panel during follow mode so it doesn't block view
                     document.getElementById('aircraft-detail').style.display = 'none';
                     // Show unfollow button when following an aircraft
@@ -3387,6 +3398,11 @@ function setupUIControls() {
                 } else {
                     followMode = false;
                     followedAircraftHex = null;
+
+                    // Sync FollowState for camera-rendering module
+                    FollowState.mode = false;
+                    FollowState.hex = null;
+
                     // Hide unfollow button when not following
                     hideUnfollowButton();
 
@@ -6543,7 +6559,7 @@ async function showAircraftDetail(hex) {
     }
 
     // ========== BUILD HTML WITH SECTIONS ==========
-    let contentHtml = '<div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">';
+    let contentHtml = '<div style="display: flex; flex-direction: column; gap: 8px;">';
 
     // Signal section (compact inline)
     if (signalData.length > 0) {
@@ -6595,11 +6611,8 @@ async function showAircraftDetail(hex) {
     contentHtml += '</div>';
     contentHtml += '</div></div>';
 
-    // Photo container
+    // Photo container (hidden on mobile via CSS)
     contentHtml += '<div id="aircraft-photo-container" style="margin-top: 8px;"></div>';
-
-    // Add bottom padding to ensure all content is scrollable on mobile
-    contentHtml += '<div style="padding-bottom: 20px;"></div>';
     contentHtml += '</div>';
 
     document.getElementById('detail-content').innerHTML = contentHtml;
@@ -6629,10 +6642,24 @@ async function showAircraftDetail(hex) {
         if (shouldShowFollow) {
             detailFollowBtn.style.display = 'block';
             detailFollowBtn.onclick = () => {
-                // Use focusOnAircraft to zoom and follow
-                CameraRendering.focusOnAircraft(hex);
-                detailFollowBtn.textContent = '✓ Following';
-                detailFollowBtn.style.background = '#28a745';
+                // Enable follow mode directly
+                selectedAircraft = hex;
+                followMode = true;
+                followedAircraftHex = hex;
+                followLocked = true;
+
+                // Sync FollowState for camera-rendering module
+                FollowState.mode = true;
+                FollowState.hex = hex;
+                FollowState.locked = true;
+
+                // Hide aircraft detail panel during follow mode
+                document.getElementById('aircraft-detail').style.display = 'none';
+
+                // Show unfollow button
+                showUnfollowButton();
+                updateFollowButtonText();
+
                 console.log(`[Follow] Now following aircraft ${hex}`);
             };
 
@@ -7632,21 +7659,16 @@ function updateSidebarLiveStats(data) {
             </div>
         `;
 
-        // Click to follow aircraft and show detail panel
+        // Click to select aircraft and show detail panel
         item.addEventListener('click', () => {
-            const mesh = aircraftMeshes.get(ac.hex);
-            if (mesh) {
-                followTarget = mesh;
+            // Highlight selected aircraft in sidebar
+            document.querySelectorAll('.sidebar-aircraft-item').forEach(el => {
+                el.classList.remove('selected');
+            });
+            item.classList.add('selected');
 
-                // Highlight selected aircraft
-                document.querySelectorAll('.sidebar-aircraft-item').forEach(el => {
-                    el.classList.remove('selected');
-                });
-                item.classList.add('selected');
-
-                // Show aircraft detail panel (same as clicking on the map)
-                showAircraftDetail(ac.hex);
-            }
+            // Use selectAircraft for full selection logic (detail panel, highlight, trails)
+            selectAircraft(ac.hex);
         });
 
         // Hover effect - use the existing highlightAircraft function
