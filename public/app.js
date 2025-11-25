@@ -6383,11 +6383,40 @@ function checkUrlParameters() {
         const hexLower = icao.toLowerCase();
         let trailsLoaded = false; // Flag to prevent double-loading
 
+        // Helper function to set up aircraft from URL
+        const setupAircraftFromUrl = (hex) => {
+            console.log(`[URL] Loading aircraft from URL: ${hex.toUpperCase()}`);
+
+            // Select and highlight the aircraft
+            selectAircraft(hex);
+
+            // Enable follow mode
+            followMode = true;
+            followedAircraftHex = hex;
+            followLocked = false; // Start unlocked so user can orbit
+
+            // Sync FollowState for camera-rendering module
+            FollowState.mode = true;
+            FollowState.hex = hex;
+            FollowState.locked = false;
+
+            // Set camera to a reasonable zoom-out distance
+            CameraState.distance = 150; // Zoomed out more than default focusOnAircraft
+
+            // Focus camera on aircraft with the new distance
+            CameraRendering.focusOnAircraft(hex);
+
+            // Show unfollow button
+            showUnfollowButton();
+            updateFollowButtonText();
+
+            // Hide detail panel since we're in follow mode
+            document.getElementById('aircraft-detail').style.display = 'none';
+        };
+
         // Check if this aircraft exists
         if (aircraftMeshes.has(hexLower)) {
-            console.log(`[URL] Loading aircraft from URL: ${icao}`);
-            // Use focusOnAircraft instead of showAircraftDetail to get camera animation
-            CameraRendering.focusOnAircraft(hexLower);
+            setupAircraftFromUrl(hexLower);
 
             // If Track API is available, load 5min of recent trails
             if (AppFeatures.historical) {
@@ -6402,7 +6431,7 @@ function checkUrlParameters() {
             // Aircraft not yet loaded, try again in a moment
             setTimeout(() => {
                 if (aircraftMeshes.has(hexLower) && !trailsLoaded) {
-                    CameraRendering.focusOnAircraft(hexLower);
+                    setupAircraftFromUrl(hexLower);
 
                     if (AppFeatures.historical) {
                         console.log(`[URL] Auto-loading 5min of recent trails for ${icao}`);
