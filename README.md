@@ -302,14 +302,29 @@ Browser 3D Viewer
 - **Resolution options**: Full detail, 1-min intervals, 5-min intervals
 - **Rate limiting**: 30 requests/min per IP, burst of 10
 
-**Source Code:**
-- `public/index.html` - ~2650 lines (HTML, CSS, 7 themes)
-- `public/app.js` - ~6100 lines (Three.js, rendering, interactions)
+**Source Code (Modular Architecture):**
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `public/index.html` | ~2650 | HTML structure, CSS, 7 themes |
+| `public/app.js` | ~8300 | Main orchestrator, UI, aircraft rendering |
+| `public/constants.js` | ~420 | Configuration, API endpoints, timing |
+| `public/theme-manager.js` | ~710 | Theme definitions and switching |
+| `public/url-state-manager.js` | ~620 | URL state, browser navigation |
+| `public/aircraft-database.js` | ~260 | Military aircraft detection |
+| `public/data-service-live.js` | ~130 | Real-time data fetching |
+| `public/data-service-historical.js` | ~640 | Historical track loading |
+| `public/historical-mode.js` | ~1680 | Historical playback, heat maps, corridors |
+| `public/camera-rendering.js` | ~600 | Camera controls, render loop |
+| `public/aircraft-svg-system.js` | ~1390 | Aircraft shape sprites |
 
 **Making Changes:**
 ```bash
-# Edit files
-vim public/app.js
+# Edit files (organized by feature)
+vim public/theme-manager.js      # Themes
+vim public/historical-mode.js    # Historical features
+vim public/camera-rendering.js   # Camera controls
+vim public/constants.js          # Configuration
 
 # Rebuild and deploy
 docker compose build adsb-3d
@@ -317,10 +332,10 @@ docker compose up -d adsb-3d
 ```
 
 **Common Customizations:**
-- Default theme: `app.js` line ~100
-- New color scheme: `index.html` CSS variables
-- Camera defaults: `app.js` initialization
-- Update frequency: `CONFIG.updateInterval` in `app.js`
+- Configuration values: `constants.js` (timing, limits, defaults)
+- New color scheme: `index.html` CSS variables + `theme-manager.js`
+- Camera defaults: `camera-rendering.js` or `constants.js`
+- Update frequency: `TIMING.LIVE_UPDATE_INTERVAL` in `constants.js`
 
 ## Known Limitations
 

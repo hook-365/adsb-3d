@@ -139,8 +139,14 @@ import {
 // Import historical mode module
 import { initHistoricalMode } from './historical-mode.js';
 
+// Import camera & rendering module
+import { initCameraRendering } from './camera-rendering.js';
+
 // Historical mode module instance (will be initialized after dependencies are available)
 let HistoricalMode = null;
+
+// Camera & rendering module instance (will be initialized after dependencies are available)
+let CameraRendering = null;
 
 // Wrapper functions to handle dependencies for URLState methods
 // (These will be defined after the required functions/variables are available)
@@ -627,14 +633,27 @@ let showLabels = true;
 let showAltitudeLines = true;
 let showHomeTower = true; // Home tower marker (on by default)
 let showTronMode = true; // Tron mode: vertical altitude curtains beneath trails (on by default)
-let followMode = false;
-let followedAircraftHex = null;
-let autoFadeTrails = false; // Auto-fade old trail positions
-let trailFadeTime = -1; // Fade time in seconds (default: -1 = immediate)
+
+// Follow mode state - consolidated object for camera-rendering.js module
+const FollowState = {
+    mode: false,
+    hex: null,
+    locked: true, // When true, camera locked behind aircraft; when false, free orbit
+    returnInProgress: false
+};
+
+// Trail configuration - for camera-rendering.js module
+const TrailConfig = {
+    autoFade: false, // Auto-fade old trail positions
+    fadeTime: -1 // Fade time in seconds (default: -1 = immediate)
+};
+
+// Backward-compatible variable aliases for trail settings
+let autoFadeTrails = TrailConfig.autoFade;
+let trailFadeTime = TrailConfig.fadeTime;
+
 let liveRadarData = []; // Always store live aircraft for mini radar (even in historical mode)
 let urlParamsChecked = false; // Track if we've checked URL parameters on load
-let followLocked = true; // When true, camera locked behind aircraft; when false, free orbit
-let cameraReturnInProgress = false;
 let lastNorthArrowAngle = 0; // Track north arrow rotation for smooth animation
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
@@ -649,12 +668,25 @@ const API_RATE_LIMIT_MS = RATE_LIMIT.API_MIN_INTERVAL;
 let lastAPICall = 0;
 let pendingRouteRequests = new Map(); // Track in-flight requests to avoid duplicates
 
-// Camera control state (for manual orbit during follow mode)
-let cameraAngleX = 0; // Start facing north (camera south of origin)
-let cameraAngleY = Math.PI / 6;
-let cameraDistance = 100;
-let isDragging = false;
-let wasDragging = false;
+// Camera & Rendering State - consolidated object for camera-rendering.js module
+const CameraState = {
+    // Camera angles and distance
+    angleX: 0, // Start facing north (camera south of origin)
+    angleY: Math.PI / 6,
+    distance: 100,
+    // Drag state
+    isDragging: false,
+    wasDragging: false,
+    // Rendering timing
+    lastFrameTime: 0,
+    lastSkyUpdate: 0,
+    lastStaleTrailCleanup: 0,
+    // Frame limiting
+    targetFPS: 30,
+    get frameInterval() {
+        return 1000 / this.targetFPS;
+    }
+};
 
 // Airport/Runway data
 let airports = [];
@@ -671,242 +703,9 @@ let showRunwaysEnabled = true;
 // Aircraft shapes provide accurate representations using tar1090's SVG system
 
 let useSpriteMode = true; // Toggle with Shift+S (SVG shapes enabled by default)
-let spriteTexture = null; // Legacy sprite sheet (no longer used)
 
 // SVG Aircraft Shape System is loaded from aircraft-svg-system.js
-// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
-
-// SVG Aircraft Shape System is loaded from aircraft-svg-system.js
-// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
-
-// Load sprite texture
-function loadSpriteTexture() {
-    const loader = new THREE.TextureLoader();
-    // Set crossOrigin to allow loading from same origin
-    loader.crossOrigin = 'anonymous';
-
-    // Use absolute path to avoid relative path issues
-    loader.load(
-        '/images/sprites.png',
-        (texture) => {
-            // Configure texture for sprite sheet usage
-            // Use NearestFilter to prevent bleeding between sprites
-            texture.minFilter = THREE.NearestFilter;
-            texture.magFilter = THREE.NearestFilter;
-            texture.colorSpace = THREE.SRGBColorSpace;
-
-            // CRITICAL: Set wrapping to ClampToEdge to prevent texture bleeding
-            texture.wrapS = THREE.ClampToEdgeWrapping;
-            texture.wrapT = THREE.ClampToEdgeWrapping;
-
-            // Don't generate mipmaps for sprite sheets
-            texture.generateMipmaps = false;
-
-            spriteTexture = texture;
-
-            // DIAGNOSTIC: Log actual texture dimensions
-            console.log('[Sprites] Loaded sprite sheet:');
-            console.log(`  - Image dimensions: ${texture.image.width}x${texture.image.height}`);
-            console.log(`  - Expected: 1376x516`);
-            console.log(`  - Match: ${texture.image.width === 1376 && texture.image.height === 516 ? 'YES' : 'NO'}`);
-            console.log(`  - Texture ready: ${texture.image.complete}`);
-            console.log(`  - Sprite size: ${SPRITE_CONFIG.spriteWidth}x${SPRITE_CONFIG.spriteHeight}`);
-            console.log(`  - Grid: ${SPRITE_CONFIG.columns}x${SPRITE_CONFIG.rows}`);
-
-            // Sprite mode is now loaded during init, no need to reload here
-        },
-        (progress) => {
-            // Optional: log loading progress
-            if (progress.lengthComputable) {
-                const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                console.log(`[Sprites] Loading: ${percent}%`);
-            }
-        },
-        (error) => {
-            console.error('[Sprites] Failed to load sprite sheet:', error);
-            console.error('[Sprites] Sprites unavailable, using spheres only');
-            console.error('[Sprites] URL attempted:', '/images/sprites.png');
-        }
-    );
-}
-
-// Get sprite position based on aircraft category
-// Returns {row, col} - heading rotation is done via mesh rotation, not sprite selection
-function getSpritePosition(category = 'default') {
-    const position = SPRITE_POSITIONS[category] || SPRITE_POSITIONS.default;
-    return { row: position.row, col: position.col };
-}
-
-// Create shader material for sprite rendering
-// This avoids texture cloning issues by selecting sprite regions in the shader
-function createSpriteMaterial(row, column, color) {
-    const spriteWidth = SPRITE_CONFIG.spriteWidth;
-    const spriteHeight = SPRITE_CONFIG.spriteHeight;
-    const texWidth = SPRITE_CONFIG.textureWidth;
-    const texHeight = SPRITE_CONFIG.textureHeight;
-
-    // Calculate UV offset and size for this sprite
-    // Keep it simple - no half-pixel adjustments yet
-    const uOffset = column * spriteWidth / texWidth;
-    const uSize = spriteWidth / texWidth;
-
-    // Flip V coordinate: WebGL (0,0) is bottom-left, but image row 0 is at top
-    // Row 0 is at top of image (V near 1.0), row 5 is at bottom (V near 0.0)
-    const vOffset = 1.0 - ((row + 1) * spriteHeight / texHeight);
-    const vSize = spriteHeight / texHeight;
-
-    console.log(`[Sprites] Shader material for [${row},${column}]: uOffset=${uOffset.toFixed(4)}, vOffset=${vOffset.toFixed(4)}, uSize=${uSize.toFixed(4)}, vSize=${vSize.toFixed(4)}`);
-
-    // Custom shader that samples only the specified sprite region
-    const vertexShader = `
-        varying vec2 vUv;
-
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `;
-
-    const fragmentShader = `
-        uniform sampler2D spriteSheet;
-        uniform vec2 uvOffset;
-        uniform vec2 uvSize;
-        uniform vec3 tintColor;
-        varying vec2 vUv;
-
-        void main() {
-            // Map UV coordinates to sprite region
-            vec2 spriteUV = uvOffset + (vUv * uvSize);
-
-            // Sample the sprite sheet
-            vec4 texColor = texture2D(spriteSheet, spriteUV);
-
-            // Detect white outline (bright pixels with high RGB values)
-            float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
-            bool isWhiteOutline = brightness > 0.9 && texColor.a > 0.5;
-
-            // Replace white outline with dark gray/black
-            if (isWhiteOutline) {
-                texColor.rgb = vec3(0.1, 0.1, 0.1); // Dark gray instead of white
-            }
-
-            // Apply color tint to non-transparent pixels
-            vec3 finalColor = texColor.rgb * tintColor;
-
-            gl_FragColor = vec4(finalColor, texColor.a);
-        }
-    `;
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            spriteSheet: { value: spriteTexture },
-            uvOffset: { value: new THREE.Vector2(uOffset, vOffset) },
-            uvSize: { value: new THREE.Vector2(uSize, vSize) },
-            tintColor: { value: new THREE.Color(color) }
-        },
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false
-    });
-
-    return material;
-}
-
-// Determine aircraft category from type/size data
-// Returns category name that maps to SPRITE_POSITIONS
-function getAircraftCategory(aircraftData) {
-    if (!aircraftData) {
-        return 'default';
-    }
-
-    // First check the 't' field (ICAO type designator) from registration data
-    const typeCode = (aircraftData.t || '').toUpperCase();
-
-    // Check if we have a direct type mapping
-    if (typeCode && TYPE_TO_SPRITE[typeCode]) {
-        const spriteKey = TYPE_TO_SPRITE[typeCode];
-        // Make sure this sprite position exists
-        if (SPRITE_POSITIONS[spriteKey]) {
-            // console.log(`[Sprites] Type ${typeCode} -> ${spriteKey}`);
-            return spriteKey;
-        }
-    }
-
-    // Check ADS-B category field (some aircraft transmit this)
-    // Following tar1090's CategoryIcons mapping exactly
-    const category = aircraftData.category;
-    if (category) {
-        // Categories from ADS-B specification (matching tar1090)
-        // A-series: Fixed-wing aircraft
-        if (category === 'A1') return 'cessna';       // Light (< 7 tons) - Cessna-type GA
-        if (category === 'A2') return 'jet_swept';    // Small (< 34 tons) - Regional jets
-        if (category === 'A3') return 'airliner';     // Large (< 136 tons) - Airliners
-        if (category === 'A4') return 'airliner';     // High vortex (< 136 tons)
-        if (category === 'A5') return 'heavy_2e';     // Heavy (> 136 tons)
-        if (category === 'A6') return 'hi_perf';      // High performance
-        if (category === 'A7') return 'helicopter';   // Rotorcraft
-
-        // B-series: Gliders/Balloons
-        if (category === 'B1') return 'glider';
-        if (category === 'B2') return 'balloon';
-        if (category === 'B4') return 'light';        // Ultralight
-        if (category === 'B6') return 'light';        // UAV/drone
-
-        // C-series: Ground vehicles
-        if (category === 'C0') return 'ground_vehicle';
-        if (category === 'C1') return 'ground_vehicle';  // Emergency
-        if (category === 'C2') return 'ground_vehicle';  // Service
-        if (category === 'C3') return 'tower';           // Tower
-    }
-
-    // Additional type detection patterns
-    if (typeCode) {
-        // Helicopters
-        if (typeCode.startsWith('H') || typeCode.includes('HELI') ||
-            typeCode.startsWith('R22') || typeCode.startsWith('R44') ||
-            typeCode.startsWith('EC1') || typeCode.startsWith('AS3')) {
-            return 'helicopter';
-        }
-
-        // Light aircraft patterns
-        if (typeCode.startsWith('C1') || typeCode.startsWith('PA') ||
-            typeCode.startsWith('BE') || typeCode.startsWith('SR2') ||
-            typeCode.startsWith('DA4') || typeCode.startsWith('RV') ||
-            typeCode.includes('VANS') || typeCode.startsWith('LONG') ||
-            typeCode.startsWith('GLASAIR') || typeCode.startsWith('LANCAIR')) {
-            return 'light';
-        }
-
-        // Turboprops
-        if (typeCode.startsWith('AT') || typeCode.startsWith('DH8') ||
-            typeCode.includes('TURBO')) {
-            return 'turboprop';
-        }
-
-        // Military fighters
-        if (typeCode.startsWith('F') && typeCode.length <= 4 &&
-            /^F\d/.test(typeCode)) {
-            return 'fighter';
-        }
-
-        // Wide-body detection
-        if (typeCode.startsWith('A33') || typeCode.startsWith('A34') ||
-            typeCode.startsWith('A35') || typeCode.startsWith('B77') ||
-            typeCode.startsWith('B78')) {
-            return 'heavy_2e';
-        }
-
-        // Four-engine detection
-        if (typeCode.startsWith('A38') || typeCode.startsWith('B74')) {
-            return 'heavy_4e';
-        }
-    }
-
-    // Default to generic airliner for unknown types
-    return 'airliner';
-}
+// Aircraft shapes provide accurate representations using tar1090's SVG system
 
 // ============================================================================
 // HISTORICAL MODE FUNCTIONS
@@ -2137,11 +1936,36 @@ function init() {
     // Store beacon reference for pulsing animation
     window.homeBeacon = beacon;
 
+    // Initialize Camera & Rendering module with dependencies (must be before setupMouseControls)
+    CameraRendering = initCameraRendering({
+        scene,
+        camera,
+        renderer,
+        THREE,
+        CameraState,
+        FollowState,
+        TrailConfig,
+        aircraftMeshes,
+        staleTrails,
+        CONFIG,
+        TIMING,
+        getSelectedAircraft: () => selectedAircraft,
+        setSelectedAircraft: (aircraft) => { selectedAircraft = aircraft; },
+        updateSkyColors,
+        updateSidebarMiniRadar,
+        updateSidebarHeading,
+        updateFollowButtonText,
+        hideUnfollowButton,
+        showAircraftContextMenu,
+        showAircraftDetail
+    });
+    console.log('[CameraRendering] Module initialized');
+
     // Mouse controls
-    setupMouseControls();
+    CameraRendering.setupMouseControls();
 
     // Window resize
-    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('resize', CameraRendering.onWindowResize);
 
     // Initialize Historical Mode module with dependencies (must be before setupUIControls)
     HistoricalMode = initHistoricalMode({
@@ -2199,7 +2023,7 @@ function init() {
     // SVG aircraft system loaded via aircraft-svg-system.js
 
     // Start animation loop
-    animate();
+    CameraRendering.animate();
 
     // Start fetching aircraft data (live mode by default)
     startLiveUpdates({
@@ -2790,8 +2614,7 @@ function addDistanceRings() {
         scene.add(ring);
 
         // Add distance label at north position of ring
-        const label = CONFIG.distanceRingLabels[index] || `${distance.toFixed(0)} km`;
-        const distanceLabel = createDistanceRingLabel(label);
+        const distanceLabel = createDistanceRingLabel(`${distance} km`);
         distanceLabel.position.set(0, 0.5, -radius); // North side of ring, slightly elevated
         scene.add(distanceLabel);
     });
@@ -2821,12 +2644,7 @@ function createDistanceRingLabel(text) {
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
-    const spriteMaterial = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false
-    });
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
 
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.scale.set(20, 5, 1); // Much larger - similar to aircraft labels
@@ -2835,411 +2653,11 @@ function createDistanceRingLabel(text) {
 }
 
 // Sync camera angles from current position (for smooth transition to free orbit)
-function syncCameraAnglesFromPosition() {
-    const centerPoint = followMode && followedAircraftHex ?
-        aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-
-    if (!centerPoint) return;
-
-    // Calculate relative position
-    const relativePos = camera.position.clone().sub(centerPoint);
-
-    // Calculate distance
-    cameraDistance = relativePos.length();
-
-    // Calculate angles
-    const horizontalDist = Math.sqrt(relativePos.x * relativePos.x + relativePos.z * relativePos.z);
-    cameraAngleY = Math.atan2(horizontalDist, relativePos.y);
-    cameraAngleX = Math.atan2(relativePos.z, relativePos.x);
-}
 
 // Update camera position based on angles and distance
-function updateCameraPosition(centerPoint = new THREE.Vector3(0, 0, 0)) {
-    if (!followMode || !followLocked) {
-        const x = cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX);
-        const y = cameraDistance * Math.cos(cameraAngleY);
-        const z = cameraDistance * Math.sin(cameraAngleY) * Math.sin(cameraAngleX);
 
-        camera.position.set(
-            centerPoint.x + x,
-            centerPoint.y + y,
-            centerPoint.z + z
-        );
-        camera.lookAt(centerPoint);
-    }
-}
-
-function setupMouseControls() {
-    let previousMousePosition = { x: 0, y: 0 };
-    let mouseDownPosition = { x: 0, y: 0 };
-    let actuallyDragged = false;
-
-    const canvas = document.getElementById('canvas');
-
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        actuallyDragged = false; // Reset drag tracking
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-        mouseDownPosition = { x: e.clientX, y: e.clientY }; // Track initial position
-
-        // Sync camera angles with current position before starting drag
-        // This ensures dragging continues from current orientation
-        syncCameraAnglesFromPosition();
-
-        // If user starts dragging during locked follow mode, unlock it
-        if (followMode && followLocked) {
-            followLocked = false;
-            updateFollowButtonText();
-        }
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const deltaX = e.clientX - previousMousePosition.x;
-            const deltaY = e.clientY - previousMousePosition.y;
-
-            // Calculate total distance moved from initial mousedown
-            const totalDeltaX = e.clientX - mouseDownPosition.x;
-            const totalDeltaY = e.clientY - mouseDownPosition.y;
-            const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
-
-            // Only consider it "dragging" if moved more than 5 pixels
-            if (totalDistance > 5) {
-                actuallyDragged = true;
-            }
-
-            cameraAngleX += deltaX * 0.005;
-            cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2, cameraAngleY - deltaY * 0.005));
-
-            // Update camera only if not in locked follow mode
-            if (!followMode || !followLocked) {
-                const followTarget = followMode && followedAircraftHex ?
-                    aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                updateCameraPosition(followTarget);
-            }
-
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-        }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-        wasDragging = actuallyDragged; // Only set if actually moved significantly
-        isDragging = false;
-        actuallyDragged = false;
-    });
-
-    canvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-
-        // Sync camera angles with current position before zooming
-        // This ensures zooming continues from current orientation
-        syncCameraAnglesFromPosition();
-
-        // If user zooms during locked follow mode, unlock it
-        if (followMode && followLocked) {
-            followLocked = false;
-            updateFollowButtonText();
-        }
-
-        const oldDistance = cameraDistance;
-        // Zoom limits: 10 (close-up) to 1200 (wide view for large-area feeders)
-        cameraDistance = Math.max(10, Math.min(1200, cameraDistance + e.deltaY * 0.1));
-
-        // Update camera only if not in locked follow mode
-        if (!followMode || !followLocked) {
-            const followTarget = followMode && followedAircraftHex ?
-                aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-            updateCameraPosition(followTarget);
-        }
-    });
-
-    // Touch controls for mobile devices
-    setupTouchControls(canvas);
-}
 
 // Setup touch controls for mobile
-function setupTouchControls(canvas) {
-    let touchStartPositions = [];
-    let initialPinchDistance = null;
-    let initialCameraDistance = null;
-    let touchStartTime = 0;
-    let touchMoved = false;
-    let wasTouchDragging = false;
-
-    // Add long-press and double-tap support
-    let longPressTimer = null;
-    let lastTapTime = 0;
-    const LONG_PRESS_TIME = 500; // milliseconds
-    const DOUBLE_TAP_TIME = 300; // milliseconds
-
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        touchStartPositions = Array.from(e.touches).map(touch => ({
-            x: touch.clientX,
-            y: touch.clientY
-        }));
-        touchStartTime = Date.now();
-        touchMoved = false;
-
-        if (e.touches.length === 1) {
-            // Single touch - prepare for rotation and long-press detection
-            isDragging = true;
-            syncCameraAnglesFromPosition();
-
-            // Start long-press timer
-            longPressTimer = setTimeout(() => {
-                // Long-press detected - show aircraft context menu
-                const touch = e.touches[0];
-                const raycaster = new THREE.Raycaster();
-                const mouse = new THREE.Vector2();
-
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
-
-                if (intersects.length > 0) {
-                    // Found an aircraft - show context menu
-                    showAircraftContextMenu(touch.clientX, touch.clientY, intersects[0]);
-                }
-
-                longPressTimer = null;
-            }, LONG_PRESS_TIME);
-
-            // Unlock follow mode if active
-            if (followMode && followLocked) {
-                followLocked = false;
-                updateFollowButtonText();
-            }
-        } else if (e.touches.length === 2) {
-            // Two finger touch - prepare for pinch/zoom
-            isDragging = false;
-
-            // Cancel long-press when switching to two fingers
-            if (longPressTimer) {
-                clearTimeout(longPressTimer);
-                longPressTimer = null;
-            }
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
-            initialCameraDistance = cameraDistance;
-            // console.log(`[Mobile Zoom] Start pinch - initial distance: ${initialCameraDistance.toFixed(0)}, pinch: ${initialPinchDistance.toFixed(0)}`);
-
-            syncCameraAnglesFromPosition();
-
-            // Unlock follow mode if active
-            if (followMode && followLocked) {
-                followLocked = false;
-                updateFollowButtonText();
-            }
-        }
-    });
-
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-
-        // Mark as moved if touch position changed significantly
-        if (e.touches.length > 0 && touchStartPositions.length > 0) {
-            const deltaX = e.touches[0].clientX - touchStartPositions[0].x;
-            const deltaY = e.touches[0].clientY - touchStartPositions[0].y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            if (distance > 10) {  // 10px threshold for tap vs drag
-                touchMoved = true;
-
-                // Cancel long-press if user moves finger
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    longPressTimer = null;
-                }
-            }
-        }
-
-        if (e.touches.length === 1 && isDragging) {
-            // Single finger drag - rotate camera
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - touchStartPositions[0].x;
-            const deltaY = touch.clientY - touchStartPositions[0].y;
-
-            cameraAngleX += deltaX * 0.005;
-            cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2, cameraAngleY - deltaY * 0.005));
-
-            // Update camera only if not in locked follow mode
-            if (!followMode || !followLocked) {
-                const followTarget = followMode && followedAircraftHex ?
-                    aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                updateCameraPosition(followTarget);
-            }
-
-            touchStartPositions = [{ x: touch.clientX, y: touch.clientY }];
-        } else if (e.touches.length === 2) {
-            // Two finger pinch - zoom
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-            if (initialPinchDistance !== null) {
-                const scale = currentDistance / initialPinchDistance;
-                // Standard mobile behavior: spread fingers (scale > 1) = zoom IN (decrease distance)
-                // pinch fingers (scale < 1) = zoom OUT (increase distance)
-                // So we divide by scale
-                const newDistance = initialCameraDistance / scale;
-
-                // Apply zoom with same limits as desktop
-                // When hitting the max, clamp to max instead of resetting
-                const oldCameraDistance = cameraDistance;
-                // Pinch zoom limits: 10 (close) to 1200 (far) - supports large-area feeders
-                cameraDistance = Math.max(10, Math.min(1200, newDistance));
-
-                // Debug logging disabled after fixing zoom issues
-                // console.log(`[Mobile Zoom] Pinch - scale: ${scale.toFixed(2)}, old: ${oldCameraDistance.toFixed(0)}, new: ${cameraDistance.toFixed(0)}, initial: ${initialCameraDistance.toFixed(0)}`);
-
-                // Update camera only if not in locked follow mode
-                if (!followMode || !followLocked) {
-                    const followTarget = followMode && followedAircraftHex ?
-                        aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                    updateCameraPosition(followTarget);
-                }
-            }
-        }
-    });
-
-    canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-
-        // Clear long-press timer if active
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-
-        // Capture drag state before resetting
-        wasTouchDragging = touchMoved;
-
-        // Detect tap (quick touch without movement)
-        const touchDuration = Date.now() - touchStartTime;
-        const wasTap = !wasTouchDragging && touchDuration < 300 && touchStartPositions.length === 1;
-
-        // Check for double-tap to reset camera
-        const currentTime = Date.now();
-        if (wasTap && currentTime - lastTapTime < DOUBLE_TAP_TIME && currentTime - lastTapTime > 0) {
-            // Double-tap detected - reset camera
-            resetCamera();
-            lastTapTime = 0; // Reset to prevent triple tap
-            return; // Don't process as single tap
-        } else if (wasTap) {
-            lastTapTime = currentTime;
-        }
-
-        if (wasTap && e.changedTouches.length > 0) {
-            // This was a tap - perform aircraft selection
-            const touch = e.changedTouches[0];
-            const rect = canvas.getBoundingClientRect();
-            const mouse = {
-                x: ((touch.clientX - rect.left) / rect.width) * 2 - 1,
-                y: -((touch.clientY - rect.top) / rect.height) * 2 + 1
-            };
-
-            // Update raycaster with tap position
-            raycaster.setFromCamera(mouse, camera);
-
-            // Check for intersections with aircraft meshes, labels, airports, historical tracks, and endpoints
-            const aircraftArray = Array.from(aircraftMeshes.values());
-            const labelArray = Array.from(aircraftLabels.values());
-            // Only include tracks and endpoints that are IN THE SCENE (have a parent)
-            const historicalTracksArray = Array.from(HistoricalState.trackMeshes.values())
-                .filter(tm => tm.line.parent)
-                .map(tm => tm.line);
-            const endpointsArray = (HistoricalState.endpointMeshes || [])
-                .filter(endpoint => endpoint.parent);
-            const allClickableObjects = [...aircraftArray, ...labelArray, ...airportMeshes, ...historicalTracksArray, ...endpointsArray];
-            const intersects = raycaster.intersectObjects(allClickableObjects, true);
-
-            if (intersects.length > 0) {
-                const tappedObject = intersects[0].object;
-
-                // Check if we tapped a historical endpoint
-                if (tappedObject.userData && tappedObject.userData.isHistoricalEndpoint) {
-                    HistoricalMode.showHistoricalTrackDetail(tappedObject.userData);
-                    return;
-                }
-
-                // Check if we tapped a historical track line
-                if (tappedObject.userData && tappedObject.userData.isHistoricalTrack) {
-                    HistoricalMode.showHistoricalTrackDetail(tappedObject.userData);
-                    return;
-                }
-
-                // Check if we tapped an airport label
-                for (const airportSprite of airportMeshes) {
-                    if (airportSprite === tappedObject && airportSprite.userData.isAirportLabel) {
-                        showAirportDetail(airportSprite.userData.airport);
-                        return;
-                    }
-                }
-
-                // Check if we tapped an aircraft label
-                for (const [hex, labelGroup] of aircraftLabels.entries()) {
-                    if (labelGroup === tappedObject || labelGroup.children.includes(tappedObject)) {
-                        showAircraftDetail(hex);
-                        return;
-                    }
-                }
-
-                // Otherwise, find the parent Group (aircraft) for this tapped mesh
-                let aircraftGroup = tappedObject;
-                while (aircraftGroup && aircraftGroup.parent && aircraftGroup.parent.type !== 'Scene') {
-                    aircraftGroup = aircraftGroup.parent;
-                }
-
-                // Find the hex for this aircraft group
-                // Check the tapped object, its parent, and all ancestors
-                for (const [hex, mesh] of aircraftMeshes.entries()) {
-                    if (mesh === aircraftGroup ||
-                        mesh === tappedObject ||
-                        mesh.children.includes(tappedObject) ||
-                        tappedObject.parent === mesh) {
-                        console.log(`[Tap] Detected tap on aircraft ${hex}, showing details`);
-                        showAircraftDetail(hex);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (e.touches.length === 0) {
-            // All fingers lifted
-            // console.log(`[Mobile Zoom] All fingers lifted - final distance: ${cameraDistance.toFixed(0)}`);
-            isDragging = false;
-            initialPinchDistance = null;
-            initialCameraDistance = null;
-            touchStartPositions = [];
-            touchMoved = false;
-            wasTouchDragging = false;
-        } else if (e.touches.length === 1) {
-            // One finger remaining - reset for single touch
-            // console.log(`[Mobile Zoom] One finger remaining - current distance: ${cameraDistance.toFixed(0)}`);
-            touchStartPositions = [{
-                x: e.touches[0].clientX,
-                y: e.touches[0].clientY
-            }];
-            initialPinchDistance = null;
-            initialCameraDistance = null;
-            touchStartTime = Date.now();
-            touchMoved = false;
-            wasTouchDragging = false;
-        }
-    });
-
-    canvas.addEventListener('touchcancel', (e) => {
-        e.preventDefault();
-        isDragging = false;
-        initialPinchDistance = null;
-        initialCameraDistance = null;
-        touchStartPositions = [];
-    });
-}
 
 // Update follow button text based on current state
 function updateFollowButtonText() {
@@ -3271,30 +2689,6 @@ function hideUnfollowButton() {
 }
 
 // Reset camera to default position and stop following
-function resetCamera() {
-    // Turn off follow mode FIRST to prevent interference with animation
-    if (followMode) {
-        followMode = false;
-        followedAircraftHex = null;
-        const followBtn = document.getElementById('toggle-follow');
-        if (followBtn) {
-            followBtn.style.display = 'none';
-        }
-        updateFollowButtonText();
-        hideUnfollowButton();
-    }
-
-    // Smooth camera animation to default position (facing north)
-    const homePos = new THREE.Vector3(0, 50, 100);
-    const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-    animateCameraToPosition(homePos, homeLookAt, 1000, () => {
-        // Animation complete - update camera angles
-        cameraAngleX = 0; // Facing north
-        cameraAngleY = Math.PI / 6;
-        cameraDistance = 100;
-    });
-}
 
 /**
  * Sanitize HTML to prevent XSS attacks
@@ -3510,14 +2904,14 @@ function setupUIControls() {
 
     // Reset camera button
     document.getElementById('reset-camera').addEventListener('click', () => {
-        resetCamera();
+        CameraRendering.resetCamera();
     });
 
     // Unfollow button
     const unfollowBtn = document.getElementById('unfollow-btn');
     if (unfollowBtn) {
         unfollowBtn.addEventListener('click', () => {
-            resetCamera();
+            CameraRendering.resetCamera();
         });
     }
 
@@ -3964,7 +3358,7 @@ function setupUIControls() {
             if (followMode) {
                 if (followLocked) {
                     // Switching from locked to free - sync angles first
-                    syncCameraAnglesFromPosition();
+                    CameraRendering.syncCameraAnglesFromPosition();
                 }
                 followLocked = !followLocked;
                 updateFollowButtonText();
@@ -3983,15 +3377,19 @@ function setupUIControls() {
                     cameraReturnInProgress = false;
                     // Hide aircraft detail panel during follow mode so it doesn't block view
                     document.getElementById('aircraft-detail').style.display = 'none';
+                    // Show unfollow button when following an aircraft
+                    showUnfollowButton();
                 } else {
                     followMode = false;
                     followedAircraftHex = null;
+                    // Hide unfollow button when not following
+                    hideUnfollowButton();
 
                     // Smooth camera animation to initial position (same as reset button)
                     const homePos = new THREE.Vector3(0, 50, 100);
                     const homeLookAt = new THREE.Vector3(0, 0, 0);
 
-                    animateCameraToPosition(homePos, homeLookAt, 1000, () => {
+                    CameraRendering.animateCameraToPosition(homePos, homeLookAt, 1000, () => {
                         // Animation complete - update camera angles
                         cameraAngleX = 0; // Facing north
                         cameraAngleY = Math.PI / 6;
@@ -6234,7 +5632,6 @@ function updateUI(data) {
             }
 
             item.innerHTML = `
-                <div class="aircraft-callsign">${callsign}${verticalIndicator} ${badges}</div>
                 <div class="aircraft-details">
                     ${type} • ${alt} • ${speed} • ${dist}
                 </div>
@@ -6286,47 +5683,6 @@ function updateUI(data) {
 
 // Reusable smooth camera animation function
 // Uses ease-in-out cubic for smooth acceleration and deceleration
-function animateCameraToPosition(targetPosition, targetLookAt, duration = 1500, onComplete = null) {
-    const startPos = camera.position.clone();
-    const startLookAt = new THREE.Vector3(0, 0, -1)
-        .applyQuaternion(camera.quaternion)
-        .add(camera.position);
-    const startTime = Date.now();
-
-    function easeInOutCubic(t) {
-        return t < 0.5
-            ? 4 * t * t * t
-            : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    }
-
-    function animate() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Ease-in-out cubic for smooth start and end
-        const easeProgress = easeInOutCubic(progress);
-
-        // Smoothly interpolate both position and look-at target
-        const currentPos = new THREE.Vector3().lerpVectors(startPos, targetPosition, easeProgress);
-        const currentLookAt = new THREE.Vector3().lerpVectors(startLookAt, targetLookAt, easeProgress);
-
-        camera.position.copy(currentPos);
-        camera.lookAt(currentLookAt);
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            // Animation complete - ensure final position is exact
-            camera.position.copy(targetPosition);
-            camera.lookAt(targetLookAt);
-            if (onComplete) {
-                onComplete();
-            }
-        }
-    }
-
-    animate();
-}
 
 /**
  * Select an aircraft and show its detail panel
@@ -6350,47 +5706,6 @@ function selectAircraft(hex) {
     }
 }
 
-function focusOnAircraft(hex) {
-    const mesh = aircraftMeshes.get(hex);
-    if (!mesh) return;
-
-    // Show aircraft details
-    showAircraftDetail(hex);
-
-    // Load full trail if not already loaded (only in live mode with Track API available)
-    if (currentMode === 'live' && AppFeatures.historical && !FullTrailsState.icaos.has(hex)) {
-        loadFullTrailForAircraft(hex);
-    }
-
-    // Smooth camera transition to aircraft
-    const targetPos = mesh.position;
-    const distance = 30; // Distance from aircraft
-    const height = 15; // Height above aircraft
-
-    // Calculate new camera position
-    const newCameraPos = targetPos.clone().add(new THREE.Vector3(distance, height, distance));
-
-    // Use reusable camera animation function
-    animateCameraToPosition(newCameraPos, targetPos, 1000, () => {
-        // Animation complete - enable follow mode in free orbit
-        followMode = true;
-        followedAircraftHex = hex;
-        followLocked = false; // Free orbit mode, not locked
-        cameraReturnInProgress = false;
-
-        // Sync camera angles from current position for smooth free orbit
-        syncCameraAnglesFromPosition();
-
-        // Update follow button to show it's active in free orbit mode
-        updateFollowButtonText();
-
-        // Keep the detail panel visible (unlike locked follow mode)
-        document.getElementById('aircraft-detail').style.display = 'block';
-
-        // Show unfollow button
-        showUnfollowButton();
-    });
-}
 
 /**
  * Highlight or unhighlight an aircraft in the 3D scene
@@ -6640,214 +5955,10 @@ function updateMiniStatistics(aircraftList) {
     }
 }
 
-// Last sky update time
-let lastSkyUpdate = 0;
-let lastStaleTrailCleanup = 0;
+// Camera rendering handled by camera-rendering.js module (see CameraState object)
 
-// Frame rate limiting variables
-let lastFrameTime = 0;
-const targetFPS = 30;  // Limit to 30fps instead of 60fps
-const frameInterval = 1000 / targetFPS;
 
-function animate() {
-    requestAnimationFrame(animate);
 
-    // Limit frame rate to reduce GPU usage
-    const now = Date.now();
-    const deltaTime = now - lastFrameTime;
-
-    if (deltaTime < frameInterval) {
-        return;  // Skip this frame
-    }
-
-    lastFrameTime = now - (deltaTime % frameInterval);
-
-    // Update sky colors every 60 seconds
-    if (now - lastSkyUpdate > 60000) {
-        updateSkyColors();
-        lastSkyUpdate = now;
-    }
-
-    // Clean up old stale trails to prevent memory leak
-    // Remove trails from aircraft that disappeared more than 30 minutes ago
-    if (now - lastStaleTrailCleanup > 60000) { // Check every minute
-        const thirtyMinutes = 30 * 60 * 1000;
-        staleTrails.forEach((trail, hex) => {
-            // Determine fade time (in milliseconds)
-            // If trailFadeTime is 0 (Never) or auto-fade is disabled, use 30 minutes as fallback
-            let fadeTimeMs;
-            if (!autoFadeTrails || trailFadeTime === 0) {
-                fadeTimeMs = thirtyMinutes;
-            } else if (trailFadeTime === -1) {
-                // Immediate mode: should have been cleaned already, but just in case
-                fadeTimeMs = 0;
-            } else {
-                fadeTimeMs = trailFadeTime * 1000;
-            }
-
-            if (now - trail.lastUpdate > fadeTimeMs) {
-                // Remove from scene
-                scene.remove(trail.line);
-                if (trail.gapLine) scene.remove(trail.gapLine);
-                if (trail.tronCurtain) scene.remove(trail.tronCurtain);
-
-                // Dispose geometries and materials
-                trail.line.geometry.dispose();
-                trail.line.material.dispose();
-                if (trail.gapLine) {
-                    trail.gapLine.geometry.dispose();
-                    trail.gapLine.material.dispose();
-                }
-                if (trail.tronCurtain) {
-                    trail.tronCurtain.geometry.dispose();
-                    trail.tronCurtain.material.dispose();
-                }
-
-                // Remove from map
-                staleTrails.delete(hex);
-            }
-        });
-        lastStaleTrailCleanup = now;
-    }
-
-    // Pulse the home beacon light
-    if (window.homeBeacon) {
-        const time = Date.now() * 0.002; // Slow pulse
-        const intensity = 0.5 + Math.sin(time) * 0.5; // Oscillate between 0 and 1
-        window.homeBeacon.material.emissiveIntensity = intensity;
-    }
-
-    // Update sidebar mini radar and heading (every frame for smooth updates)
-    if (camera && CONFIG && CONFIG.homeLocation) {
-        updateSidebarMiniRadar();
-        updateSidebarHeading();
-    }
-
-    // Handle follow mode camera
-    if (followMode && followedAircraftHex) {
-        const aircraft = aircraftMeshes.get(followedAircraftHex);
-
-        if (aircraft) {
-            const targetPos = aircraft.position.clone();
-
-            if (followLocked) {
-                // Locked mode - camera stays directly behind aircraft
-                const track = aircraft.userData.track || 0;
-                const trackRad = track * Math.PI / 180;
-
-                // Calculate position directly behind aircraft
-                const distanceBehind = 50;
-                const heightAbove = 30;
-
-                // Behind the aircraft is opposite to its heading
-                // track=0 (North, -Z) means behind is +Z (South)
-                // track=90 (East, +X) means behind is -X (West)
-                const offsetX = -Math.sin(trackRad) * distanceBehind;
-                const offsetZ = Math.cos(trackRad) * distanceBehind;
-                const offset = new THREE.Vector3(offsetX, heightAbove, offsetZ);
-
-                const cameraTarget = targetPos.clone().add(offset);
-
-                // Use faster lerp for more responsive tracking (0.2 instead of 0.08)
-                camera.position.lerp(cameraTarget, 0.2);
-
-                // Look directly at the aircraft
-                camera.lookAt(targetPos);
-            } else {
-                // Free orbit mode - maintain camera angles but follow aircraft position
-                updateCameraPosition(targetPos);
-            }
-
-            cameraReturnInProgress = false;
-        } else {
-            // Aircraft disappeared - turn off follow mode and smoothly return camera
-            followMode = false;
-            followedAircraftHex = null;
-            const followBtn = document.getElementById('toggle-follow');
-            if (followBtn) {
-                followBtn.style.display = 'none';
-            }
-            hideUnfollowButton();
-            document.getElementById('aircraft-detail').style.display = 'none';
-            selectedAircraft = null;
-
-            // Clear URL parameter since aircraft is no longer visible
-            const url = new URL(window.location);
-            url.searchParams.delete('icao');
-            window.history.replaceState({}, '', url);
-
-            // Smooth camera animation to initial position
-            const homePos = new THREE.Vector3(0, 50, 100);
-            const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-            animateCameraToPosition(homePos, homeLookAt, 1000, () => {
-                // Animation complete - update camera angles
-                cameraAngleX = 0; // Facing north
-                cameraAngleY = Math.PI / 6;
-                cameraDistance = 100;
-            });
-
-            updateFollowButtonText();
-        }
-    }
-
-    // Smooth camera return to home position
-    if (cameraReturnInProgress) {
-        const homePos = new THREE.Vector3(0, 50, 100);
-        const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-        // Lerp camera position
-        camera.position.lerp(homePos, 0.02); // Slower return
-
-        // Smoothly adjust camera direction
-        const currentLookAt = new THREE.Vector3();
-        camera.getWorldDirection(currentLookAt);
-        currentLookAt.multiplyScalar(100).add(camera.position);
-
-        const targetDirection = homeLookAt.clone().sub(camera.position).normalize();
-        const currentDirection = currentLookAt.clone().sub(camera.position).normalize();
-
-        // Lerp the direction
-        currentDirection.lerp(targetDirection, 0.02);
-        const newLookAt = camera.position.clone().add(currentDirection.multiplyScalar(100));
-        camera.lookAt(newLookAt);
-
-        // Stop when close enough to home
-        if (camera.position.distanceTo(homePos) < 1) {
-            camera.position.copy(homePos);
-            camera.lookAt(homeLookAt);
-            cameraReturnInProgress = false;
-        }
-    }
-
-    renderer.render(scene, camera);
-}
-
-function updateRendererSize() {
-    const isLocked = document.body.classList.contains('sidebar-locked');
-    const sidebar = document.getElementById('unified-sidebar');
-    const sidebarWidth = sidebar ? parseInt(getComputedStyle(sidebar).width, 10) : 320;
-
-    let width, height;
-
-    if (isLocked) {
-        // When locked, use remaining space to left of sidebar
-        width = window.innerWidth - sidebarWidth;
-        height = window.innerHeight;
-    } else {
-        // When unlocked, use full window
-        width = window.innerWidth;
-        height = window.innerHeight;
-    }
-
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
-}
-
-function onWindowResize() {
-    updateRendererSize();
-}
 
 // Setup aircraft click interaction
 function setupAircraftClick() {
@@ -6981,8 +6092,8 @@ function setupAircraftClick() {
 
     canvas.addEventListener('click', (event) => {
         // Ignore clicks that happened after camera dragging
-        if (wasDragging) {
-            wasDragging = false;
+        if (CameraState.wasDragging) {
+            CameraState.wasDragging = false;
             console.log('[Click] Ignoring click due to dragging');
             return;
         }
@@ -7157,7 +6268,14 @@ function showAircraftContextMenu(x, y, intersection) {
 
     const actions = [
         { label: '👁️ Select', action: () => selectAircraftByHex(aircraftHex) },
-        { label: '📍 Follow', action: () => { selectAircraftByHex(aircraftHex); toggleFollowMode(); } },
+        { label: '📍 Follow', action: () => {
+            selectAircraftByHex(aircraftHex);
+            // Trigger follow mode via the follow button click handler
+            const followBtn = document.getElementById('toggle-follow');
+            if (followBtn && !followMode) {
+                followBtn.click();
+            }
+        }},
         { label: 'ℹ️ Info', action: () => showAircraftDetails(aircraftHex) },
     ];
 
@@ -7248,7 +6366,7 @@ function checkUrlParameters() {
         if (aircraftMeshes.has(hexLower)) {
             console.log(`[URL] Loading aircraft from URL: ${icao}`);
             // Use focusOnAircraft instead of showAircraftDetail to get camera animation
-            focusOnAircraft(hexLower);
+            CameraRendering.focusOnAircraft(hexLower);
 
             // If Track API is available, load 5min of recent trails
             if (AppFeatures.historical) {
@@ -7263,7 +6381,7 @@ function checkUrlParameters() {
             // Aircraft not yet loaded, try again in a moment
             setTimeout(() => {
                 if (aircraftMeshes.has(hexLower) && !trailsLoaded) {
-                    focusOnAircraft(hexLower);
+                    CameraRendering.focusOnAircraft(hexLower);
 
                     if (AppFeatures.historical) {
                         console.log(`[URL] Auto-loading 5min of recent trails for ${icao}`);
@@ -7507,7 +6625,7 @@ async function showAircraftDetail(hex) {
             detailFollowBtn.style.display = 'block';
             detailFollowBtn.onclick = () => {
                 // Use focusOnAircraft to zoom and follow
-                focusOnAircraft(hex);
+                CameraRendering.focusOnAircraft(hex);
                 detailFollowBtn.textContent = '✓ Following';
                 detailFollowBtn.style.background = '#28a745';
                 console.log(`[Follow] Now following aircraft ${hex}`);
@@ -7917,7 +7035,7 @@ function setupSidebarEventHandlers() {
 
             // Live update viewport while dragging (if locked)
             if (document.body.classList.contains('sidebar-locked')) {
-                updateRendererSize();
+                CameraRendering.updateRendererSize();
             }
         });
 
@@ -7928,7 +7046,7 @@ function setupSidebarEventHandlers() {
 
                 // Update viewport size when locked (after resizing sidebar)
                 if (document.body.classList.contains('sidebar-locked')) {
-                    updateRendererSize();
+                    CameraRendering.updateRendererSize();
                 }
             }
         });
@@ -7945,7 +7063,7 @@ function setupSidebarEventHandlers() {
             const lockIcon = lockButton.querySelector('.lock-icon');
             lockIcon.className = 'lock-icon mdi mdi-lock';
             lockButton.title = 'Unlock sidebar';
-            updateRendererSize();
+            CameraRendering.updateRendererSize();
         }
 
         lockButton.addEventListener('click', (e) => {
@@ -7989,7 +7107,7 @@ function setupSidebarEventHandlers() {
             }
 
             // Update renderer size to match new layout
-            updateRendererSize();
+            CameraRendering.updateRendererSize();
         });
 
         // Hide toggle button on initial load if locked
@@ -8641,29 +7759,13 @@ function updateSidebarTrackList() {
             HistoricalMode.showHistoricalTrackDetail(userData);
 
             // Also focus camera on the track
-            focusOnTrack(hex);
+            CameraRendering.focusOnTrack(hex);
         });
 
         trackList.appendChild(item);
     });
 }
 
-function filterSidebarTracks() {
-    const searchTerm = document.getElementById('sidebar-track-search')?.value.toLowerCase() || '';
-
-    const items = document.querySelectorAll('#sidebar-track-list .sidebar-aircraft-item');
-    items.forEach(item => {
-        const hex = item.dataset.hex;
-        const track = historicalTracks[hex];
-        if (!track) return;
-
-        const flight = (track.flight_id || track.flight || track.callsign || hex).toLowerCase();
-
-        const matchesSearch = !searchTerm || flight.includes(searchTerm) || hex.toLowerCase().includes(searchTerm);
-
-        item.style.display = matchesSearch ? 'block' : 'none';
-    });
-}
 
 /**
  * Apply comprehensive filters to historical tracks (altitude, speed, positions, military)
@@ -8683,39 +7785,20 @@ function filterSidebarAircraft() {
     });
 }
 
+function filterSidebarTracks() {
+    const searchTerm = document.getElementById('sidebar-track-search')?.value.toLowerCase() || '';
 
-function focusOnTrack(hex) {
-    const track = historicalTracks[hex];
-    if (!track || track.positions.length === 0) return;
+    const items = document.querySelectorAll('#sidebar-track-list .sidebar-aircraft-item');
+    items.forEach(item => {
+        const hex = item.dataset.hex;
+        const track = historicalTracks[hex];
+        if (!track) return;
 
-    // Get middle position of track
-    const midIndex = Math.floor(track.positions.length / 2);
-    const midPos = track.positions[midIndex];
+        const flight = (track.flight_id || track.flight || track.callsign || hex).toLowerCase();
 
-    // Focus camera on this position
-    const targetPosition = new THREE.Vector3(
-        midPos.longitude * COORD_SCALE,
-        midPos.altitude * ALTITUDE_SCALE,
-        -midPos.latitude * COORD_SCALE
-    );
+        const matchesSearch = !searchTerm || flight.includes(searchTerm) || hex.toLowerCase().includes(searchTerm);
 
-    cameraTarget = targetPosition;
-    followTarget = null; // Stop following any aircraft
-
-    // Highlight the track
-    scene.traverse(child => {
-        if (child.userData && child.userData.hex === hex) {
-            // Highlight this track
-            if (child.material) {
-                child.material.opacity = 1;
-                child.material.linewidth = 3;
-            }
-        } else if (child.userData && child.userData.hex) {
-            // Dim other tracks
-            if (child.material) {
-                child.material.opacity = 0.3;
-            }
-        }
+        item.style.display = matchesSearch ? 'block' : 'none';
     });
 }
 
