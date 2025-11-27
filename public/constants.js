@@ -35,6 +35,7 @@ export const TIMING = {
     LIVE_UPDATE_INTERVAL: 1000,         // 1 second - aircraft data polling
     STATS_UPDATE_INTERVAL: 60000,       // 1 minute - stats reset check
     TRAIL_CLEANUP_INTERVAL: 60000,      // 1 minute - cleanup old trail positions
+    STALE_CHECK_INTERVAL: 2000,         // 2 seconds - check for stale aircraft
 
     // Timeouts
     API_TIMEOUT: 2000,                  // 2 seconds - API health check timeout
@@ -272,6 +273,19 @@ export const PERFORMANCE = {
 };
 
 // ============================================================================
+// UI & RESPONSIVE
+// ============================================================================
+
+export const UI = {
+    // Responsive breakpoints
+    MOBILE_BREAKPOINT: 768,             // Max width for mobile layout (px)
+
+    // Focus/zoom distances
+    FOCUS_DISTANCE: 100,                // Default camera distance when focusing aircraft
+    URL_FOCUS_DISTANCE: 150,            // Zoomed out distance for URL aircraft load
+};
+
+// ============================================================================
 // CONVERSION FACTORS
 // ============================================================================
 
@@ -409,6 +423,7 @@ export default {
     SIGNAL_QUALITY,
     RATE_LIMIT,
     PERFORMANCE,
+    UI,
     CONVERSIONS,
     CONFIG,
     getCSSVar,
@@ -417,5 +432,7 @@ export default {
     initializeThemeColors,
 };
 
-// Expose CONFIG globally for smoke tests and backward compatibility
+// Expose constants globally for smoke tests and backward compatibility
 window.CONFIG = CONFIG;
+window.TIMING = TIMING;
+window.UI = UI;

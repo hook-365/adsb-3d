@@ -759,7 +759,11 @@ function disposeMaterial(material) {
     material.dispose();
 }
 
-// Clear all trails from the scene (used when loading recent trails)
+/**
+ * Clear all trails from the scene
+ * Properly disposes of geometries and materials to prevent memory leaks
+ * Also cleans up any orphaned Tron curtains
+ */
 function clearAllTrails() {
     trails.forEach((trail, icao) => {
         // Remove trail line
@@ -952,7 +956,12 @@ function validateFadePreloadConflict() {
     }
 }
 
-// Show notification message to user
+/**
+ * Show notification message to user
+ * @param {string} message - The message to display
+ * @param {'info'|'warning'} [type='info'] - Notification type (affects styling)
+ * @param {number} [duration=5000] - How long to show notification in ms
+ */
 function showNotification(message, type = 'info', duration = 5000) {
     const notification = document.createElement('div');
     notification.style.cssText = `
@@ -1704,7 +1713,11 @@ function initializeUIForFeatures() {
     setupTronModeListener();
 }
 
-// Async wrapper to handle feature detection before Three.js init
+/**
+ * Initialize the application
+ * Handles feature detection before Three.js initialization
+ * @async
+ */
 async function initializeApp() {
     console.log('=== ADS-B 3D Initializing ===');
 
@@ -1826,7 +1839,7 @@ async function initializeApp() {
     await applyURLFromState();
 
     // Step 7: Setup mobile touch UX enhancements
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= UI.MOBILE_BREAKPOINT) {
         setupMobileTouchUX();
     }
 
@@ -2023,6 +2036,9 @@ function init() {
     // Initialize sidebar event handlers
     setupSidebarEventHandlers();
 
+    // Initialize custom calendar picker
+    CalendarPicker.init();
+
     // Ensure sidebar is in correct mode
     updateSidebarMode();
 
@@ -2188,6 +2204,7 @@ function createGroundPlane() {
 
     // Load all tiles
     let tilesLoaded = 0;
+    let tilesFailed = 0;
     const totalTiles = tilesWide * tilesHigh;
     const halfGrid = Math.floor(tilesWide / 2);
 
@@ -2246,6 +2263,8 @@ function createGroundPlane() {
             };
             img.onerror = function() {
                 console.warn(`Failed to load tile ${tileX},${tileY}`);
+                tilesFailed++;
+
                 // Draw dark gray fallback
                 ctx.fillStyle = '#1a1a1a';
                 const canvasX = (dx + halfGrid) * tileSize;
@@ -2264,6 +2283,11 @@ function createGroundPlane() {
                     texture.generateMipmaps = true;
                     material.map = texture;
                     material.needsUpdate = true;
+
+                    // Notify user if many tiles failed
+                    if (tilesFailed > totalTiles * 0.5) {
+                        showNotification(`Map tiles failed to load (${tilesFailed}/${totalTiles}). Check network connection.`, 'warning');
+                    }
                 }
             };
             img.src = tileUrl;
@@ -2359,6 +2383,30 @@ function createExtendedGrid() {
 
 // ========== AIRPORT/RUNWAY FUNCTIONS ==========
 
+/**
+ * Fetch with timeout to prevent hanging on slow/offline servers
+ * @param {string} url - The URL to fetch
+ * @param {number} [timeoutMs=10000] - Timeout in milliseconds
+ * @returns {Promise<Response>} The fetch response
+ * @throws {Error} If the request times out or fails
+ */
+async function fetchWithTimeout(url, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timed out after ${timeoutMs}ms`);
+        }
+        throw error;
+    }
+}
+
 // Parse CSV data
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
@@ -2393,7 +2441,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 async function fetchAirports() {
     try {
         console.log('Fetching airports data...');
-        const response = await fetch(API.AIRPORTS_CSV);
+        const response = await fetchWithTimeout(API.AIRPORTS_CSV, 15000);
         const csvText = await response.text();
         const allAirports = parseCSV(csvText);
 
@@ -2435,7 +2483,7 @@ async function fetchAirports() {
 async function fetchRunways() {
     try {
         console.log('Fetching runways data...');
-        const response = await fetch(API.RUNWAYS_CSV);
+        const response = await fetchWithTimeout(API.RUNWAYS_CSV, 15000);
         const csvText = await response.text();
         const allRunways = parseCSV(csvText);
 
@@ -3414,7 +3462,7 @@ function setupUIControls() {
                         // Animation complete - update camera angles
                         cameraAngleX = 0; // Facing north
                         cameraAngleY = Math.PI / 6;
-                        cameraDistance = 100;
+                        cameraDistance = UI.FOCUS_DISTANCE;
                         cameraReturnInProgress = false;
 
                         // Show aircraft detail panel again when follow mode ends
@@ -3482,7 +3530,7 @@ function setupCollapseablePanels() {
     console.log('[Collapse] Setup called - Found', collapseButtons.length, 'collapse buttons and', headerButtons.length, 'header buttons');
 
     // Check if we're on mobile
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
 
     // Load saved collapse states from localStorage
     const savedStates = JSON.parse(SafeStorage.getItem('panelCollapseStates') || '{}');
@@ -3595,7 +3643,7 @@ function setupCollapseablePanels() {
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
-            const nowMobile = window.innerWidth <= 768;
+            const nowMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
 
             // Remove mobile-collapsed class when resizing to desktop
             if (!nowMobile) {
@@ -6242,7 +6290,7 @@ function setupAircraftClick() {
  * - Visual feedback for touch actions
  */
 function setupMobileTouchUX() {
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
     if (!isMobile) return; // Only on mobile
 
     // Long-press detection for aircraft
@@ -6356,7 +6404,7 @@ function selectAircraftByHex(hex) {
 }
 
 // Initialize mobile UX when DOM is ready
-if (window.innerWidth <= 768) {
+if (window.innerWidth <= UI.MOBILE_BREAKPOINT) {
     // Will be called from init() after Three.js setup
 }
 
@@ -6401,7 +6449,7 @@ function checkUrlParameters() {
             FollowState.locked = false;
 
             // Set camera to a reasonable zoom-out distance
-            CameraState.distance = 150; // Zoomed out more than default focusOnAircraft
+            CameraState.distance = UI.URL_FOCUS_DISTANCE;
 
             // Focus camera on aircraft with the new distance
             CameraRendering.focusOnAircraft(hex);
@@ -6997,7 +7045,7 @@ function updateStaleAircraft() {
 }
 
 // Start checking for stale aircraft periodically
-setInterval(updateStaleAircraft, 2000); // Check every 2 seconds
+setInterval(updateStaleAircraft, TIMING.STALE_CHECK_INTERVAL);
 
 // ============================================================================
 // SIDEBAR EVENT HANDLERS
@@ -7024,13 +7072,18 @@ function updateCustomDuration() {
     const durationDisplay = document.getElementById('custom-duration-display');
 
     if (!startInput || !endInput || !durationDisplay) return;
-    if (!startInput.value || !endInput.value) {
+
+    // Read from data attribute (ISO format) set by calendar picker
+    const startDatetime = startInput.dataset.datetime;
+    const endDatetime = endInput.dataset.datetime;
+
+    if (!startDatetime || !endDatetime) {
         durationDisplay.textContent = 'Duration: --';
         return;
     }
 
-    const startTime = new Date(startInput.value);
-    const endTime = new Date(endInput.value);
+    const startTime = new Date(startDatetime);
+    const endTime = new Date(endDatetime);
     const diffMs = endTime - startTime;
 
     if (diffMs <= 0) {
@@ -7055,12 +7108,237 @@ function updateCustomDuration() {
     durationDisplay.style.color = 'var(--text-secondary)';
 }
 
+// ============================================================================
+// CUSTOM CALENDAR PICKER
+// ============================================================================
+
+/**
+ * Custom calendar picker for datetime selection
+ */
+const CalendarPicker = {
+    currentDate: new Date(),
+    selectedDate: null,
+    targetInput: null,
+    overlay: null,
+
+    /**
+     * Initialize the calendar picker
+     */
+    init() {
+        const picker = document.getElementById('calendar-picker');
+        if (!picker) return;
+
+        // Create overlay for closing
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'calendar-overlay';
+        this.overlay.style.display = 'none';
+        document.body.appendChild(this.overlay);
+
+        // Bind events
+        document.getElementById('calendar-prev-month')?.addEventListener('click', () => this.changeMonth(-1));
+        document.getElementById('calendar-next-month')?.addEventListener('click', () => this.changeMonth(1));
+        document.getElementById('calendar-cancel')?.addEventListener('click', () => this.close());
+        document.getElementById('calendar-ok')?.addEventListener('click', () => this.confirm());
+        this.overlay.addEventListener('click', () => this.close());
+
+        // Attach to datetime inputs
+        const startInput = document.getElementById('custom-start-time');
+        const endInput = document.getElementById('custom-end-time');
+
+        if (startInput) {
+            startInput.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.open(startInput);
+            });
+        }
+
+        if (endInput) {
+            endInput.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.open(endInput);
+            });
+        }
+    },
+
+    /**
+     * Open the calendar picker for a specific input
+     * @param {HTMLInputElement} input - The datetime input element
+     */
+    open(input) {
+        this.targetInput = input;
+
+        // Parse existing value from data attribute or use current date
+        const storedDatetime = input.dataset.datetime;
+        if (storedDatetime) {
+            this.selectedDate = new Date(storedDatetime);
+            this.currentDate = new Date(storedDatetime);
+        } else {
+            this.selectedDate = new Date();
+            this.currentDate = new Date();
+        }
+
+        // Set time inputs
+        document.getElementById('calendar-hour').value = this.selectedDate.getHours();
+        document.getElementById('calendar-minute').value = this.selectedDate.getMinutes();
+
+        // Render and show
+        this.render();
+        this.overlay.style.display = 'block';
+        document.getElementById('calendar-picker').style.display = 'block';
+    },
+
+    /**
+     * Close the calendar picker
+     */
+    close() {
+        this.overlay.style.display = 'none';
+        document.getElementById('calendar-picker').style.display = 'none';
+        this.targetInput = null;
+    },
+
+    /**
+     * Confirm selection and update input
+     */
+    confirm() {
+        if (!this.targetInput || !this.selectedDate) {
+            this.close();
+            return;
+        }
+
+        // Get time from inputs
+        const hour = parseInt(document.getElementById('calendar-hour').value) || 0;
+        const minute = parseInt(document.getElementById('calendar-minute').value) || 0;
+
+        this.selectedDate.setHours(hour, minute, 0, 0);
+
+        // Format for datetime-local input (YYYY-MM-DDTHH:MM) - store in data attribute
+        const year = this.selectedDate.getFullYear();
+        const month = String(this.selectedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(this.selectedDate.getDate()).padStart(2, '0');
+        const hours = String(hour).padStart(2, '0');
+        const minutes = String(minute).padStart(2, '0');
+
+        const isoValue = `${year}-${month}-${day}T${hours}:${minutes}`;
+        this.targetInput.dataset.datetime = isoValue;
+
+        // Format for display (human-readable)
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const displayValue = `${monthNames[this.selectedDate.getMonth()]} ${day}, ${year} ${hours}:${minutes}`;
+        this.targetInput.value = displayValue;
+
+        // Trigger change event for duration update
+        this.targetInput.dispatchEvent(new Event('change'));
+
+        this.close();
+    },
+
+    /**
+     * Change the displayed month
+     * @param {number} delta - Months to add (-1 or 1)
+     */
+    changeMonth(delta) {
+        this.currentDate.setMonth(this.currentDate.getMonth() + delta);
+        this.render();
+    },
+
+    /**
+     * Render the calendar
+     */
+    render() {
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
+
+        // Update header
+        document.getElementById('calendar-month-year').textContent =
+            `${monthNames[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
+
+        // Get first day of month and total days
+        const year = this.currentDate.getFullYear();
+        const month = this.currentDate.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+        // Today for highlighting
+        const today = new Date();
+        const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+
+        // Build days grid
+        const daysContainer = document.getElementById('calendar-days');
+        daysContainer.innerHTML = '';
+
+        // Previous month days
+        for (let i = firstDay - 1; i >= 0; i--) {
+            const day = daysInPrevMonth - i;
+            const dayEl = this.createDayElement(day, true, false, false);
+            dayEl.dataset.date = new Date(year, month - 1, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+
+        // Current month days
+        for (let day = 1; day <= daysInMonth; day++) {
+            const isToday = isCurrentMonth && day === today.getDate();
+            const isSelected = this.selectedDate &&
+                this.selectedDate.getFullYear() === year &&
+                this.selectedDate.getMonth() === month &&
+                this.selectedDate.getDate() === day;
+
+            const dayEl = this.createDayElement(day, false, isToday, isSelected);
+            dayEl.dataset.date = new Date(year, month, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+
+        // Next month days to fill grid
+        const totalCells = firstDay + daysInMonth;
+        const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+        for (let day = 1; day <= remainingCells; day++) {
+            const dayEl = this.createDayElement(day, true, false, false);
+            dayEl.dataset.date = new Date(year, month + 1, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+    },
+
+    /**
+     * Create a day element
+     * @param {number} day - Day number
+     * @param {boolean} otherMonth - Is from another month
+     * @param {boolean} isToday - Is today
+     * @param {boolean} isSelected - Is selected
+     * @returns {HTMLElement}
+     */
+    createDayElement(day, otherMonth, isToday, isSelected) {
+        const el = document.createElement('div');
+        el.className = 'calendar-day';
+        el.textContent = day;
+
+        if (otherMonth) el.classList.add('other-month');
+        if (isToday) el.classList.add('today');
+        if (isSelected) el.classList.add('selected');
+
+        el.addEventListener('click', () => {
+            this.selectedDate = new Date(el.dataset.date);
+            this.render();
+        });
+
+        return el;
+    }
+};
+
 /**
  * Load historical tracks with custom date/time range
  */
 
 function setupSidebarEventHandlers() {
     console.log('[Sidebar] Setting up event handlers...');
+
+    // Populate timezone indicator for datetime inputs
+    const tzIndicator = document.getElementById('timezone-indicator');
+    if (tzIndicator) {
+        tzIndicator.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
 
     // Sidebar toggle
     const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -7256,13 +7534,17 @@ function setupSidebarEventHandlers() {
                     const startInput = document.getElementById('custom-start-time');
                     const endInput = document.getElementById('custom-end-time');
 
-                    if (!startInput.value || !endInput.value) {
+                    // Read from data attribute (ISO format) set by calendar picker
+                    const startDatetime = startInput?.dataset.datetime;
+                    const endDatetime = endInput?.dataset.datetime;
+
+                    if (!startDatetime || !endDatetime) {
                         resultsInfo.textContent = 'Please select start and end times';
                         return;
                     }
 
-                    const startTime = new Date(startInput.value);
-                    const endTime = new Date(endInput.value);
+                    const startTime = new Date(startDatetime);
+                    const endTime = new Date(endDatetime);
 
                     if (startTime >= endTime) {
                         resultsInfo.textContent = 'Start time must be before end time';
