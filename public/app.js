@@ -7750,6 +7750,8 @@ function setupSidebarEventHandlers() {
         applyFiltersBtn.addEventListener('click', () => {
             console.log('[Sidebar] Apply Filters button clicked');
             HistoricalMode.applyHistoricalFilters();
+            // Update URL with filter settings for shareable links
+            updateURLFromCurrentState();
         });
     }
 

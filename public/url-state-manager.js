@@ -193,94 +193,92 @@ export const URLState = {
                 // Switch to historical mode first (skip URL update - we'll do it after loading data)
                 await switchToHistoricalMode(true);
 
+                // Helper to format date for calendar picker display (e.g., "Nov 27, 2025 10:39")
+                const formatCalendarDisplay = (date) => {
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    return `${monthNames[date.getMonth()]} ${day}, ${date.getFullYear()} ${hours}:${minutes}`;
+                };
+
+                // New sidebar elements
+                const timeModePresetBtn = document.getElementById('time-mode-preset');
+                const timeModeCustomBtn = document.getElementById('time-mode-custom');
+                const timePresetSection = document.getElementById('time-preset-section');
+                const timeCustomSection = document.getElementById('time-custom-section');
+                const sidebarTimePreset = document.getElementById('sidebar-time-preset');
+
                 // Set preset or custom mode with validation
                 // IMPORTANT: If explicit start/end times are provided, use custom mode (they take priority)
                 if (urlParams.start && urlParams.end) {
                     // Explicit times provided - use custom mode
-                    const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
-                    if (customRadio) {
-                        customRadio.checked = true;
-                        const customRange = document.getElementById('custom-time-range');
-                        if (customRange) customRange.style.display = 'block';
+                    if (timeModePresetBtn && timeModeCustomBtn && timePresetSection && timeCustomSection) {
+                        timeModePresetBtn.classList.remove('sidebar-button-active');
+                        timeModeCustomBtn.classList.add('sidebar-button-active');
+                        timePresetSection.style.display = 'none';
+                        timeCustomSection.style.display = 'block';
                     }
                     console.log('[URL State] Using custom time mode due to explicit start/end in URL');
-                } else if (urlParams.preset && urlParams.preset !== 'custom') {
-                    // No explicit times, but preset is provided
-                    const validPresets = ['1', '4', '8', '12', '24'];
-                    if (validPresets.includes(urlParams.preset)) {
-                        const presetRadio = document.querySelector(`input[name="time-preset"][value="${urlParams.preset}"]`);
-                        if (presetRadio) {
-                            presetRadio.checked = true;
-                            const customRange = document.getElementById('custom-time-range');
-                            if (customRange) customRange.style.display = 'none';
-                            console.log(`[URL State] Selected preset: Last ${urlParams.preset} hour(s)`);
 
-                            // Also populate the date/time inputs with the calculated range
-                            const calculateTimeRange = (hours) => {
-                                const end = new Date();
-                                const start = new Date(end.getTime() - (hours * 60 * 60 * 1000));
-                                return { startTime: start, endTime: end };
-                            };
+                    // Populate custom time fields (new IDs: custom-start-time and custom-end-time)
+                    const startTimeInput = document.getElementById('custom-start-time');
+                    const endTimeInput = document.getElementById('custom-end-time');
 
-                            const range = calculateTimeRange(parseInt(urlParams.preset));
-                            const startTimeInput = document.getElementById('start-time');
-                            const endTimeInput = document.getElementById('end-time');
-                            if (startTimeInput) {
-                                startTimeInput.value = formatForDatetimeInput(range.startTime.toISOString());
-                            }
-                            if (endTimeInput) {
-                                endTimeInput.value = formatForDatetimeInput(range.endTime.toISOString());
-                            }
-
-                            // Update HistoricalState with the calculated times
-                            HistoricalState.settings.startTime = range.startTime;
-                            HistoricalState.settings.endTime = range.endTime;
-                        }
-                    } else {
-                        console.warn('[URL State] Invalid preset value:', urlParams.preset, '- using custom');
-                    }
-                } else {
-                    // Default to custom mode
-                    const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
-                    if (customRadio) {
-                        customRadio.checked = true;
-                        const customRange = document.getElementById('custom-time-range');
-                        if (customRange) customRange.style.display = 'block';
-                    }
-                }
-
-                // Populate custom time fields (correct IDs: start-time and end-time)
-                const startTimeInput = document.getElementById('start-time');
-                const endTimeInput = document.getElementById('end-time');
-
-                if (startTimeInput && urlParams.start) {
-                    const formattedStart = formatForDatetimeInput(urlParams.start);
-                    startTimeInput.value = formattedStart;
-                    console.log('[URL State] Set start time input to:', formattedStart, 'from URL:', urlParams.start);
-                }
-                if (endTimeInput && urlParams.end) {
-                    const formattedEnd = formatForDatetimeInput(urlParams.end);
-                    endTimeInput.value = formattedEnd;
-                    console.log('[URL State] Set end time input to:', formattedEnd, 'from URL:', urlParams.end);
-                }
-
-                // CRITICAL: Also update HistoricalState directly since setting the preset radio
-                // may have triggered the change event which calculates times from NOW
-                // We need to override those with the explicit URL times
-                if (urlParams.start && urlParams.end) {
-                    console.log('[URL State] Attempting to set times from URL:', { urlStart: urlParams.start, urlEnd: urlParams.end });
                     const startDate = new Date(urlParams.start);
                     const endDate = new Date(urlParams.end);
-                    console.log('[URL State] Parsed dates:', { startDate, endDate, startValid: !isNaN(startDate.getTime()), endValid: !isNaN(endDate.getTime()) });
+
+                    if (startTimeInput && !isNaN(startDate.getTime())) {
+                        // Store ISO format in data attribute (used by load button)
+                        startTimeInput.dataset.datetime = formatForDatetimeInput(urlParams.start);
+                        // Display human-readable format
+                        startTimeInput.value = formatCalendarDisplay(startDate);
+                        console.log('[URL State] Set start time input:', startTimeInput.value, 'data:', startTimeInput.dataset.datetime);
+                    }
+                    if (endTimeInput && !isNaN(endDate.getTime())) {
+                        // Store ISO format in data attribute (used by load button)
+                        endTimeInput.dataset.datetime = formatForDatetimeInput(urlParams.end);
+                        // Display human-readable format
+                        endTimeInput.value = formatCalendarDisplay(endDate);
+                        console.log('[URL State] Set end time input:', endTimeInput.value, 'data:', endTimeInput.dataset.datetime);
+                    }
+
+                    // Update HistoricalState
                     if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
                         HistoricalState.settings.startTime = startDate;
                         HistoricalState.settings.endTime = endDate;
                         console.log('[URL State] ✓ Set HistoricalState times from URL:', { start: startDate.toISOString(), end: endDate.toISOString() });
+                    }
+                } else if (urlParams.preset && urlParams.preset !== 'custom') {
+                    // No explicit times, but preset is provided - use quick preset mode
+                    const validPresets = ['1', '4', '8', '12', '24'];
+                    if (validPresets.includes(urlParams.preset)) {
+                        // Ensure preset mode is selected
+                        if (timeModePresetBtn && timeModeCustomBtn && timePresetSection && timeCustomSection) {
+                            timeModePresetBtn.classList.add('sidebar-button-active');
+                            timeModeCustomBtn.classList.remove('sidebar-button-active');
+                            timePresetSection.style.display = 'block';
+                            timeCustomSection.style.display = 'none';
+                        }
+
+                        // Set the dropdown value
+                        if (sidebarTimePreset) {
+                            sidebarTimePreset.value = urlParams.preset;
+                            console.log(`[URL State] Selected preset: Last ${urlParams.preset} hour(s)`);
+                        }
+
+                        // Calculate the time range for HistoricalState
+                        const end = new Date();
+                        const start = new Date(end.getTime() - (parseInt(urlParams.preset) * 60 * 60 * 1000));
+                        HistoricalState.settings.startTime = start;
+                        HistoricalState.settings.endTime = end;
                     } else {
-                        console.warn('[URL State] ✗ Failed to parse dates from URL');
+                        console.warn('[URL State] Invalid preset value:', urlParams.preset);
                     }
                 } else {
-                    console.log('[URL State] No explicit start/end in URL (start=' + urlParams.start + ', end=' + urlParams.end + ')');
+                    // Default to preset mode with 1 hour
+                    console.log('[URL State] No explicit times or preset, using default 1 hour preset');
                 }
 
                 // Apply tron mode if specified
@@ -358,22 +356,27 @@ export const URLState = {
 
                 // Automatically load the data
                 console.log('[URL State] Auto-loading historical data from URL parameters');
-                const loadButton = document.getElementById('load-historical-data');
+                const loadButton = document.getElementById('sidebar-load-tracks');
                 if (loadButton) {
                     // Trigger the load button click after a short delay to ensure UI is ready
                     setTimeout(() => {
+                        console.log('[URL State] Clicking sidebar-load-tracks button');
                         loadButton.click();
 
                         // Apply display mode after data loads (wait for load to complete)
                         setTimeout(() => {
                             if (urlParams.display === 'playback') {
-                                const playbackBtn = document.getElementById('display-mode-playback');
-                                if (playbackBtn) playbackBtn.click();
+                                // New sidebar uses radio buttons for display mode
+                                const playbackRadio = document.querySelector('input[name="sidebar-display-mode"][value="playback"]');
+                                if (playbackRadio) {
+                                    playbackRadio.checked = true;
+                                    playbackRadio.dispatchEvent(new Event('change'));
+                                }
                             }
 
                             // Apply visualization mode (tracks/heatmap/both)
                             if (urlParams.vizmode) {
-                                const vizModeRadio = document.querySelector(`input[name="display-mode"][value="${urlParams.vizmode}"]`);
+                                const vizModeRadio = document.querySelector(`input[name="sidebar-viz-mode"][value="${urlParams.vizmode}"]`);
                                 if (vizModeRadio) {
                                     vizModeRadio.checked = true;
                                     HistoricalState.heatmapMode = urlParams.vizmode;
@@ -390,8 +393,10 @@ export const URLState = {
                                     }
                                 }
                             }
-                        }, 1000);
+                        }, 2000);
                     }, 500);
+                } else {
+                    console.warn('[URL State] Could not find sidebar-load-tracks button');
                 }
 
                 console.log('[URL State] Applied historical mode from URL');
@@ -447,8 +452,17 @@ export const URLState = {
             state.start = HistoricalState.settings.startTime.toISOString();
             state.end = HistoricalState.settings.endTime.toISOString();
 
-            const selectedPreset = document.querySelector('input[name="time-preset"]:checked');
-            if (selectedPreset) state.preset = selectedPreset.value;
+            // Check if custom mode is active (new sidebar uses buttons not radio)
+            const timeCustomSection = document.getElementById('time-custom-section');
+            const isCustomMode = timeCustomSection && timeCustomSection.style.display !== 'none';
+
+            if (isCustomMode) {
+                state.preset = 'custom';
+            } else {
+                // Get preset from dropdown
+                const sidebarTimePreset = document.getElementById('sidebar-time-preset');
+                if (sidebarTimePreset) state.preset = sidebarTimePreset.value;
+            }
 
             state.display = HistoricalState.displayMode === 'playback' ? 'playback' : 'all';
 

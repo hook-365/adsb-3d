@@ -3483,21 +3483,26 @@
 
                 <div class="sidebar-divider"></div>
 
-                <!-- Track List -->
+                <!-- Track List (Collapsible) -->
                 <div id="sidebar-tracks-section" class="sidebar-section" style="display: none;">
-                    <div class="sidebar-section-label">
-                        <span>Loaded Tracks</span>
-                        <span id="sidebar-track-count" style="font-weight: normal; color: var(--text-secondary);">(0)</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('sidebar-tracks-content').style.display = document.getElementById('sidebar-tracks-content').style.display === 'none' ? 'block' : 'none'; this.querySelector('.nested-collapse-btn').textContent = this.querySelector('.nested-collapse-btn').textContent === '−' ? '+' : '−';">
+                        <div class="sidebar-section-label" style="margin-bottom: 0; cursor: pointer;">
+                            <span>Loaded Tracks</span>
+                            <span id="sidebar-track-count" style="font-weight: normal; color: var(--text-secondary);">(0)</span>
+                        </div>
+                        <span class="nested-collapse-btn" style="color: var(--text-accent); font-size: 18px; user-select: none;">−</span>
                     </div>
 
-                    <!-- Track filters -->
-                    <div class="sidebar-track-filters" style="margin-bottom: 10px;">
-                        <input type="text" id="sidebar-track-search" placeholder="🔍 Search tracks..." class="sidebar-search-input" style="width: 100%;">
-                    </div>
+                    <div id="sidebar-tracks-content">
+                        <!-- Track filters -->
+                        <div class="sidebar-track-filters" style="margin-bottom: 10px;">
+                            <input type="text" id="sidebar-track-search" placeholder="🔍 Search tracks..." class="sidebar-search-input" style="width: 100%;">
+                        </div>
 
-                    <!-- Track list -->
-                    <div id="sidebar-track-list" class="sidebar-aircraft-list" style="max-height: 300px; overflow-y: auto;">
-                        <!-- Track items will be populated here -->
+                        <!-- Track list -->
+                        <div id="sidebar-track-list" class="sidebar-aircraft-list" style="max-height: 300px; overflow-y: auto;">
+                            <!-- Track items will be populated here -->
+                        </div>
                     </div>
                 </div>
 
@@ -3600,7 +3605,7 @@
 
             <h3>Historical Mode</h3>
             <ul class="feature-list">
-                <li>Time travel: replay past 6+ days of flights</li>
+                <li>Time travel: replay historical flight data</li>
                 <li>Quick presets: 1, 4, 8, 12, 24 hours or custom range</li>
                 <li>Post-load filters: aircraft type, altitude, track length, speed</li>
                 <li>MLAT altitude smoothing (fixes zero-altitude glitches)</li>
@@ -3620,12 +3625,12 @@
             <h3>Data Sources</h3>
             <p class="data-source">
                 <strong>Live ADS-B Data:</strong><br>
-                <a href="https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder" target="_blank" rel="noopener noreferrer">Ultrafeeder</a> -
-                ADS-B receiver with MLAT support
+                Any <a href="https://github.com/wiedehopf/tar1090" target="_blank" rel="noopener noreferrer">tar1090</a>-compatible
+                ADS-B receiver (Ultrafeeder, readsb, dump1090, etc.)
             </p>
             <p class="data-source">
                 <strong>Historical Data:</strong><br>
-                Custom Track API with TimescaleDB - 6+ days of position history
+                Custom Track API with TimescaleDB
             </p>
             <p class="data-source">
                 <strong>Aircraft Type Database:</strong><br>
