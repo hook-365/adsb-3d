@@ -25,1357 +25,132 @@
  *
  * Configuration:
  * - Home location set via environment variables (see entrypoint.sh)
- * - All visual/display settings configurable via CONFIG object below
+ * - All visual/display settings configurable via constants.js
  * - BASE_PATH auto-detected from URL for subdirectory deployment
  */
 
 // ============================================================================
-// THEME SYSTEM - CSS Variable Bridge
+// IMPORTS - Configuration and Constants
 // ============================================================================
-// Converts CSS custom properties to Three.js-compatible hex colors
 
-/**
- * Get CSS variable value from :root
- * @param {string} varName - CSS variable name (with or without --)
- * @returns {string} The CSS variable value
- */
-function getCSSVar(varName) {
-    const name = varName.startsWith('--') ? varName : `--${varName}`;
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+import {
+    API,
+    TIMING,
+    CACHE,
+    STORAGE_KEYS,
+    SCENE,
+    MAP,
+    DISTANCE_RINGS,
+    AIRPORTS,
+    AIRCRAFT,
+    TRAILS,
+    HISTORICAL,
+    ALTITUDE_SMOOTHING,
+    SIGNAL_QUALITY,
+    RATE_LIMIT,
+    PERFORMANCE,
+    CONVERSIONS,
+    CONFIG,
+    getCSSVar,
+    cssToThreeColor,
+    getThemeColor,
+    initializeThemeColors
+} from './constants.js';
+
+// Initialize CONFIG theme colors from CSS variables
+// (Must be called after DOM is loaded and CSS is applied)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initializeThemeColors());
+} else {
+    initializeThemeColors();
 }
 
-/**
- * Convert CSS hex color to Three.js hex number
- * @param {string} cssColor - CSS color (hex format like #4a9eff)
- * @returns {number} Three.js color number (like 0x4a9eff)
- */
-function cssToThreeColor(cssColor) {
-    // Remove # and convert to hex number
-    return parseInt(cssColor.replace('#', ''), 16);
+// Override homeLocation from dynamically generated config if available
+if (window.ENV_CONFIG?.homeLocation) {
+    CONFIG.homeLocation = window.ENV_CONFIG.homeLocation;
 }
-
-/**
- * Get theme color for Three.js from CSS variable
- * @param {string} varName - CSS variable name (e.g., 'military-color' or '--military-color')
- * @returns {number} Three.js hex color
- */
-function getThemeColor(varName) {
-    const cssValue = getCSSVar(varName);
-    return cssToThreeColor(cssValue);
-}
-
-// Configuration
-const CONFIG = {
-    // Home location loaded from environment variables (see config.js generated at container startup)
-    homeLocation: window.ENV_CONFIG?.homeLocation || { lat: 45.0000, lon: -90.0000, alt: 1234 },
-    updateInterval: 1000, // Update every 1 second
-    viewDistance: 200, // km
-    scale: 0.001, // Scale for converting meters to scene units
-    altitudeExaggeration: 4.5, // Multiply altitude by this factor for visibility (4.5x real scale)
-    mapTileProvider: 'dark', // 'dark' (CartoDB Dark), 'osm' (OpenStreetMap), 'satellite' (Esri), or 'terrain' (Stamen)
-    showDistanceRings: true,
-    distanceRingIntervals: [92.6, 185.2, 277.8], // 50, 100, 150 nautical miles in km
-    distanceRingLabels: ['50 nmi', '100 nmi', '150 nmi'], // Labels for distance rings
-    mapZoomLevel: 8, // OSM zoom level for ground texture (7-12, lower = wider area)
-    mapTileGridSize: 21, // Load NxN grid of tiles (21x21 = ~1000km+ coverage area)
-    showAirports: true, // Show airport markers
-    showRunways: true, // Show runway overlays
-    airportMaxDistance: 200, // km - load airports within this radius
-    airportMinType: 'medium_airport', // 'large_airport', 'medium_airport', 'small_airport', or 'all'
-    highlightMilitary: true, // Highlight military aircraft with different color
-
-    // Theme colors - loaded from CSS variables
-    get militaryColor() { return getThemeColor('military-color'); },
-    get compassNorth() { return getThemeColor('compass-north'); },
-    get sceneFog() { return getThemeColor('scene-fog'); },
-    get sceneAmbient() { return getThemeColor('scene-ambient'); },
-    get sceneSun() { return getThemeColor('scene-sun'); },
-    get sceneGround() { return getThemeColor('scene-ground'); },
-    get runwayColor() { return getThemeColor('runway-color'); },
-    get towerBase() { return getThemeColor('tower-base'); },
-    get towerLight() { return getThemeColor('tower-light'); },
-    get homeMarker() { return getThemeColor('home-marker'); },
-    get trailGround() { return getThemeColor('trail-ground'); },
-    get trailSelected() { return getThemeColor('trail-selected'); },
-    get distanceRing1() { return getThemeColor('distance-ring-1'); },
-    get distanceRing2() { return getThemeColor('distance-ring-2'); },
-    get gridCenter() { return getThemeColor('grid-center'); },
-    get gridLines() { return getThemeColor('grid-lines'); }
-};
 
 // ============================================================================
-// THEME ENGINE
+// THEME MANAGER - Import from Module
 // ============================================================================
-// Manages theme presets and dynamic theme switching
 
-const THEMES = {
-    modern: {
-        name: 'Modern',
-        description: 'Clean blue interface with smooth gradients',
-        colors: {
-            // Accent colors
-            'accent-primary': '#4a9eff',
-            'accent-primary-dim': 'rgba(74, 158, 255, 0.3)',
-            'accent-primary-hover': 'rgba(74, 158, 255, 0.5)',
-            'accent-primary-active': 'rgba(74, 158, 255, 0.7)',
-
-            // Panel colors
-            'panel-bg': 'rgba(0, 0, 0, 0.85)',
-            'panel-bg-solid': 'rgba(0, 0, 0, 0.95)',
-            'panel-border': 'rgba(255, 255, 255, 0.1)',
-
-            // Text colors
-            'text-primary': '#ffffff',
-            'text-secondary': '#aaaaaa',
-            'text-accent': '#4a9eff',
-
-            // Status colors (keep standard)
-            'status-success': '#4eff9e',
-            'status-success-bg': 'rgba(78, 255, 158, 0.1)',
-            'status-success-glow': 'rgba(78, 255, 158, 0.6)',
-            'status-error': '#ff4a4a',
-            'status-error-bg': 'rgba(255, 74, 74, 0.1)',
-            'status-warning': '#ffaa4a',
-            'status-warning-bg': 'rgba(255, 170, 74, 0.1)',
-            'status-offline': '#888888',
-            'mode-active': '#00c853',
-            'mode-active-border': '#00e676',
-            'mode-active-glow': 'rgba(0, 230, 118, 0.5)',
-            'mode-inactive-bg': 'rgba(0, 0, 0, 0.7)',
-            'mode-inactive-border': 'rgba(74, 158, 255, 0.6)',
-            'mode-inactive-hover-bg': 'rgba(0, 0, 0, 0.85)',
-            'mode-inactive-hover-border': 'rgba(74, 158, 255, 0.9)',
-
-            // Badges
-            'badge-military': '#cc0000',
-            'badge-military-text': '#ffffff',
-            'badge-mlat': '#d97634',
-            'badge-mlat-text': '#ffffff',
-            'badge-stat': '#1e5a8e',
-            'badge-stat-text': '#ffffff',
-
-            // Buttons
-            'button-text': '#ffffff',
-
-            // 3D Scene
-            'military-color': '#ff0000',
-            'compass-north': '#ff4444',
-            'airport-label-bg': 'rgba(100, 100, 100, 0.7)',
-            'airport-label-text': '#ffffff',
-            'distance-ring-1': '#888888',
-            'distance-ring-2': '#aaaaaa',
-            'grid-center': '#444444',
-            'grid-lines': '#2a2a2a',
-            'scene-fog': '#87CEEB',
-            'scene-ambient': '#87CEEB',
-            'scene-sun': '#ffffee',
-            'scene-ground': '#5c7a3c',
-            'runway-color': '#ffffff',
-            'tower-base': '#eeeeee',
-            'tower-light': '#ff0000',
-            'home-marker': '#ffffff',
-            'trail-ground': '#333333',
-            'trail-selected': '#ffffff',
-
-            // Modal
-            'modal-text-muted': '#666666',
-            'modal-text-strong': '#cccccc',
-            'modal-text-note': '#888888',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-            'panel-radius': '8px',
-            'panel-blur': 'blur(10px)',
-            'panel-shadow': '0 4px 16px rgba(0, 0, 0, 0.3)',
-            'panel-border-width': '1px',
-            'panel-border-style': 'solid',
-            'button-radius': '6px',
-            'button-shadow': 'none',
-            'input-radius': '4px',
-            'badge-radius': '4px',
-            'font-weight-headers': '600'
-        }
-    },
-
-    digital: {
-        name: 'Digital/CRT',
-        description: 'Green terminal aesthetic with sharp edges',
-        colors: {
-            'accent-primary': '#00bb00',
-            'accent-primary-dim': 'rgba(0, 187, 0, 0.2)',
-            'accent-primary-hover': 'rgba(0, 187, 0, 0.4)',
-            'accent-primary-active': 'rgba(0, 187, 0, 0.6)',
-
-            'panel-bg': 'rgba(0, 20, 0, 0.9)',
-            'panel-bg-solid': 'rgba(0, 15, 0, 0.95)',
-            'panel-border': 'rgba(0, 187, 0, 0.3)',
-
-            'text-primary': '#00bb00',
-            'text-secondary': '#008800',
-            'text-accent': '#00bb00',
-
-            'status-success': '#00bb00',
-            'status-success-bg': 'rgba(0, 187, 0, 0.1)',
-            'status-success-glow': 'rgba(0, 187, 0, 0.5)',
-            'status-error': '#dd0000',
-            'status-error-bg': 'rgba(221, 0, 0, 0.1)',
-            'status-warning': '#dddd00',
-            'status-warning-bg': 'rgba(221, 221, 0, 0.1)',
-            'status-offline': '#005500',
-            'mode-active': '#009900',
-            'mode-active-border': '#00bb00',
-            'mode-active-glow': 'rgba(0, 187, 0, 0.4)',
-            'mode-inactive-bg': 'rgba(0, 40, 0, 0.8)',
-            'mode-inactive-border': 'rgba(0, 136, 0, 0.4)',
-            'mode-inactive-hover-bg': 'rgba(0, 60, 0, 0.9)',
-            'mode-inactive-hover-border': 'rgba(0, 136, 0, 0.6)',
-
-            'badge-military': '#dd0000',
-            'badge-military-text': '#000000',
-            'badge-mlat': '#dddd00',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#00bb00',
-            'badge-stat-text': '#000000',
-
-            // Buttons
-            'button-text': '#000000',
-
-            'military-color': '#dd0000',
-            'compass-north': '#00bb00',
-            'airport-label-bg': 'rgba(0, 40, 0, 0.8)',
-            'airport-label-text': '#00bb00',
-            'distance-ring-1': '#008800',
-            'distance-ring-2': '#00bb00',
-            'grid-center': '#00bb00',
-            'grid-lines': '#003300',
-            'scene-fog': '#001100',
-            'scene-ambient': '#00bb00',
-            'scene-sun': '#00bb00',
-            'scene-ground': '#002200',
-            'runway-color': '#00bb00',
-            'tower-base': '#00bb00',
-            'tower-light': '#dd0000',
-            'home-marker': '#00bb00',
-            'trail-ground': '#004400',
-            'trail-selected': '#00ff00',
-
-            'modal-text-muted': '#006600',
-            'modal-text-strong': '#00ff00',
-            'modal-text-note': '#00aa00',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Courier New', 'Consolas', monospace",
-            'panel-radius': '0px',
-            'panel-blur': 'blur(0px)',
-            'panel-shadow': '0 0 20px rgba(0, 187, 0, 0.4)',
-            'panel-border-width': '2px',
-            'panel-border-style': 'solid',
-            'button-radius': '0px',
-            'button-shadow': '0 0 10px rgba(0, 187, 0, 0.5)',
-            'input-radius': '0px',
-            'badge-radius': '0px',
-            'font-weight-headers': '700'
-        }
-    },
-
-    dark: {
-        name: 'Dark Mode',
-        description: 'Pure black OLED-friendly design',
-        colors: {
-            'accent-primary': '#ffffff',
-            'accent-primary-dim': 'rgba(255, 255, 255, 0.2)',
-            'accent-primary-hover': 'rgba(255, 255, 255, 0.4)',
-            'accent-primary-active': 'rgba(255, 255, 255, 0.6)',
-
-            'panel-bg': 'rgba(0, 0, 0, 0.95)',
-            'panel-bg-solid': '#000000',
-            'panel-border': 'rgba(255, 255, 255, 0.1)',
-
-            'text-primary': '#ffffff',
-            'text-secondary': '#888888',
-            'text-accent': '#ffffff',
-
-            'status-success': '#4eff9e',
-            'status-success-bg': 'rgba(78, 255, 158, 0.1)',
-            'status-success-glow': 'rgba(78, 255, 158, 0.6)',
-            'status-error': '#ff4a4a',
-            'status-error-bg': 'rgba(255, 74, 74, 0.1)',
-            'status-warning': '#ffaa4a',
-            'status-warning-bg': 'rgba(255, 170, 74, 0.1)',
-            'status-offline': '#666666',
-            'mode-active': '#ffffff',
-            'mode-active-border': '#ffffff',
-            'mode-active-glow': 'rgba(255, 255, 255, 0.5)',
-            'mode-inactive-bg': 'rgba(30, 30, 30, 0.9)',
-            'mode-inactive-border': 'rgba(255, 255, 255, 0.3)',
-            'mode-inactive-hover-bg': 'rgba(50, 50, 50, 0.95)',
-            'mode-inactive-hover-border': 'rgba(255, 255, 255, 0.5)',
-
-            'badge-military': '#ff0000',
-            'badge-military-text': '#ffffff',
-            'badge-mlat': '#ffaa00',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#666666',
-            'badge-stat-text': '#ffffff',
-
-            // Buttons
-            'button-text': '#ffffff',
-
-            'military-color': '#ff0000',
-            'compass-north': '#ffffff',
-            'airport-label-bg': 'rgba(30, 30, 30, 0.9)',
-            'airport-label-text': '#ffffff',
-            'distance-ring-1': '#444444',
-            'distance-ring-2': '#666666',
-            'grid-center': '#333333',
-            'grid-lines': '#1a1a1a',
-            'scene-fog': '#000000',
-            'scene-ambient': '#666666',
-            'scene-sun': '#ffffff',
-            'scene-ground': '#1a1a1a',
-            'runway-color': '#ffffff',
-            'tower-base': '#cccccc',
-            'tower-light': '#ff0000',
-            'home-marker': '#ffffff',
-            'trail-ground': '#222222',
-            'trail-selected': '#ffffff',
-
-            'modal-text-muted': '#666666',
-            'modal-text-strong': '#cccccc',
-            'modal-text-note': '#888888',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-            'panel-radius': '4px',
-            'panel-blur': 'blur(0px)',
-            'panel-shadow': '0 8px 24px rgba(0, 0, 0, 0.8)',
-            'panel-border-width': '1px',
-            'panel-border-style': 'solid',
-            'button-radius': '4px',
-            'button-shadow': 'none',
-            'input-radius': '2px',
-            'badge-radius': '2px',
-            'font-weight-headers': '500'
-        }
-    },
-
-    arctic: {
-        name: 'Arctic',
-        description: 'Cool crisp blues and icy whites',
-        colors: {
-            'accent-primary': '#00d4ff',
-            'accent-primary-dim': 'rgba(0, 212, 255, 0.3)',
-            'accent-primary-hover': 'rgba(0, 212, 255, 0.5)',
-            'accent-primary-active': 'rgba(0, 212, 255, 0.7)',
-
-            'panel-bg': 'rgba(10, 20, 30, 0.85)',
-            'panel-bg-solid': 'rgba(5, 15, 25, 0.95)',
-            'panel-border': 'rgba(0, 212, 255, 0.3)',
-
-            'text-primary': '#e0f7ff',
-            'text-secondary': '#88c9e0',
-            'text-accent': '#00d4ff',
-
-            'status-success': '#00ff88',
-            'status-success-bg': 'rgba(0, 255, 136, 0.1)',
-            'status-success-glow': 'rgba(0, 255, 136, 0.6)',
-            'status-error': '#ff4466',
-            'status-error-bg': 'rgba(255, 68, 102, 0.1)',
-            'status-warning': '#ffcc00',
-            'status-warning-bg': 'rgba(255, 204, 0, 0.1)',
-            'status-offline': '#5588aa',
-            'mode-active': '#00d4ff',
-            'mode-active-border': '#00ffff',
-            'mode-active-glow': 'rgba(0, 212, 255, 0.5)',
-            'mode-inactive-bg': 'rgba(10, 30, 50, 0.8)',
-            'mode-inactive-border': 'rgba(100, 180, 220, 0.5)',
-            'mode-inactive-hover-bg': 'rgba(20, 40, 60, 0.9)',
-            'mode-inactive-hover-border': 'rgba(120, 200, 240, 0.7)',
-
-            'badge-military': '#ff4466',
-            'badge-military-text': '#ffffff',
-            'badge-mlat': '#ffcc00',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#0088bb',
-            'badge-stat-text': '#ffffff',
-
-            // Buttons
-            'button-text': '#ffffff',
-
-            'military-color': '#ff4466',
-            'compass-north': '#00ffff',
-            'airport-label-bg': 'rgba(10, 30, 50, 0.8)',
-            'airport-label-text': '#e0f7ff',
-            'distance-ring-1': '#4488bb',
-            'distance-ring-2': '#6699cc',
-            'grid-center': '#3377aa',
-            'grid-lines': '#1a3344',
-            'scene-fog': '#b0e0ff',
-            'scene-ambient': '#87ceeb',
-            'scene-sun': '#ffffee',
-            'scene-ground': '#2a3f4f',
-            'runway-color': '#e0f7ff',
-            'tower-base': '#aaddff',
-            'tower-light': '#ff4466',
-            'home-marker': '#00d4ff',
-            'trail-ground': '#2a4f5f',
-            'trail-selected': '#00ffff',
-
-            'modal-text-muted': '#5588aa',
-            'modal-text-strong': '#e0f7ff',
-            'modal-text-note': '#88c9e0',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-            'panel-radius': '12px',
-            'panel-blur': 'blur(15px)',
-            'panel-shadow': '0 4px 20px rgba(100, 200, 255, 0.3)',
-            'panel-border-width': '1px',
-            'panel-border-style': 'solid',
-            'button-radius': '10px',
-            'button-shadow': '0 2px 8px rgba(0, 212, 255, 0.3)',
-            'input-radius': '8px',
-            'badge-radius': '12px',
-            'font-weight-headers': '500'
-        }
-    },
-
-    sunset: {
-        name: 'Sunset',
-        description: 'Warm oranges and purples of golden hour',
-        colors: {
-            'accent-primary': '#ff6b35',
-            'accent-primary-dim': 'rgba(255, 107, 53, 0.3)',
-            'accent-primary-hover': 'rgba(255, 107, 53, 0.5)',
-            'accent-primary-active': 'rgba(255, 107, 53, 0.7)',
-
-            'panel-bg': 'rgba(30, 15, 25, 0.85)',
-            'panel-bg-solid': 'rgba(20, 10, 20, 0.95)',
-            'panel-border': 'rgba(255, 107, 53, 0.3)',
-
-            'text-primary': '#ffe8dd',
-            'text-secondary': '#cc9988',
-            'text-accent': '#ff6b35',
-
-            'status-success': '#88ff66',
-            'status-success-bg': 'rgba(136, 255, 102, 0.1)',
-            'status-success-glow': 'rgba(136, 255, 102, 0.6)',
-            'status-error': '#ff3366',
-            'status-error-bg': 'rgba(255, 51, 102, 0.1)',
-            'status-warning': '#ffaa00',
-            'status-warning-bg': 'rgba(255, 170, 0, 0.1)',
-            'status-offline': '#886655',
-            'mode-active': '#ff6b35',
-            'mode-active-border': '#ff8844',
-            'mode-active-glow': 'rgba(255, 107, 53, 0.5)',
-            'mode-inactive-bg': 'rgba(40, 20, 30, 0.8)',
-            'mode-inactive-border': 'rgba(255, 140, 100, 0.4)',
-            'mode-inactive-hover-bg': 'rgba(60, 30, 40, 0.9)',
-            'mode-inactive-hover-border': 'rgba(255, 160, 120, 0.6)',
-
-            'badge-military': '#ff3366',
-            'badge-military-text': '#ffffff',
-            'badge-mlat': '#ffaa00',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#8844aa',
-            'badge-stat-text': '#ffffff',
-
-            // Buttons
-            'button-text': '#ffffff',
-
-            'military-color': '#ff3366',
-            'compass-north': '#ff6b35',
-            'airport-label-bg': 'rgba(40, 20, 30, 0.8)',
-            'airport-label-text': '#ffe8dd',
-            'distance-ring-1': '#aa5577',
-            'distance-ring-2': '#cc7788',
-            'grid-center': '#884466',
-            'grid-lines': '#442233',
-            'scene-fog': '#ff9966',
-            'scene-ambient': '#ff8844',
-            'scene-sun': '#ffcc66',
-            'scene-ground': '#4a2f3f',
-            'runway-color': '#ffccaa',
-            'tower-base': '#ddaa99',
-            'tower-light': '#ff3366',
-            'home-marker': '#ff6b35',
-            'trail-ground': '#5a3f4f',
-            'trail-selected': '#ff8844',
-
-            'modal-text-muted': '#886655',
-            'modal-text-strong': '#ffe8dd',
-            'modal-text-note': '#cc9988',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-            'panel-radius': '10px',
-            'panel-blur': 'blur(10px)',
-            'panel-shadow': '0 6px 20px rgba(255, 140, 0, 0.25)',
-            'panel-border-width': '1px',
-            'panel-border-style': 'solid',
-            'button-radius': '8px',
-            'button-shadow': '0 4px 12px rgba(255, 107, 53, 0.3)',
-            'input-radius': '6px',
-            'badge-radius': '6px',
-            'font-weight-headers': '600'
-        }
-    },
-
-    neon: {
-        name: 'Neon',
-        description: 'Vibrant synthwave pink and purple',
-        colors: {
-            'accent-primary': '#ff1493',
-            'accent-primary-dim': 'rgba(255, 20, 147, 0.3)',
-            'accent-primary-hover': 'rgba(255, 20, 147, 0.5)',
-            'accent-primary-active': 'rgba(255, 20, 147, 0.7)',
-
-            'panel-bg': 'rgba(20, 0, 30, 0.85)',
-            'panel-bg-solid': 'rgba(15, 0, 25, 0.95)',
-            'panel-border': 'rgba(255, 20, 147, 0.4)',
-
-            'text-primary': '#ff69f5',
-            'text-secondary': '#cc66dd',
-            'text-accent': '#ff1493',
-
-            'status-success': '#00ffaa',
-            'status-success-bg': 'rgba(0, 255, 170, 0.1)',
-            'status-success-glow': 'rgba(0, 255, 170, 0.6)',
-            'status-error': '#ff0066',
-            'status-error-bg': 'rgba(255, 0, 102, 0.1)',
-            'status-warning': '#ffff00',
-            'status-warning-bg': 'rgba(255, 255, 0, 0.1)',
-            'status-offline': '#884488',
-            'mode-active': '#ff1493',
-            'mode-active-border': '#ff00ff',
-            'mode-active-glow': 'rgba(255, 20, 147, 0.5)',
-            'mode-inactive-bg': 'rgba(40, 0, 60, 0.8)',
-            'mode-inactive-border': 'rgba(170, 68, 204, 0.5)',
-            'mode-inactive-hover-bg': 'rgba(60, 0, 80, 0.9)',
-            'mode-inactive-hover-border': 'rgba(200, 85, 221, 0.7)',
-
-            'badge-military': '#ff0066',
-            'badge-military-text': '#ffffff',
-            'badge-mlat': '#ffff00',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#8800ff',
-            'badge-stat-text': '#ffffff',
-
-            // Buttons
-            'button-text': '#ffffff',
-
-            'military-color': '#ff0066',
-            'compass-north': '#ff00ff',
-            'airport-label-bg': 'rgba(40, 0, 60, 0.8)',
-            'airport-label-text': '#ff69f5',
-            'distance-ring-1': '#aa44cc',
-            'distance-ring-2': '#cc55dd',
-            'grid-center': '#8800cc',
-            'grid-lines': '#440066',
-            'scene-fog': '#330044',
-            'scene-ambient': '#aa00ff',
-            'scene-sun': '#ff00ff',
-            'scene-ground': '#220033',
-            'runway-color': '#ff69f5',
-            'tower-base': '#cc66dd',
-            'tower-light': '#ff0066',
-            'home-marker': '#ff1493',
-            'trail-ground': '#440055',
-            'trail-selected': '#ff00ff',
-
-            'modal-text-muted': '#884488',
-            'modal-text-strong': '#ff69f5',
-            'modal-text-note': '#cc66dd',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-            'panel-radius': '2px',
-            'panel-blur': 'blur(6px)',
-            'panel-shadow': '0 0 20px rgba(255, 20, 147, 0.6), 0 0 40px rgba(0, 255, 255, 0.4)',
-            'panel-border-width': '2px',
-            'panel-border-style': 'solid',
-            'button-radius': '2px',
-            'button-shadow': '0 0 15px rgba(255, 20, 147, 0.8)',
-            'input-radius': '2px',
-            'badge-radius': '2px',
-            'font-weight-headers': '700'
-        }
-    },
-
-    vintage: {
-        name: 'Vintage',
-        description: 'Warm amber retro radar display',
-        colors: {
-            'accent-primary': '#ffb000',
-            'accent-primary-dim': 'rgba(255, 176, 0, 0.3)',
-            'accent-primary-hover': 'rgba(255, 176, 0, 0.5)',
-            'accent-primary-active': 'rgba(255, 176, 0, 0.7)',
-
-            'panel-bg': 'rgba(40, 30, 20, 0.85)',
-            'panel-bg-solid': 'rgba(30, 22, 15, 0.95)',
-            'panel-border': 'rgba(255, 176, 0, 0.4)',
-
-            'text-primary': '#ffb000',
-            'text-secondary': '#cc8800',
-            'text-accent': '#ffb000',
-
-            'status-success': '#90ee90',
-            'status-success-bg': 'rgba(144, 238, 144, 0.1)',
-            'status-success-glow': 'rgba(144, 238, 144, 0.6)',
-            'status-error': '#ff6347',
-            'status-error-bg': 'rgba(255, 99, 71, 0.1)',
-            'status-warning': '#ffd700',
-            'status-warning-bg': 'rgba(255, 215, 0, 0.1)',
-            'status-offline': '#8b7355',
-            'mode-active': '#cc8800',
-            'mode-active-border': '#ddaa00',
-            'mode-active-glow': 'rgba(204, 136, 0, 0.4)',
-            'mode-inactive-bg': 'rgba(50, 40, 30, 0.8)',
-            'mode-inactive-border': 'rgba(139, 115, 85, 0.5)',
-            'mode-inactive-hover-bg': 'rgba(70, 55, 40, 0.9)',
-            'mode-inactive-hover-border': 'rgba(160, 130, 95, 0.7)',
-
-            'badge-military': '#cd853f',
-            'badge-military-text': '#000000',
-            'badge-mlat': '#daa520',
-            'badge-mlat-text': '#000000',
-            'badge-stat': '#8b7355',
-            'badge-stat-text': '#ffb000',
-
-            // Buttons
-            'button-text': '#000000',
-
-            'military-color': '#cd853f',
-            'compass-north': '#ffb000',
-            'airport-label-bg': 'rgba(50, 40, 30, 0.8)',
-            'airport-label-text': '#ffb000',
-            'distance-ring-1': '#8b7355',
-            'distance-ring-2': '#a0826d',
-            'grid-center': '#8b7355',
-            'grid-lines': '#4a3f35',
-            'scene-fog': '#3a2f25',
-            'scene-ambient': '#d2691e',
-            'scene-sun': '#ffd700',
-            'scene-ground': '#4a3f2f',
-            'runway-color': '#ffb000',
-            'tower-base': '#cc8800',
-            'tower-light': '#ff6347',
-            'home-marker': '#ffb000',
-            'trail-ground': '#5a4f3f',
-            'trail-selected': '#ffb000',
-
-            'modal-text-muted': '#8b7355',
-            'modal-text-strong': '#ffb000',
-            'modal-text-note': '#cc8800',
-            'bg-canvas': '#000000'
-        },
-        styles: {
-            'font-family': "'Courier New', monospace",
-            'panel-radius': '6px',
-            'panel-blur': 'blur(2px)',
-            'panel-shadow': 'inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.6)',
-            'panel-border-width': '3px',
-            'panel-border-style': 'ridge',
-            'button-radius': '4px',
-            'button-shadow': 'inset 0 1px 2px rgba(255, 176, 0, 0.3)',
-            'input-radius': '3px',
-            'badge-radius': '3px',
-            'font-weight-headers': '700'
-        }
-    }
-};
-
-/**
- * Apply a theme to the application
- * @param {string} themeName - Name of theme from THEMES object
- */
-function applyTheme(themeName) {
-    const theme = THEMES[themeName];
-    if (!theme) {
-        console.error(`[Theme] Unknown theme: ${themeName}`);
-        return;
-    }
-
-    console.log(`[Theme] Applying theme: ${theme.name}`);
-    const root = document.documentElement;
-
-    // Apply all color variables
-    Object.entries(theme.colors).forEach(([key, value]) => {
-        root.style.setProperty(`--${key}`, value);
-    });
-
-    // Apply style variables
-    Object.entries(theme.styles).forEach(([key, value]) => {
-        root.style.setProperty(`--${key}`, value);
-    });
-
-    // Save preference to localStorage
-    if (SafeStorage.setItem('adsb3d-theme', themeName)) {
-        console.log(`[Theme] Saved preference: ${themeName}`);
-    }
-
-    // Trigger scene updates if scene exists (for dynamic theme switching)
-    if (typeof scene !== 'undefined' && scene) {
-        updateSceneColors();
-    }
-}
-
-/**
- * Update Three.js scene colors after theme change
- * This forces re-evaluation of CONFIG getters
- */
-function updateSceneColors() {
-    console.log('[Theme] Updating Three.js scene colors...');
-
-    // Update fog
-    if (scene.fog) {
-        scene.fog.color.setHex(CONFIG.sceneFog);
-    }
-
-    // Update lights and distance rings
-    scene.traverse((object) => {
-        // Update lights
-        if (object.isLight) {
-            if (object.isAmbientLight || object.isHemisphereLight) {
-                object.color.setHex(CONFIG.sceneAmbient);
-            } else if (object.isDirectionalLight) {
-                object.color.setHex(CONFIG.sceneSun);
-            }
-        }
-
-        // Update distance rings
-        if (object.userData && object.userData.isDistanceRing) {
-            const index = object.userData.ringIndex;
-            const color = index % 2 === 0 ? CONFIG.distanceRing1 : CONFIG.distanceRing2;
-            if (object.material) {
-                object.material.color.setHex(color);
-            }
-        }
-    });
-
-    console.log('[Theme] Scene colors updated');
-}
-
-/**
- * Get current theme name from localStorage or default
- * @returns {string} Theme name
- */
-function getCurrentTheme() {
-    const saved = SafeStorage.getItem('adsb3d-theme');
-    if (saved && THEMES[saved]) {
-        return saved;
-    }
-    return 'modern'; // Default theme
-}
-
-/**
- * Initialize theme system on page load
- */
+import {
+    applyTheme,
+    updateSceneColors,
+    getCurrentTheme,
+    initializeTheme as initTheme,
+    getThemes,
+    getTheme
+} from './theme-manager.js';
+
+// Helper functions that use theme-manager with scene and CONFIG references
 function initializeTheme() {
-    const currentTheme = getCurrentTheme();
-    console.log(`[Theme] Initializing with theme: ${currentTheme}`);
-    applyTheme(currentTheme);
+    initTheme();
+}
+
+// Wrapper for updateSceneColors that passes scene and CONFIG
+function updateThemeSceneColors() {
+    if (typeof scene !== 'undefined' && scene && typeof CONFIG !== 'undefined') {
+        updateSceneColors(scene, CONFIG);
+    }
+}
+
+// Wrapper for applyTheme that automatically handles scene updates
+function applyThemeWithScene(themeName) {
+    applyTheme(themeName, typeof scene !== 'undefined' ? scene : null, typeof CONFIG !== 'undefined' ? CONFIG : null);
 }
 
 // ============================================================================
-// URL STATE MANAGEMENT
+// URL STATE MANAGER - Import from Module
 // ============================================================================
-// Manages browser URL state for shareable links and browser navigation
 
-const URLState = {
-    /**
-     * Get URL parameters from current URL
-     * @returns {Object} Parsed URL parameters
-     */
-    getParams() {
-        const params = new URLSearchParams(window.location.search);
-        const result = {
-            // Mode
-            mode: params.get('mode'), // 'live' or 'historical'
-
-            // Historical time range
-            start: params.get('start'), // ISO 8601 datetime
-            end: params.get('end'), // ISO 8601 datetime
-            preset: params.get('preset'), // Time preset (1, 4, 8, 12, 24, or 'custom')
-
-            // Display settings
-            tron: params.get('tron'), // Tron mode ('1' or null)
-            display: params.get('display'), // Display mode ('all' or 'playback')
-            vizmode: params.get('vizmode'), // Visualization mode ('tracks', 'heatmap', or 'both')
-            theme: params.get('theme'), // Theme name
-
-            // Live mode toggles
-            trails: params.get('trails'), // Show trails
-            labels: params.get('labels'), // Show labels
-            airports: params.get('airports'), // Show airports
-            runways: params.get('runways'), // Show runways
-            altlines: params.get('altlines'), // Show altitude lines
-            radar: params.get('radar'), // Show mini radar
-            compass: params.get('compass'), // Show compass
-            fade: params.get('fade'), // Auto-fade trails
-            fadetime: params.get('fadetime'), // Fade time in seconds
-
-            // Historical filters
-            military: params.get('military'), // Military only
-            altmin: params.get('altmin'), // Min altitude
-            altmax: params.get('altmax'), // Max altitude
-            minpos: params.get('minpos'), // Min positions
-            spdmin: params.get('spdmin'), // Min speed
-            spdmax: params.get('spdmax'), // Max speed
-
-            // Selected aircraft
-            icao: params.get('icao') // ICAO hex code
-        };
-
-        // Debug logging
-        if (result.start || result.end || result.preset) {
-            console.log('[URL State] Extracted parameters:', {
-                start: result.start,
-                end: result.end,
-                preset: result.preset,
-                mode: result.mode,
-                altmax: result.altmax,
-                minpos: result.minpos
-            });
-        }
-
-        return result;
-    },
-
-    /**
-     * Update URL without page reload (using History API)
-     * @param {Object} state - State object with any combination of parameters
-     */
-    updateURL(state) {
-        const params = new URLSearchParams();
-
-        // Only add parameters that have values (skip null/undefined)
-        if (state.mode) params.set('mode', state.mode);
-        if (state.start) params.set('start', state.start);
-        if (state.end) params.set('end', state.end);
-        if (state.preset) params.set('preset', state.preset);
-        if (state.tron) params.set('tron', state.tron);
-        if (state.display) params.set('display', state.display);
-        if (state.theme) params.set('theme', state.theme);
-        if (state.trails !== undefined && state.trails !== null) params.set('trails', state.trails);
-        if (state.labels !== undefined && state.labels !== null) params.set('labels', state.labels);
-        if (state.airports !== undefined && state.airports !== null) params.set('airports', state.airports);
-        if (state.runways !== undefined && state.runways !== null) params.set('runways', state.runways);
-        if (state.altlines !== undefined && state.altlines !== null) params.set('altlines', state.altlines);
-        if (state.radar !== undefined && state.radar !== null) params.set('radar', state.radar);
-        if (state.compass !== undefined && state.compass !== null) params.set('compass', state.compass);
-        if (state.fade) params.set('fade', state.fade);
-        if (state.fadetime) params.set('fadetime', state.fadetime);
-        if (state.military) params.set('military', state.military);
-        if (state.altmin) params.set('altmin', state.altmin);
-        if (state.altmax) params.set('altmax', state.altmax);
-        if (state.minpos) params.set('minpos', state.minpos);
-        if (state.spdmin) params.set('spdmin', state.spdmin);
-        if (state.spdmax) params.set('spdmax', state.spdmax);
-        if (state.icao) params.set('icao', state.icao);
-
-        const newURL = params.toString()
-            ? `${window.location.pathname}?${params.toString()}`
-            : window.location.pathname;
-
-        // Update URL without reloading page
-        window.history.pushState(state, '', newURL);
-        console.log('[URL State] Updated:', newURL);
-    },
-
-    /**
-     * Apply URL parameters to app state (called on page load)
-     * @returns {boolean} True if URL state was applied
-     */
-    async applyFromURL() {
-        try {
-            const urlParams = this.getParams();
-
-            // No URL parameters = nothing to apply
-            if (!urlParams.mode && !urlParams.start && !urlParams.end && !urlParams.preset) {
-                console.log('[URL State] No URL parameters found - using defaults');
-                return false;
-            }
-
-            console.log('[URL State] Found parameters:', urlParams);
-
-            // If mode is historical and we have start/end times
-            if (urlParams.mode === 'historical' && urlParams.start && urlParams.end) {
-                // Check if Track API is available
-                if (!AppFeatures.historical) {
-                    console.warn('[URL State] Historical mode requested but Track API not available - falling back to live mode');
-                    await switchToLiveMode(true); // Skip URL update when loading from URL
-                    return false;
-                }
-
-                // Parse ISO 8601 dates with validation
-                const startDate = new Date(urlParams.start);
-                const endDate = new Date(urlParams.end);
-
-                // Validate dates
-                if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                    console.error('[URL State] Invalid date format in URL - falling back to live mode');
-                    console.error('[URL State] Start:', urlParams.start, '→', startDate);
-                    console.error('[URL State] End:', urlParams.end, '→', endDate);
-                    await switchToLiveMode(true); // Skip URL update when loading from URL
-                    return false;
-                }
-
-                // Validate date range is reasonable (not in future, not too far in past)
-                const now = new Date();
-                const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-
-                if (startDate > now) {
-                    console.warn('[URL State] Start time is in the future - falling back to live mode');
-                    await switchToLiveMode(true); // Skip URL update when loading from URL
-                    return false;
-                }
-
-                if (endDate > now) {
-                    console.warn('[URL State] End time is in the future - adjusting to now');
-                    urlParams.end = now.toISOString();
-                }
-
-                if (startDate < oneYearAgo) {
-                    console.warn('[URL State] Start time is more than 1 year ago - may have no data');
-                }
-
-                if (endDate <= startDate) {
-                    console.error('[URL State] End time is before or equal to start time - falling back to live mode');
-                    await switchToLiveMode(true); // Skip URL update when loading from URL
-                    return false;
-                }
-
-                // Switch to historical mode first (skip URL update - we'll do it after loading data)
-                await switchToHistoricalMode(true);
-
-                // Set preset or custom mode with validation
-                // IMPORTANT: If explicit start/end times are provided, use custom mode (they take priority)
-                if (urlParams.start && urlParams.end) {
-                    // Explicit times provided - use custom mode
-                    const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
-                    if (customRadio) {
-                        customRadio.checked = true;
-                        const customRange = document.getElementById('custom-time-range');
-                        if (customRange) customRange.style.display = 'block';
-                    }
-                    console.log('[URL State] Using custom time mode due to explicit start/end in URL');
-                } else if (urlParams.preset && urlParams.preset !== 'custom') {
-                    // No explicit times, but preset is provided
-                    const validPresets = ['1', '4', '8', '12', '24'];
-                    if (validPresets.includes(urlParams.preset)) {
-                        const presetRadio = document.querySelector(`input[name="time-preset"][value="${urlParams.preset}"]`);
-                        if (presetRadio) {
-                            presetRadio.checked = true;
-                            const customRange = document.getElementById('custom-time-range');
-                            if (customRange) customRange.style.display = 'none';
-                            console.log(`[URL State] Selected preset: Last ${urlParams.preset} hour(s)`);
-
-                            // Also populate the date/time inputs with the calculated range
-                            const calculateTimeRange = (hours) => {
-                                const end = new Date();
-                                const start = new Date(end.getTime() - (hours * 60 * 60 * 1000));
-                                return { startTime: start, endTime: end };
-                            };
-
-                            const range = calculateTimeRange(parseInt(urlParams.preset));
-                            const startTimeInput = document.getElementById('start-time');
-                            const endTimeInput = document.getElementById('end-time');
-                            if (startTimeInput) {
-                                startTimeInput.value = formatForDatetimeInput(range.startTime.toISOString());
-                            }
-                            if (endTimeInput) {
-                                endTimeInput.value = formatForDatetimeInput(range.endTime.toISOString());
-                            }
-
-                            // Update HistoricalState with the calculated times
-                            HistoricalState.settings.startTime = range.startTime;
-                            HistoricalState.settings.endTime = range.endTime;
-                        }
-                    } else {
-                        console.warn('[URL State] Invalid preset value:', urlParams.preset, '- using custom');
-                    }
-                } else {
-                    // Default to custom mode
-                    const customRadio = document.querySelector('input[name="time-preset"][value="custom"]');
-                    if (customRadio) {
-                        customRadio.checked = true;
-                        const customRange = document.getElementById('custom-time-range');
-                        if (customRange) customRange.style.display = 'block';
-                    }
-                }
-
-                // Populate custom time fields (correct IDs: start-time and end-time)
-                // Need to format dates properly for datetime-local inputs
-                const startTimeInput = document.getElementById('start-time');
-                const endTimeInput = document.getElementById('end-time');
-
-                // Helper to format date for datetime-local input (YYYY-MM-DDTHH:mm)
-                const formatForDatetimeInput = (dateStr) => {
-                    if (!dateStr) return '';
-                    const date = new Date(dateStr);
-                    if (isNaN(date.getTime())) return '';
-
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    return `${year}-${month}-${day}T${hours}:${minutes}`;
-                };
-
-                if (startTimeInput && urlParams.start) {
-                    const formattedStart = formatForDatetimeInput(urlParams.start);
-                    startTimeInput.value = formattedStart;
-                    console.log('[URL State] Set start time input to:', formattedStart, 'from URL:', urlParams.start);
-                }
-                if (endTimeInput && urlParams.end) {
-                    const formattedEnd = formatForDatetimeInput(urlParams.end);
-                    endTimeInput.value = formattedEnd;
-                    console.log('[URL State] Set end time input to:', formattedEnd, 'from URL:', urlParams.end);
-                }
-
-                // CRITICAL: Also update HistoricalState directly since setting the preset radio
-                // may have triggered the change event which calculates times from NOW
-                // We need to override those with the explicit URL times
-                if (urlParams.start && urlParams.end) {
-                    console.log('[URL State] Attempting to set times from URL:', { urlStart: urlParams.start, urlEnd: urlParams.end });
-                    const startDate = new Date(urlParams.start);
-                    const endDate = new Date(urlParams.end);
-                    console.log('[URL State] Parsed dates:', { startDate, endDate, startValid: !isNaN(startDate.getTime()), endValid: !isNaN(endDate.getTime()) });
-                    if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
-                        HistoricalState.settings.startTime = startDate;
-                        HistoricalState.settings.endTime = endDate;
-                        console.log('[URL State] ✓ Set HistoricalState times from URL:', { start: startDate.toISOString(), end: endDate.toISOString() });
-                    } else {
-                        console.warn('[URL State] ✗ Failed to parse dates from URL');
-                    }
-                } else {
-                    console.log('[URL State] No explicit start/end in URL (start=' + urlParams.start + ', end=' + urlParams.end + ')');
-                }
-
-                // Apply tron mode if specified
-                if (urlParams.tron === '1' || urlParams.tron === 'true') {
-                    showTronMode = true;
-                    const tronToggle = document.getElementById('toggle-tron-mode-container');
-                    if (tronToggle) tronToggle.classList.add('active');
-                }
-
-                // Apply filters with validation
-                if (urlParams.military === '1') {
-                    const militaryCheckbox = document.getElementById('filter-military-only');
-                    if (militaryCheckbox) militaryCheckbox.checked = true;
-                }
-
-                if (urlParams.altmin) {
-                    const altMin = parseInt(urlParams.altmin);
-                    if (!isNaN(altMin) && altMin >= 0 && altMin <= 60000) {
-                        const input = document.getElementById('filter-altitude-min');
-                        if (input) input.value = altMin;
-                    } else {
-                        console.warn('[URL State] Invalid altmin value:', urlParams.altmin);
-                    }
-                }
-
-                if (urlParams.altmax) {
-                    const altMax = parseInt(urlParams.altmax);
-                    if (!isNaN(altMax) && altMax >= 0 && altMax <= 60000) {
-                        const input = document.getElementById('filter-altitude-max');
-                        if (input) {
-                            input.value = altMax;
-                            console.log('[URL State] Set altmax filter to:', altMax, '(input element exists:', !!input, ')');
-                        } else {
-                            console.warn('[URL State] Could not find filter-altitude-max input element');
-                        }
-                    } else {
-                        console.warn('[URL State] Invalid altmax value:', urlParams.altmax);
-                    }
-                }
-
-                if (urlParams.minpos) {
-                    const minPos = parseInt(urlParams.minpos);
-                    if (!isNaN(minPos) && minPos >= 2 && minPos <= 10000) {
-                        const input = document.getElementById('filter-min-positions');
-                        if (input) {
-                            input.value = minPos;
-                            console.log('[URL State] Set minpos filter to:', minPos);
-                        } else {
-                            console.warn('[URL State] Could not find filter-min-positions input element');
-                        }
-                    } else {
-                        console.warn('[URL State] Invalid minpos value:', urlParams.minpos);
-                    }
-                }
-
-                if (urlParams.spdmin) {
-                    const spdMin = parseInt(urlParams.spdmin);
-                    if (!isNaN(spdMin) && spdMin >= 0 && spdMin <= 1000) {
-                        const input = document.getElementById('filter-speed-min');
-                        if (input) input.value = spdMin;
-                    } else {
-                        console.warn('[URL State] Invalid spdmin value:', urlParams.spdmin);
-                    }
-                }
-
-                if (urlParams.spdmax) {
-                    const spdMax = parseInt(urlParams.spdmax);
-                    if (!isNaN(spdMax) && spdMax >= 0 && spdMax <= 1000) {
-                        const input = document.getElementById('filter-speed-max');
-                        if (input) input.value = spdMax;
-                    } else {
-                        console.warn('[URL State] Invalid spdmax value:', urlParams.spdmax);
-                    }
-                }
-
-                // Automatically load the data
-                console.log('[URL State] Auto-loading historical data from URL parameters');
-                const loadButton = document.getElementById('load-historical-data');
-                if (loadButton) {
-                    // Trigger the load button click after a short delay to ensure UI is ready
-                    setTimeout(() => {
-                        loadButton.click();
-
-                        // Apply display mode after data loads (wait for load to complete)
-                        setTimeout(() => {
-                            if (urlParams.display === 'playback') {
-                                const playbackBtn = document.getElementById('display-mode-playback');
-                                if (playbackBtn) playbackBtn.click();
-                            }
-
-                            // Apply visualization mode (tracks/heatmap/both)
-                            if (urlParams.vizmode) {
-                                const vizModeRadio = document.querySelector(`input[name="display-mode"][value="${urlParams.vizmode}"]`);
-                                if (vizModeRadio) {
-                                    vizModeRadio.checked = true;
-                                    HistoricalState.heatmapMode = urlParams.vizmode;
-                                    console.log(`[URL State] Applied visualization mode: ${urlParams.vizmode}`);
-
-                                    // Trigger mode change to show/hide heatmap
-                                    if (urlParams.vizmode === 'heatmap') {
-                                        clearAllHistoricalTracks();
-                                        generateFlightCorridors();
-                                    } else if (urlParams.vizmode === 'both') {
-                                        generateFlightCorridors();
-                                    } else if (urlParams.vizmode === 'tracks') {
-                                        clearFlightCorridors();
-                                    }
-                                }
-                            }
-                        }, 1000);
-                    }, 500);
-                }
-
-                console.log('[URL State] Applied historical mode from URL');
-                return true;
-            }
-
-            // Mode is explicitly 'live' or unrecognized
-            if (urlParams.mode === 'live') {
-                await switchToLiveMode(true); // Skip URL update when loading from URL
-                console.log('[URL State] Applied live mode from URL');
-                return true;
-            }
-
-            // No valid mode found - default to live mode
-            console.warn('[URL State] No valid mode found in URL - defaulting to live mode');
-            return false;
-
-        } catch (error) {
-            console.error('[URL State] Error applying URL parameters:', error);
-            console.error('[URL State] Falling back to live mode with default settings');
-
-            // Try to recover by switching to live mode
-            try {
-                await switchToLiveMode(true); // Skip URL update when recovering from error
-            } catch (recoveryError) {
-                console.error('[URL State] Failed to recover to live mode:', recoveryError);
-            }
-
-            return false;
-        }
-    },
-
-    /**
-     * Capture current app state and update URL
-     * Call this after any user action that changes settings
-     */
-    updateFromCurrentState() {
-        const state = {
-            mode: currentMode
-        };
-
-        // Add historical mode parameters
-        if (currentMode === 'historical' && HistoricalState.settings.startTime && HistoricalState.settings.endTime) {
-            state.start = HistoricalState.settings.startTime.toISOString();
-            state.end = HistoricalState.settings.endTime.toISOString();
-
-            const selectedPreset = document.querySelector('input[name="time-preset"]:checked');
-            if (selectedPreset) state.preset = selectedPreset.value;
-
-            state.display = HistoricalState.displayMode === 'playback' ? 'playback' : 'all';
-
-            // Add visualization mode (tracks/heatmap/both)
-            if (HistoricalState.heatmapMode && HistoricalState.heatmapMode !== 'tracks') {
-                state.vizmode = HistoricalState.heatmapMode;
-            }
-
-            if (showTronMode) state.tron = '1';
-
-            // Add filters if set
-            const militaryOnly = document.getElementById('filter-military-only');
-            if (militaryOnly && militaryOnly.checked) state.military = '1';
-
-            const altMin = document.getElementById('filter-altitude-min');
-            if (altMin && altMin.value) state.altmin = altMin.value;
-
-            const altMax = document.getElementById('filter-altitude-max');
-            if (altMax && altMax.value) state.altmax = altMax.value;
-
-            const minPos = document.getElementById('filter-min-positions');
-            if (minPos && minPos.value) state.minpos = minPos.value;
-
-            const spdMin = document.getElementById('filter-speed-min');
-            if (spdMin && spdMin.value) state.spdmin = spdMin.value;
-
-            const spdMax = document.getElementById('filter-speed-max');
-            if (spdMax && spdMax.value) state.spdmax = spdMax.value;
-        }
-
-        // Add live mode tron setting
-        if (showTronMode) state.tron = '1';
-
-        // Add current theme
-        const currentTheme = SafeStorage.getItem('selectedTheme');
-        if (currentTheme && currentTheme !== 'modern') state.theme = currentTheme;
-
-        // Add selected aircraft
-        if (selectedAircraft) state.icao = selectedAircraft;
-
-        this.updateURL(state);
-    }
-};
-
-// Handle browser back/forward navigation
-window.addEventListener('popstate', async (event) => {
-    console.log('[URL State] Browser navigation detected');
-    if (event.state) {
-        await URLState.applyFromURL();
-    }
-});
-
-// ============================================================================
-// FEATURE DETECTION SYSTEM
-// ============================================================================
-// Determines at runtime which features are available (live vs historical mode)
-
-const FeatureDetector = {
-    cache: {
-        historySupport: null,
-        lastCheck: null,
-        checkDuration: null
-    },
-
-    /**
-     * Detect if Track API is available for historical mode
-     * @returns {Promise<boolean>}
-     */
-    async detectHistorySupport() {
-        const startTime = performance.now();
-        const historicalEnabled = window.HISTORICAL_CONFIG?.enabled;
-
-        // Historical mode disabled via environment variable
-        if (!historicalEnabled) {
-            console.log('[Feature Detection] Historical mode disabled via ENABLE_HISTORICAL=false');
-            this.cache.historySupport = false;
-            this.cache.lastCheck = Date.now();
-            this.cache.checkDuration = performance.now() - startTime;
-            return false;
-        }
-
-        console.log('[Feature Detection] Checking Track API availability at /api/health...');
-
-        try {
-            // Create abort controller for timeout
-            const controller = new AbortController();
-            const timeoutMs = 2000;
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-            // Ping health endpoint (proxied through nginx /api/health)
-            const response = await fetch('/api/health', {
-                method: 'GET',
-                signal: controller.signal,
-                cache: 'no-cache',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-
-            clearTimeout(timeoutId);
-
-            const isAvailable = response.ok;
-            const duration = performance.now() - startTime;
-
-            if (isAvailable) {
-                console.log(`[Feature Detection] ✓ Track API available (${duration.toFixed(0)}ms)`);
-                console.log('[Feature Detection] Historical mode enabled');
-            } else {
-                console.log(`[Feature Detection] ✗ Track API returned ${response.status} (${duration.toFixed(0)}ms)`);
-                console.log('[Feature Detection] Historical mode disabled');
-            }
-
-            this.cache.historySupport = isAvailable;
-            this.cache.lastCheck = Date.now();
-            this.cache.checkDuration = duration;
-
-            return isAvailable;
-
-        } catch (error) {
-            const duration = performance.now() - startTime;
-
-            if (error.name === 'AbortError') {
-                console.log(`[Feature Detection] ✗ Track API timeout after ${duration.toFixed(0)}ms`);
-            } else {
-                console.log(`[Feature Detection] ✗ Track API unreachable: ${error.message}`);
-            }
-
-            console.log('[Feature Detection] Historical mode disabled');
-
-            this.cache.historySupport = false;
-            this.cache.lastCheck = Date.now();
-            this.cache.checkDuration = duration;
-
-            return false;
-        }
-    },
-
-    /**
-     * Initialize feature detection on app startup
-     * @returns {Promise<Object>}
-     */
-    async initialize() {
-        console.log('[Feature Detection] Starting...');
-
-        const features = {
-            live: true,  // Always available
-            historical: await this.detectHistorySupport()
-        };
-
-        console.log('[Feature Detection] Results:', features);
-        return features;
-    }
-};
-
-// Application feature state
-const AppFeatures = {
-    live: true,
-    historical: false
-};
+import {
+    URLState,
+    FeatureDetector,
+    AppFeatures,
+    initializeBrowserNavigation
+} from './url-state-manager.js';
+
+// Import aircraft database functions
+import {
+    loadMilitaryDatabase,
+    isMilitaryAircraft,
+    getMilitaryInfo,
+    AIRCRAFT_TYPE_SPECS,
+    getAircraftSpecs
+} from './aircraft-database.js';
+
+// Import data service functions
+import {
+    fetchAircraftData as fetchAircraftDataModule,
+    startLiveUpdates,
+    stopLiveUpdates,
+    getLiveRadarData
+} from './data-service-live.js';
+
+import {
+    loadHistoricalTracks as loadHistoricalTracksModule,
+    loadHistoricalData as loadHistoricalDataModule,
+    loadHistoricalTracksCustom as loadHistoricalTracksCustomModule,
+    loadFullTrailForAircraft as loadFullTrailForAircraftModule,
+    loadRecentTrails as loadRecentTrailsModule
+} from './data-service-historical.js';
+
+// Import historical mode module
+import { initHistoricalMode } from './historical-mode.js';
+
+// Import camera & rendering module
+import { initCameraRendering } from './camera-rendering.js';
+
+// Historical mode module instance (will be initialized after dependencies are available)
+let HistoricalMode = null;
+
+// Camera & rendering module instance (will be initialized after dependencies are available)
+let CameraRendering = null;
+
+// Wrapper functions to handle dependencies for URLState methods
+// (These will be defined after the required functions/variables are available)
+let applyURLState, updateURLState;
 
 // ============================================================================
 // HISTORICAL MODE DATA STRUCTURES
@@ -1383,9 +158,6 @@ const AppFeatures = {
 
 // Current active mode
 let currentMode = 'live';  // 'live' or 'historical'
-
-// Live mode update interval
-let liveUpdateInterval = null;
 
 // Historical data state
 const HistoricalState = {
@@ -1740,93 +512,6 @@ function smoothAltitudes(positions) {
 // END ALTITUDE SMOOTHING
 // ============================================================================
 
-// Military aircraft database (loaded from tar1090-db)
-// Structure: { "ICAO_HEX": { tail, type, flag, description }, ... }
-let militaryDatabase = {};
-let militaryDatabaseLoaded = false;
-
-// Load military aircraft database from tar1090-db (Mictronics/readsb-protobuf)
-async function loadMilitaryDatabase() {
-    const CACHE_KEY = 'military_aircraft_db';
-    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-
-    try {
-        // Check localStorage cache first
-        const cached = SafeStorage.getItem(CACHE_KEY);
-        if (cached) {
-            try {
-                const { data, timestamp } = JSON.parse(cached);
-                const age = Date.now() - timestamp;
-
-                if (age < CACHE_DURATION) {
-                    // Use cached data
-                    militaryDatabase = data;
-                    militaryDatabaseLoaded = true;
-                    console.log(`Military database loaded from cache: ${Object.keys(data).length} aircraft (${(age / 3600000).toFixed(1)}h old)`);
-
-                    // Update in background (non-blocking)
-                    fetchAndCacheMilitaryDatabase();
-                    return;
-                }
-            } catch (e) {
-                console.warn('Failed to parse cached military database:', e);
-            }
-        }
-
-        // No cache or expired - fetch now
-        await fetchAndCacheMilitaryDatabase();
-
-    } catch (error) {
-        console.error('Error loading military database:', error);
-    }
-}
-
-async function fetchAndCacheMilitaryDatabase() {
-    try {
-        const response = await fetch('https://raw.githubusercontent.com/Mictronics/readsb-protobuf/dev/webapp/src/db/aircrafts.json');
-
-        if (!response.ok) {
-            console.error('Failed to fetch military database:', response.status);
-            return;
-        }
-
-        const dbData = await response.json();
-
-        // Extract only military aircraft (flag "10")
-        const newMilitaryDb = {};
-        let militaryCount = 0;
-        for (const [icaoHex, aircraftInfo] of Object.entries(dbData)) {
-            // aircraftInfo = [tail, type, flag, description]
-            if (aircraftInfo.length >= 3 && aircraftInfo[2] === "10") {
-                newMilitaryDb[icaoHex.toUpperCase()] = {
-                    tail: aircraftInfo[0],
-                    type: aircraftInfo[1],
-                    flag: aircraftInfo[2],
-                    description: aircraftInfo.length > 3 ? aircraftInfo[3] : ""
-                };
-                militaryCount++;
-            }
-        }
-
-        militaryDatabase = newMilitaryDb;
-        militaryDatabaseLoaded = true;
-        console.log(`Military database fetched: ${militaryCount} verified military aircraft`);
-
-        // Cache for 24 hours
-        try {
-            SafeStorage.setItem('military_aircraft_db', JSON.stringify({
-                data: newMilitaryDb,
-                timestamp: Date.now()
-            }));
-        } catch (e) {
-            console.warn('Failed to cache military database:', e);
-        }
-
-    } catch (error) {
-        console.error('Error fetching military database:', error);
-    }
-}
-
 /**
  * Calculate signal quality and data completeness for an aircraft
  * Returns opacity value (0.3-1.0) and quality assessment
@@ -1928,146 +613,6 @@ function getSignalQuality(ac) {
     };
 }
 
-// Check if aircraft is military using tar1090-db database
-function isMilitaryAircraft(hex) {
-    if (!hex || !militaryDatabaseLoaded) return false;
-    return militaryDatabase.hasOwnProperty(hex.toUpperCase());
-}
-
-// Get military aircraft info from database
-function getMilitaryInfo(hex) {
-    if (!hex || !militaryDatabaseLoaded) return null;
-    return militaryDatabase[hex.toUpperCase()] || null;
-}
-
-/**
- * @typedef {Object} AircraftSpec
- * @property {number} cruise - Cruise speed in knots
- * @property {number} maxAlt - Maximum altitude in feet
- * @property {number} range - Range in nautical miles
- */
-
-/**
- * Aircraft type specifications database
- * Data source: Various aviation references, manufacturer specs
- * @type {Object.<string, {cruise: number, maxAlt: number, range: number}>}
- */
-const AIRCRAFT_TYPE_SPECS = {
-    // === Commercial Jets (Airbus) ===
-    'A319': { cruise: 447, maxAlt: 39000, range: 3700 },
-    'A320': { cruise: 450, maxAlt: 39000, range: 3300 },
-    'A321': { cruise: 450, maxAlt: 39000, range: 3200 },
-    'A20N': { cruise: 450, maxAlt: 39800, range: 3500 },  // A320neo
-    'A21N': { cruise: 450, maxAlt: 39800, range: 4000 },  // A321neo
-    'A332': { cruise: 470, maxAlt: 42650, range: 7200 },  // A330-200
-    'A333': { cruise: 470, maxAlt: 41450, range: 6350 },  // A330-300
-    'A339': { cruise: 470, maxAlt: 41100, range: 7200 },  // A330-900neo
-    'A359': { cruise: 488, maxAlt: 43100, range: 8100 },  // A350-900
-    'A35K': { cruise: 488, maxAlt: 43100, range: 9700 },  // A350-1000
-    'A388': { cruise: 490, maxAlt: 43000, range: 8000 },  // A380
-
-    // === Commercial Jets (Boeing) ===
-    'B737': { cruise: 450, maxAlt: 41000, range: 3000 },  // Generic 737
-    'B738': { cruise: 453, maxAlt: 41000, range: 3115 },  // 737-800
-    'B739': { cruise: 453, maxAlt: 41000, range: 3235 },  // 737-900
-    'B37M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 7
-    'B38M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 8
-    'B39M': { cruise: 453, maxAlt: 41000, range: 3550 },  // 737 MAX 9
-    'B3JM': { cruise: 453, maxAlt: 41000, range: 3700 },  // 737 MAX 10
-    'B752': { cruise: 459, maxAlt: 42000, range: 3900 },  // 757-200
-    'B753': { cruise: 459, maxAlt: 42000, range: 3395 },  // 757-300
-    'B762': { cruise: 470, maxAlt: 43100, range: 6385 },  // 767-200
-    'B763': { cruise: 470, maxAlt: 43100, range: 5990 },  // 767-300
-    'B764': { cruise: 470, maxAlt: 43100, range: 5625 },  // 767-400
-    'B772': { cruise: 490, maxAlt: 43100, range: 7730 },  // 777-200
-    'B773': { cruise: 490, maxAlt: 43100, range: 7370 },  // 777-300
-    'B77W': { cruise: 490, maxAlt: 43100, range: 8555 },  // 777-300ER
-    'B77L': { cruise: 490, maxAlt: 43100, range: 8700 },  // 777-200LR
-    'B788': { cruise: 488, maxAlt: 43000, range: 7355 },  // 787-8
-    'B789': { cruise: 488, maxAlt: 43000, range: 7635 },  // 787-9
-    'B78J': { cruise: 488, maxAlt: 43000, range: 6430 },  // 787-10
-    'B748': { cruise: 493, maxAlt: 43100, range: 8000 },  // 747-8
-
-    // === Regional Jets (Bombardier/Airbus Canada) ===
-    'CRJ2': { cruise: 450, maxAlt: 41000, range: 1700 },  // CRJ-200
-    'CRJ7': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-700
-    'CRJ9': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-900
-    'CRJX': { cruise: 447, maxAlt: 41000, range: 1650 },  // CRJ-1000
-    'BCS1': { cruise: 447, maxAlt: 41000, range: 3400 },  // A220-100 (CS100)
-    'BCS3': { cruise: 447, maxAlt: 41000, range: 3350 },  // A220-300 (CS300)
-
-    // === Regional Jets (Embraer) ===
-    'E170': { cruise: 447, maxAlt: 41000, range: 2150 },  // E170
-    'E175': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175
-    'E75L': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175 (long wing)
-    'E75S': { cruise: 447, maxAlt: 41000, range: 2200 },  // E175 (short wing)
-    'E190': { cruise: 470, maxAlt: 41000, range: 2400 },  // E190
-    'E195': { cruise: 470, maxAlt: 41000, range: 2300 },  // E195
-    'E290': { cruise: 470, maxAlt: 41000, range: 2600 },  // E190-E2
-    'E295': { cruise: 470, maxAlt: 41000, range: 2600 },  // E195-E2
-
-    // === Turboprops ===
-    'AT72': { cruise: 276, maxAlt: 25000, range: 900 },   // ATR 72
-    'AT75': { cruise: 276, maxAlt: 25000, range: 950 },   // ATR 72-600
-    'AT76': { cruise: 276, maxAlt: 25000, range: 950 },   // ATR 72-600
-    'DH8D': { cruise: 360, maxAlt: 25000, range: 1200 },  // Dash 8 Q400
-
-    // === Business Jets ===
-    'C25C': { cruise: 460, maxAlt: 51000, range: 2000 },  // Citation CJ4
-    'C56X': { cruise: 528, maxAlt: 51000, range: 3450 },  // Citation Excel
-    'C680': { cruise: 538, maxAlt: 51000, range: 3400 },  // Citation Sovereign
-    'CL60': { cruise: 459, maxAlt: 51000, range: 3200 },  // Challenger 600
-    'GLF4': { cruise: 488, maxAlt: 51000, range: 4220 },  // Gulfstream IV
-    'GLF5': { cruise: 516, maxAlt: 51000, range: 6500 },  // Gulfstream V
-    'GLF6': { cruise: 516, maxAlt: 51000, range: 6500 },  // Gulfstream 650
-    'GLEX': { cruise: 488, maxAlt: 51000, range: 4000 },  // Bombardier Global Express
-    'FA7X': { cruise: 488, maxAlt: 51000, range: 5950 },  // Dassault Falcon 7X
-    'FA50': { cruise: 540, maxAlt: 51000, range: 3350 },  // Dassault Falcon 50
-
-    // === General Aviation ===
-    'C152': { cruise: 107, maxAlt: 14700, range: 415 },   // Cessna 152
-    'C172': { cruise: 122, maxAlt: 14000, range: 640 },   // Cessna 172
-    'C182': { cruise: 145, maxAlt: 18100, range: 915 },   // Cessna 182
-    'C206': { cruise: 151, maxAlt: 16500, range: 840 },   // Cessna 206
-    'C208': { cruise: 186, maxAlt: 25000, range: 1070 },  // Cessna Caravan
-    'P28A': { cruise: 113, maxAlt: 11000, range: 460 },   // Piper PA-28 Cherokee
-    'PA46': { cruise: 225, maxAlt: 25000, range: 1300 },  // Piper Malibu
-    'SR22': { cruise: 183, maxAlt: 17500, range: 1200 },  // Cirrus SR22
-
-    // === Military (Common Types) ===
-    'F16': { cruise: 570, maxAlt: 50000, range: 2280 },   // F-16 Fighting Falcon
-    'F18': { cruise: 570, maxAlt: 50000, range: 1250 },   // F/A-18 Hornet
-    'F35': { cruise: 570, maxAlt: 50000, range: 1200 },   // F-35 Lightning II
-    'A10': { cruise: 340, maxAlt: 45000, range: 800 },    // A-10 Thunderbolt II
-    'C130': { cruise: 336, maxAlt: 33000, range: 2360 },  // C-130 Hercules
-    'C17': { cruise: 450, maxAlt: 45000, range: 2400 },   // C-17 Globemaster III
-    'C5': { cruise: 518, maxAlt: 42000, range: 5200 },    // C-5 Galaxy
-    'KC135': { cruise: 530, maxAlt: 50000, range: 1500 }, // KC-135 Stratotanker
-    'KC10': { cruise: 493, maxAlt: 42000, range: 4400 },  // KC-10 Extender
-    'P8': { cruise: 490, maxAlt: 41000, range: 1200 },    // P-8 Poseidon
-
-    // === Cargo ===
-    'MD11': { cruise: 482, maxAlt: 42000, range: 6800 },  // MD-11
-    'B744': { cruise: 493, maxAlt: 45000, range: 7670 },  // 747-400
-    'B74S': { cruise: 493, maxAlt: 43100, range: 4400 },  // 747-400SF (cargo)
-};
-
-/**
- * Get aircraft performance specifications
- * @param {string} typeCode - ICAO type designator (e.g., 'B738', 'A320')
- * @returns {{cruise: number, maxAlt: number, range: number} | null} Specs or null if unknown
- */
-function getAircraftSpecs(typeCode) {
-    if (!typeCode || typeof typeCode !== 'string') {
-        return null;
-    }
-
-    // Convert to uppercase for case-insensitive lookup
-    const normalizedType = typeCode.trim().toUpperCase();
-
-    return AIRCRAFT_TYPE_SPECS[normalizedType] || null;
-}
-
 // Set page title dynamically based on location name (if provided)
 if (window.ENV_CONFIG?.locationName) {
     document.title = `adsb-3d - ${window.ENV_CONFIG.locationName}`;
@@ -2088,14 +633,30 @@ let showLabels = true;
 let showAltitudeLines = true;
 let showHomeTower = true; // Home tower marker (on by default)
 let showTronMode = true; // Tron mode: vertical altitude curtains beneath trails (on by default)
-let followMode = false;
-let followedAircraftHex = null;
-let autoFadeTrails = false; // Auto-fade old trail positions
-let trailFadeTime = -1; // Fade time in seconds (default: -1 = immediate)
+let followMode = false; // Whether camera is following an aircraft
+let followedAircraftHex = null; // Hex of aircraft being followed
+let followLocked = true; // When true, camera locked behind aircraft; when false, free orbit
+
+// Follow mode state - consolidated object for camera-rendering.js module
+const FollowState = {
+    mode: false,
+    hex: null,
+    locked: true, // When true, camera locked behind aircraft; when false, free orbit
+    returnInProgress: false
+};
+
+// Trail configuration - for camera-rendering.js module
+const TrailConfig = {
+    autoFade: false, // Auto-fade old trail positions
+    fadeTime: -1 // Fade time in seconds (default: -1 = immediate)
+};
+
+// Backward-compatible variable aliases for trail settings
+let autoFadeTrails = TrailConfig.autoFade;
+let trailFadeTime = TrailConfig.fadeTime;
+
 let liveRadarData = []; // Always store live aircraft for mini radar (even in historical mode)
 let urlParamsChecked = false; // Track if we've checked URL parameters on load
-let followLocked = true; // When true, camera locked behind aircraft; when false, free orbit
-let cameraReturnInProgress = false;
 let lastNorthArrowAngle = 0; // Track north arrow rotation for smooth animation
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
@@ -2104,18 +665,31 @@ let homeMarkerGroup = null; // Reference to the home tower marker group
 let currentlyHoveredCanvasAircraft = null; // Track which aircraft is hovered on canvas
 
 // Route API cache and rate limiting
-const ROUTE_CACHE_KEY = 'adsbdb_route_cache';
-const ROUTE_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-const API_RATE_LIMIT_MS = 1000; // Minimum 1 second between API calls
+const ROUTE_CACHE_KEY = STORAGE_KEYS.ROUTE_CACHE;
+const ROUTE_CACHE_DURATION = CACHE.ROUTE_DATA;
+const API_RATE_LIMIT_MS = RATE_LIMIT.API_MIN_INTERVAL;
 let lastAPICall = 0;
 let pendingRouteRequests = new Map(); // Track in-flight requests to avoid duplicates
 
-// Camera control state (for manual orbit during follow mode)
-let cameraAngleX = 0; // Start facing north (camera south of origin)
-let cameraAngleY = Math.PI / 6;
-let cameraDistance = 100;
-let isDragging = false;
-let wasDragging = false;
+// Camera & Rendering State - consolidated object for camera-rendering.js module
+const CameraState = {
+    // Camera angles and distance
+    angleX: 0, // Start facing north (camera south of origin)
+    angleY: Math.PI / 6,
+    distance: 100,
+    // Drag state
+    isDragging: false,
+    wasDragging: false,
+    // Rendering timing
+    lastFrameTime: 0,
+    lastSkyUpdate: 0,
+    lastStaleTrailCleanup: 0,
+    // Frame limiting
+    targetFPS: 30,
+    get frameInterval() {
+        return 1000 / this.targetFPS;
+    }
+};
 
 // Airport/Runway data
 let airports = [];
@@ -2132,391 +706,17 @@ let showRunwaysEnabled = true;
 // Aircraft shapes provide accurate representations using tar1090's SVG system
 
 let useSpriteMode = true; // Toggle with Shift+S (SVG shapes enabled by default)
-let spriteTexture = null; // Legacy sprite sheet (no longer used)
 
 // SVG Aircraft Shape System is loaded from aircraft-svg-system.js
-// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
-
-// SVG Aircraft Shape System is loaded from aircraft-svg-system.js
-// Old sprite sheet code has been removed in favor of accurate SVG-based rendering
-
-// Load sprite texture
-function loadSpriteTexture() {
-    const loader = new THREE.TextureLoader();
-    // Set crossOrigin to allow loading from same origin
-    loader.crossOrigin = 'anonymous';
-
-    // Use absolute path to avoid relative path issues
-    loader.load(
-        '/images/sprites.png',
-        (texture) => {
-            // Configure texture for sprite sheet usage
-            // Use NearestFilter to prevent bleeding between sprites
-            texture.minFilter = THREE.NearestFilter;
-            texture.magFilter = THREE.NearestFilter;
-            texture.colorSpace = THREE.SRGBColorSpace;
-
-            // CRITICAL: Set wrapping to ClampToEdge to prevent texture bleeding
-            texture.wrapS = THREE.ClampToEdgeWrapping;
-            texture.wrapT = THREE.ClampToEdgeWrapping;
-
-            // Don't generate mipmaps for sprite sheets
-            texture.generateMipmaps = false;
-
-            spriteTexture = texture;
-
-            // DIAGNOSTIC: Log actual texture dimensions
-            console.log('[Sprites] Loaded sprite sheet:');
-            console.log(`  - Image dimensions: ${texture.image.width}x${texture.image.height}`);
-            console.log(`  - Expected: 1376x516`);
-            console.log(`  - Match: ${texture.image.width === 1376 && texture.image.height === 516 ? 'YES' : 'NO'}`);
-            console.log(`  - Texture ready: ${texture.image.complete}`);
-            console.log(`  - Sprite size: ${SPRITE_CONFIG.spriteWidth}x${SPRITE_CONFIG.spriteHeight}`);
-            console.log(`  - Grid: ${SPRITE_CONFIG.columns}x${SPRITE_CONFIG.rows}`);
-
-            // Sprite mode is now loaded during init, no need to reload here
-        },
-        (progress) => {
-            // Optional: log loading progress
-            if (progress.lengthComputable) {
-                const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                console.log(`[Sprites] Loading: ${percent}%`);
-            }
-        },
-        (error) => {
-            console.error('[Sprites] Failed to load sprite sheet:', error);
-            console.error('[Sprites] Sprites unavailable, using spheres only');
-            console.error('[Sprites] URL attempted:', '/images/sprites.png');
-        }
-    );
-}
-
-// Get sprite position based on aircraft category
-// Returns {row, col} - heading rotation is done via mesh rotation, not sprite selection
-function getSpritePosition(category = 'default') {
-    const position = SPRITE_POSITIONS[category] || SPRITE_POSITIONS.default;
-    return { row: position.row, col: position.col };
-}
-
-// Create shader material for sprite rendering
-// This avoids texture cloning issues by selecting sprite regions in the shader
-function createSpriteMaterial(row, column, color) {
-    const spriteWidth = SPRITE_CONFIG.spriteWidth;
-    const spriteHeight = SPRITE_CONFIG.spriteHeight;
-    const texWidth = SPRITE_CONFIG.textureWidth;
-    const texHeight = SPRITE_CONFIG.textureHeight;
-
-    // Calculate UV offset and size for this sprite
-    // Keep it simple - no half-pixel adjustments yet
-    const uOffset = column * spriteWidth / texWidth;
-    const uSize = spriteWidth / texWidth;
-
-    // Flip V coordinate: WebGL (0,0) is bottom-left, but image row 0 is at top
-    // Row 0 is at top of image (V near 1.0), row 5 is at bottom (V near 0.0)
-    const vOffset = 1.0 - ((row + 1) * spriteHeight / texHeight);
-    const vSize = spriteHeight / texHeight;
-
-    console.log(`[Sprites] Shader material for [${row},${column}]: uOffset=${uOffset.toFixed(4)}, vOffset=${vOffset.toFixed(4)}, uSize=${uSize.toFixed(4)}, vSize=${vSize.toFixed(4)}`);
-
-    // Custom shader that samples only the specified sprite region
-    const vertexShader = `
-        varying vec2 vUv;
-
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `;
-
-    const fragmentShader = `
-        uniform sampler2D spriteSheet;
-        uniform vec2 uvOffset;
-        uniform vec2 uvSize;
-        uniform vec3 tintColor;
-        varying vec2 vUv;
-
-        void main() {
-            // Map UV coordinates to sprite region
-            vec2 spriteUV = uvOffset + (vUv * uvSize);
-
-            // Sample the sprite sheet
-            vec4 texColor = texture2D(spriteSheet, spriteUV);
-
-            // Detect white outline (bright pixels with high RGB values)
-            float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
-            bool isWhiteOutline = brightness > 0.9 && texColor.a > 0.5;
-
-            // Replace white outline with dark gray/black
-            if (isWhiteOutline) {
-                texColor.rgb = vec3(0.1, 0.1, 0.1); // Dark gray instead of white
-            }
-
-            // Apply color tint to non-transparent pixels
-            vec3 finalColor = texColor.rgb * tintColor;
-
-            gl_FragColor = vec4(finalColor, texColor.a);
-        }
-    `;
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            spriteSheet: { value: spriteTexture },
-            uvOffset: { value: new THREE.Vector2(uOffset, vOffset) },
-            uvSize: { value: new THREE.Vector2(uSize, vSize) },
-            tintColor: { value: new THREE.Color(color) }
-        },
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false
-    });
-
-    return material;
-}
-
-// Determine aircraft category from type/size data
-// Returns category name that maps to SPRITE_POSITIONS
-function getAircraftCategory(aircraftData) {
-    if (!aircraftData) {
-        return 'default';
-    }
-
-    // First check the 't' field (ICAO type designator) from registration data
-    const typeCode = (aircraftData.t || '').toUpperCase();
-
-    // Check if we have a direct type mapping
-    if (typeCode && TYPE_TO_SPRITE[typeCode]) {
-        const spriteKey = TYPE_TO_SPRITE[typeCode];
-        // Make sure this sprite position exists
-        if (SPRITE_POSITIONS[spriteKey]) {
-            // console.log(`[Sprites] Type ${typeCode} -> ${spriteKey}`);
-            return spriteKey;
-        }
-    }
-
-    // Check ADS-B category field (some aircraft transmit this)
-    // Following tar1090's CategoryIcons mapping exactly
-    const category = aircraftData.category;
-    if (category) {
-        // Categories from ADS-B specification (matching tar1090)
-        // A-series: Fixed-wing aircraft
-        if (category === 'A1') return 'cessna';       // Light (< 7 tons) - Cessna-type GA
-        if (category === 'A2') return 'jet_swept';    // Small (< 34 tons) - Regional jets
-        if (category === 'A3') return 'airliner';     // Large (< 136 tons) - Airliners
-        if (category === 'A4') return 'airliner';     // High vortex (< 136 tons)
-        if (category === 'A5') return 'heavy_2e';     // Heavy (> 136 tons)
-        if (category === 'A6') return 'hi_perf';      // High performance
-        if (category === 'A7') return 'helicopter';   // Rotorcraft
-
-        // B-series: Gliders/Balloons
-        if (category === 'B1') return 'glider';
-        if (category === 'B2') return 'balloon';
-        if (category === 'B4') return 'light';        // Ultralight
-        if (category === 'B6') return 'light';        // UAV/drone
-
-        // C-series: Ground vehicles
-        if (category === 'C0') return 'ground_vehicle';
-        if (category === 'C1') return 'ground_vehicle';  // Emergency
-        if (category === 'C2') return 'ground_vehicle';  // Service
-        if (category === 'C3') return 'tower';           // Tower
-    }
-
-    // Additional type detection patterns
-    if (typeCode) {
-        // Helicopters
-        if (typeCode.startsWith('H') || typeCode.includes('HELI') ||
-            typeCode.startsWith('R22') || typeCode.startsWith('R44') ||
-            typeCode.startsWith('EC1') || typeCode.startsWith('AS3')) {
-            return 'helicopter';
-        }
-
-        // Light aircraft patterns
-        if (typeCode.startsWith('C1') || typeCode.startsWith('PA') ||
-            typeCode.startsWith('BE') || typeCode.startsWith('SR2') ||
-            typeCode.startsWith('DA4') || typeCode.startsWith('RV') ||
-            typeCode.includes('VANS') || typeCode.startsWith('LONG') ||
-            typeCode.startsWith('GLASAIR') || typeCode.startsWith('LANCAIR')) {
-            return 'light';
-        }
-
-        // Turboprops
-        if (typeCode.startsWith('AT') || typeCode.startsWith('DH8') ||
-            typeCode.includes('TURBO')) {
-            return 'turboprop';
-        }
-
-        // Military fighters
-        if (typeCode.startsWith('F') && typeCode.length <= 4 &&
-            /^F\d/.test(typeCode)) {
-            return 'fighter';
-        }
-
-        // Wide-body detection
-        if (typeCode.startsWith('A33') || typeCode.startsWith('A34') ||
-            typeCode.startsWith('A35') || typeCode.startsWith('B77') ||
-            typeCode.startsWith('B78')) {
-            return 'heavy_2e';
-        }
-
-        // Four-engine detection
-        if (typeCode.startsWith('A38') || typeCode.startsWith('B74')) {
-            return 'heavy_4e';
-        }
-    }
-
-    // Default to generic airliner for unknown types
-    return 'airliner';
-}
+// Aircraft shapes provide accurate representations using tar1090's SVG system
 
 // ============================================================================
 // HISTORICAL MODE FUNCTIONS
 // ============================================================================
 
 // Load historical tracks for specified hours ago
-async function loadHistoricalTracks(hoursAgo = 1) {
-    const endTime = new Date();
-    const startTime = new Date(endTime.getTime() - (hoursAgo * 60 * 60 * 1000));
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    // Update HistoricalState settings for URL persistence
-    HistoricalState.settings.startTime = startTime;
-    HistoricalState.settings.endTime = endTime;
-
-    console.log('[Historical] Loading tracks for last', hoursAgo, 'hours');
-
-    // Clear existing tracks first to prevent stacking
-    clearHistoricalTracks();
-
-    try {
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks`);
-
-        // Store tracks in both global variable (for backwards compat) and HistoricalState
-        historicalTracks = {};
-        HistoricalState.tracks = [];
-        playbackStartTime = null;
-        playbackEndTime = null;
-
-        if (data.tracks) {
-            data.tracks.forEach(track => {
-                const icao = track.hex || track.icao;
-                if (icao) {
-                    historicalTracks[icao] = track;
-                }
-                HistoricalState.tracks.push(track);
-
-                // Update time bounds
-                track.positions.forEach(pos => {
-                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
-                    if (!playbackStartTime || timestamp < playbackStartTime) {
-                        playbackStartTime = timestamp;
-                    }
-                    if (!playbackEndTime || timestamp > playbackEndTime) {
-                        playbackEndTime = timestamp;
-                    }
-                });
-            });
-
-            // Render the tracks visually
-            renderHistoricalTracks();
-        }
-
-        // Set current time to start
-        playbackCurrentTime = playbackStartTime;
-
-        return data.tracks || [];
-    } catch (error) {
-        console.error('[Historical] Error loading tracks:', error);
-        throw error;
-    }
-}
 
 // Load historical tracks from Track API
-async function loadHistoricalData() {
-    const startTime = HistoricalState.settings.startTime;
-    const endTime = HistoricalState.settings.endTime;
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    if (!startTime || !endTime) {
-        console.error('[Historical] No time range selected');
-        return;
-    }
-
-    console.log('[Historical] Loading tracks...', {startTime, endTime, maxTracks});
-
-    try {
-        // Build API URL (NO filtering - filters applied after load)
-        // Use resolution=full to query raw positions table (aggregated tables don't exist yet)
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        console.log('[Historical] Fetching from:', apiUrl);
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('[Historical] API Response:', data);
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks`);
-
-        HistoricalState.tracks = data.tracks || [];
-        HistoricalState.loadedRange = { start: startTime, end: endTime };
-
-        // Store stats for display
-        HistoricalState.stats = data.stats || { unique_aircraft: 0, total_positions: 0 };
-
-        // Always render BOTH tracks and heat map, then show/hide based on mode
-        console.log('[Historical] Rendering tracks...');
-        renderHistoricalTracks();
-        applyHistoricalFilters();
-        console.log('[Historical] Tracks rendered and filtered');
-
-        console.log('[Historical] Generating heat map...');
-        generateFlightCorridors();
-        console.log('[Historical] Heat map generated');
-
-        // Now apply visibility based on current mode
-        const vizMode = HistoricalState.heatmapMode || 'tracks';
-        console.log(`[Historical] Applying visualization mode: ${vizMode}`);
-
-        if (vizMode === 'tracks') {
-            showHistoricalTracks(true);
-            setHeatMapVisibility(false);
-        } else if (vizMode === 'heatmap') {
-            showHistoricalTracks(false);
-            setHeatMapVisibility(true);
-        } else if (vizMode === 'both') {
-            showHistoricalTracks(true);
-            setHeatMapVisibility(true);
-        }
-
-        // Update URL with current app state for shareable links
-        URLState.updateFromCurrentState();
-
-        // Return stats for caller
-        return data.stats;
-
-    } catch (error) {
-        console.error('[Historical] Error loading data:', error);
-
-        // Show error in status UI instead of blocking alert
-        const statusEl = document.getElementById('historical-status');
-        if (statusEl) {
-            statusEl.className = 'historical-status error';
-            statusEl.textContent = `Failed to load data: ${error.message}`;
-        }
-
-        throw error; // Re-throw so caller can handle if needed
-    }
-}
 
 /**
  * Properly dispose of a Three.js geometry with GPU resource cleanup
@@ -2559,7 +759,11 @@ function disposeMaterial(material) {
     material.dispose();
 }
 
-// Clear all trails from the scene (used when loading recent trails)
+/**
+ * Clear all trails from the scene
+ * Properly disposes of geometries and materials to prevent memory leaks
+ * Also cleans up any orphaned Tron curtains
+ */
 function clearAllTrails() {
     trails.forEach((trail, icao) => {
         // Remove trail line
@@ -2752,7 +956,12 @@ function validateFadePreloadConflict() {
     }
 }
 
-// Show notification message to user
+/**
+ * Show notification message to user
+ * @param {string} message - The message to display
+ * @param {'info'|'warning'} [type='info'] - Notification type (affects styling)
+ * @param {number} [duration=5000] - How long to show notification in ms
+ */
 function showNotification(message, type = 'info', duration = 5000) {
     const notification = document.createElement('div');
     notification.style.cssText = `
@@ -2778,347 +987,13 @@ function showNotification(message, type = 'info', duration = 5000) {
     // Auto-remove after duration
     setTimeout(() => {
         notification.style.animation = 'slideUp 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), TIMING.NOTIFICATION_FADE);
     }, duration);
 }
 
 // Load recent trails for live mode (last X minutes)
 // Load full historical trail for a specific aircraft (on-demand)
-async function loadFullTrailForAircraft(icao) {
-    // Check if Track API is available
-    if (!AppFeatures.historical) {
-        console.log('[FullTrail] Track API not available');
-        return false;
-    }
 
-    // Check if already loaded
-    if (FullTrailsState.icaos.has(icao)) {
-        return true;
-    }
-
-    // Check if already loading
-    if (FullTrailsState.loading.has(icao)) {
-        return false;
-    }
-
-    // Mark as loading
-    FullTrailsState.loading.add(icao);
-
-    try {
-        // Show loading indicator in detail panel
-        const detailPanel = document.getElementById('aircraft-detail');
-        if (detailPanel) {
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = `trail-loading-${icao}`;
-            loadingDiv.style.cssText = 'padding: 5px; background: rgba(0,255,0,0.1); border: 1px solid rgba(0,255,0,0.3); border-radius: 4px; margin: 5px 0; font-size: 11px;';
-            loadingDiv.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 5px;"></div><span>Loading full trail history...</span>';
-            detailPanel.insertBefore(loadingDiv, detailPanel.firstChild);
-        }
-
-        // Build API URL - get last 24 hours of data
-        const apiUrl = `/api/tracks/${icao}?resolution=full`;
-
-        const response = await fetch(apiUrl);
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        // Check if we got valid data
-        if (!data.positions || data.positions.length === 0) {
-            throw new Error('No historical data available');
-        }
-
-        // Smooth altitudes
-        const smoothedPositions = smoothAltitudes(data.positions);
-
-        // Get or create trail for this aircraft
-        let trail = trails.get(icao);
-        if (!trail) {
-            trail = {
-                positions: [],
-                line: null,
-                material: null,
-                lastUpdate: Date.now()
-            };
-            trails.set(icao, trail);
-        }
-
-        // Clear existing positions and add historical data
-        trail.positions = [];
-
-        smoothedPositions.forEach(pos => {
-            // Validate position data (Track API can return lat/lon or latitude/longitude)
-            const lat = pos.lat || pos.latitude;
-            const lon = pos.lon || pos.longitude;
-            // Single aircraft endpoint returns 'alt_baro', bulk returns 'alt'
-            const alt = pos.alt_baro || pos.alt || pos.altitude || 0;
-
-            // Skip invalid positions
-            if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) {
-                return;
-            }
-
-            // Use the same coordinate conversion as live mode (latLonToXZ function)
-            const posXZ = latLonToXZ(lat, lon);
-
-            // Use the same altitude calculation as live mode
-            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
-
-            // Validate coordinates aren't NaN
-            if (isNaN(posXZ.x) || isNaN(altitude) || isNaN(posXZ.z)) {
-                return;
-            }
-
-            // Add position to trail (with same minimum altitude as live mode)
-            // Single aircraft endpoint returns 'time', bulk returns 'timestamp'
-            const posTimestamp = pos.time ? new Date(pos.time).getTime() :
-                                pos.timestamp ? new Date(pos.timestamp).getTime() :
-                                Date.now();
-            const groundSpeed = pos.gs || pos.speed || 0;
-            trail.positions.push({
-                x: posXZ.x,
-                y: Math.max(1.0, altitude),
-                z: posXZ.z,
-                altFeet: alt,
-                groundSpeed: groundSpeed,
-                timestamp: posTimestamp
-            });
-        });
-
-        // Only update if we have enough valid positions
-        if (trail.positions.length < 2) {
-            throw new Error(`Only ${trail.positions.length} valid positions found`);
-        }
-
-        // Create the trail line geometry if it doesn't exist
-        if (!trail.line) {
-            const trailGeometry = new THREE.BufferGeometry();
-            const initialCapacity = Math.max(1000, trail.positions.length);
-            const positions = new Float32Array(initialCapacity * 3);
-            const colors = new Float32Array(initialCapacity * 3);
-
-            // Fill in the positions and colors
-            trail.positions.forEach((pos, i) => {
-                positions[i * 3] = pos.x;
-                positions[i * 3 + 1] = pos.y;
-                positions[i * 3 + 2] = pos.z;
-
-                // Get color based on current trail color mode
-                let colorValue;
-                if (trailColorMode === 'speed') {
-                    colorValue = getSpeedColor(pos.groundSpeed || 0);
-                } else {
-                    colorValue = getAltitudeColor(pos.y);
-                }
-                const trailColor = new THREE.Color(colorValue);
-                colors[i * 3] = trailColor.r;
-                colors[i * 3 + 1] = trailColor.g;
-                colors[i * 3 + 2] = trailColor.b;
-            });
-
-            trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            trailGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-            const trailMaterial = new THREE.LineBasicMaterial({
-                vertexColors: true,
-                transparent: true,
-                opacity: 0.6
-            });
-
-            const line = new THREE.Line(trailGeometry, trailMaterial);
-            line.visible = showTrails;
-            line.geometry.setDrawRange(0, trail.positions.length);
-            scene.add(line);
-
-            // Update trail object with line and capacity
-            trail.line = line;
-            trail.capacity = initialCapacity;
-
-            // Create Tron curtain if Tron mode is enabled
-            if (showTronMode && trail.positions.length >= 2) {
-                updateTronCurtain(trail);
-            }
-        } else {
-            // Trail line already exists, update it with new positions
-            const positions = trail.line.geometry.attributes.position.array;
-            const colors = trail.line.geometry.attributes.color.array;
-
-            // Check if we need to grow the buffer
-            if (trail.positions.length > trail.capacity) {
-                trail.capacity = Math.max(trail.capacity * 2, trail.positions.length);
-                const newPositions = new Float32Array(trail.capacity * 3);
-                const newColors = new Float32Array(trail.capacity * 3);
-                trail.line.geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
-                trail.line.geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
-            }
-
-            // Update all positions and colors
-            trail.positions.forEach((pos, i) => {
-                positions[i * 3] = pos.x;
-                positions[i * 3 + 1] = pos.y;
-                positions[i * 3 + 2] = pos.z;
-
-                let colorValue;
-                if (trailColorMode === 'speed') {
-                    colorValue = getSpeedColor(pos.groundSpeed || 0);
-                } else {
-                    colorValue = getAltitudeColor(pos.y);
-                }
-                const trailColor = new THREE.Color(colorValue);
-                colors[i * 3] = trailColor.r;
-                colors[i * 3 + 1] = trailColor.g;
-                colors[i * 3 + 2] = trailColor.b;
-            });
-
-            trail.line.geometry.attributes.position.needsUpdate = true;
-            trail.line.geometry.attributes.color.needsUpdate = true;
-            trail.line.geometry.setDrawRange(0, trail.positions.length);
-
-            // Update Tron curtain if enabled
-            if (showTronMode) {
-                updateTronCurtain(trail);
-            }
-        }
-
-        // Mark as loaded
-        FullTrailsState.icaos.add(icao);
-
-        // Update loading indicator
-        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
-        if (loadingDiv) {
-            loadingDiv.style.background = 'rgba(0,255,0,0.15)';
-            loadingDiv.style.border = '1px solid rgba(0,255,0,0.5)';
-            loadingDiv.innerHTML = `✓ Loaded ${trail.positions.length} positions from last 24 hours`;
-            setTimeout(() => loadingDiv.remove(), 3000);
-        }
-
-        return true;
-
-    } catch (error) {
-        console.error(`[FullTrail] Error loading trail for ${icao}:`, error);
-
-        // Update loading indicator
-        const loadingDiv = document.getElementById(`trail-loading-${icao}`);
-        if (loadingDiv) {
-            loadingDiv.style.background = 'rgba(255,0,0,0.15)';
-            loadingDiv.style.border = '1px solid rgba(255,0,0,0.5)';
-            loadingDiv.innerHTML = `❌ Failed to load trail: ${error.message}`;
-            setTimeout(() => loadingDiv.remove(), 3000);
-        }
-
-        return false;
-    } finally {
-        // Always remove from loading set
-        FullTrailsState.loading.delete(icao);
-    }
-}
-
-async function loadRecentTrails() {
-    if (!RecentTrailsState.enabled) {
-        console.log('[RecentTrails] Feature not enabled');
-        return;
-    }
-
-    // Skip if preload time is set to 0 (off)
-    if (RecentTrailsState.minutes === 0) {
-        console.log('[RecentTrails] Preload disabled (set to 0 minutes)');
-        return;
-    }
-
-    // Race condition guard: prevent concurrent loads
-    if (RecentTrailsState.loading) {
-        console.log('[RecentTrails] Load already in progress, skipping duplicate request');
-        return;
-    }
-
-    // Don't load recent trails when in historical mode with active filters
-    // This prevents mixing live current data with historical filtered data
-    const altMaxInput = document.getElementById('filter-altitude-max');
-    const altMinInput = document.getElementById('filter-altitude-min');
-    const minPosInput = document.getElementById('filter-min-positions');
-    const spdMinInput = document.getElementById('filter-speed-min');
-    const spdMaxInput = document.getElementById('filter-speed-max');
-    const militaryInput = document.getElementById('filter-military-only');
-
-    const hasActiveFilters = (altMaxInput?.value && parseInt(altMaxInput.value) < 999999) ||
-                            (altMinInput?.value && parseInt(altMinInput.value) > 0) ||
-                            (minPosInput?.value && parseInt(minPosInput.value) > 0) ||
-                            (spdMinInput?.value && parseInt(spdMinInput.value) > 0) ||
-                            (spdMaxInput?.value && parseInt(spdMaxInput.value) < 999999) ||
-                            (militaryInput?.checked);
-
-    if (currentMode === 'historical' && hasActiveFilters) {
-        console.log('[RecentTrails] Skipping - historical mode with active filters detected');
-        return;
-    }
-
-    // Set loading flag
-    RecentTrailsState.loading = true;
-
-    const minutes = RecentTrailsState.minutes;
-    const endTime = new Date();
-    const startTime = new Date(endTime.getTime() - (minutes * 60 * 1000));
-
-    console.log(`[RecentTrails] Loading last ${minutes} minutes of trails...`, {startTime, endTime});
-
-    try {
-        // Update status in sidebar (prefer sidebar-preload-status, fallback to recent-trails-status)
-        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
-        if (statusDiv) {
-            statusDiv.innerHTML = '<div class="spinner"></div><span>Loading recent trails...</span>';
-            statusDiv.className = 'historical-status loading';
-        }
-
-        // CRITICAL: Clear all existing trails before loading historical data
-        // This prevents mixing old live data with historical data which causes rendering artifacts
-        console.log('[RecentTrails] Clearing existing trails before loading historical data');
-        clearAllTrails();
-
-        // Build API URL - load all tracks from recent time period
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=200&resolution=full`;
-
-        console.log('[RecentTrails] Fetching from:', apiUrl);
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('[RecentTrails] API Response:', data);
-        console.log(`[RecentTrails] Loaded ${data.tracks?.length || 0} tracks`);
-
-        // Add these positions to existing live mode trails
-        if (data.tracks && data.tracks.length > 0) {
-            addRecentTrailsToLiveMode(data.tracks);
-            RecentTrailsState.loaded = true;
-
-            // Update status
-            if (statusDiv) {
-                statusDiv.innerHTML = `✓ Loaded ${data.tracks.length} recent trails (${data.stats?.total_positions || 0} positions)`;
-                statusDiv.className = 'historical-status success';
-            }
-        } else {
-            if (statusDiv) {
-                statusDiv.innerHTML = `No recent activity in the last ${minutes} minute${minutes > 1 ? 's' : ''}`;
-                statusDiv.className = 'historical-status warning';
-            }
-        }
-
-    } catch (error) {
-        console.error('[RecentTrails] Error loading data:', error);
-        const statusDiv = document.getElementById('sidebar-preload-status') || document.getElementById('recent-trails-status');
-        if (statusDiv) {
-            statusDiv.innerHTML = `❌ Failed to load recent trails: ${error.message}`;
-            statusDiv.className = 'historical-status error';
-        }
-    } finally {
-        // Always clear loading flag, even on error
-        RecentTrailsState.loading = false;
-    }
-}
 
 // Add recent historical trails to live mode
 function addRecentTrailsToLiveMode(tracks) {
@@ -3289,461 +1164,19 @@ function addRecentTrailsToLiveMode(tracks) {
 }
 
 // Render historical tracks in 3D scene
-function renderHistoricalTracks() {
-    console.log(`[Historical] Rendering ${HistoricalState.tracks.length} tracks`);
-
-    // Create InstancedMesh for endpoints (1 per track at the end only)
-    const maxInstances = HistoricalState.tracks.length;
-
-    // Instead of using InstancedMesh (which has color issues), create individual sphere meshes
-    // This is more reliable and still performant for a few hundred endpoints
-    HistoricalState.endpointMeshes = [];  // Store individual meshes instead
-
-    console.log(`[Historical] Will create ${maxInstances} individual endpoint spheres`);
-
-    // Render each track
-    HistoricalState.tracks.forEach(track => {
-        createHistoricalTrack(track);
-    });
-
-    console.log(`[Historical] Rendered ${HistoricalState.tracks.length} tracks with ${HistoricalState.endpointMeshes.length} endpoint spheres`);
-    console.log(`[Historical] Scene now has ${scene.children.length} children`);
-}
 
 // Create a single historical track
-function createHistoricalTrack(track) {
-    if (!track.positions || track.positions.length === 0) {
-        console.log('[Historical] Skipping track (no positions):', track.hex || track.icao);
-        return;
-    }
-
-    const isMilitary = track.is_military || false;
-    console.log(`[Historical] Creating track for ${track.hex || track.icao} (${track.positions.length} positions, military: ${isMilitary})`);
-
-    // Smooth altitude anomalies
-    const smoothedPositions = smoothAltitudes(track.positions);
-
-    // Create trail line with gradient colors
-    const points = [];
-    const colors = [];
-
-    smoothedPositions.forEach(pos => {
-        // Convert lat/lon to scene coordinates using SAME functions as live mode
-        const lat = pos.lat || pos.latitude;
-        const lon = pos.lon || pos.longitude;
-        const alt = pos.alt || pos.altitude || 0;
-        const speed = pos.speed || pos.gs || 0;
-
-        // Use the same coordinate conversion as live mode (latLonToXZ function)
-        const posXZ = latLonToXZ(lat, lon);
-
-        // Use the same altitude calculation as live mode
-        const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
-        const y = Math.max(1.0, altitude);  // Same minimum as live mode
-
-        points.push(new THREE.Vector3(posXZ.x, y, posXZ.z));
-
-        // Get color based on current mode (altitude or speed)
-        let colorValue;
-        if (isMilitary) {
-            colorValue = CONFIG.militaryColor;
-        } else if (trailColorMode === 'speed') {
-            colorValue = getSpeedColor(speed);
-        } else {
-            colorValue = getAltitudeColor(y);
-        }
-        const color = new THREE.Color(colorValue);
-        colors.push(color.r, color.g, color.b);
-    });
-
-    if (points.length > 1) {
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-        const material = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            opacity: 0.9,
-            transparent: true,
-            linewidth: 3  // Note: linewidth > 1 only works in WebGL with special rendering
-        });
-
-        const line = new THREE.Line(geometry, material);
-        line.visible = true;  // Make tracks visible by default
-
-        // Add userData for click detection and info display
-        line.userData = {
-            isHistoricalTrack: true,
-            icao: track.hex || track.icao,
-            track: track,  // Store full track data
-            isMilitary: isMilitary,
-            originalColors: new Float32Array(colors)  // Store original colors for hover restore
-        };
-
-        scene.add(line);
-
-        // Debug: Log first point position to verify coordinates
-        if (points.length > 0) {
-            console.log(`[Historical] Track ${track.hex || track.icao} first point:`, {
-                x: points[0].x.toFixed(2),
-                y: points[0].y.toFixed(2),
-                z: points[0].z.toFixed(2),
-                pointCount: points.length
-            });
-        }
-
-        // Add endpoint marker at the END of the track only
-        const instanceIndices = [];
-
-        // End point - create individual sphere mesh
-        const endPoint = points[points.length - 1];
-        const endColorIndex = (points.length - 1) * 3;
-        const endColor = new THREE.Color(colors[endColorIndex], colors[endColorIndex + 1], colors[endColorIndex + 2]);
-
-        // Create individual sphere mesh with altitude-based color
-        const endpointGeometry = new THREE.SphereGeometry(1.0, 8, 6); // Slightly larger to fully cover line endpoint
-        const endpointMaterial = new THREE.MeshBasicMaterial({
-            color: endColor,
-            transparent: true,
-            opacity: 0.9
-        });
-        const endpointMesh = new THREE.Mesh(endpointGeometry, endpointMaterial);
-        endpointMesh.position.set(endPoint.x, endPoint.y, endPoint.z);
-
-        // Store reference to track line and original color for hover effects
-        const lastPos = smoothedPositions[smoothedPositions.length - 1];
-        const lastAltFeet = lastPos.alt || lastPos.altitude || 0;
-        endpointMesh.userData = {
-            isHistoricalEndpoint: true,
-            trackLine: line,
-            originalColor: endColor.clone(),
-            icao: track.hex || track.icao,
-            track: track,
-            altFeet: lastAltFeet  // Store altitude for rescaling
-        };
-
-        // Add to scene and store reference
-        scene.add(endpointMesh);
-        HistoricalState.endpointMeshes.push(endpointMesh);
-
-        // Store reference for this track
-        instanceIndices.push(HistoricalState.endpointMeshes.length - 1);
-
-        // DON'T update here - wait until all tracks are added
-
-        console.log(`[Historical] Added track line to scene for ${track.hex || track.icao} (${points.length} points, 1 endpoint)`);
-
-        // Create trail object for Tron curtains (if enabled)
-        const trail = {
-            positions: points.map((p, i) => ({
-                x: p.x,
-                y: p.y,
-                z: p.z,
-                altFeet: smoothedPositions[i].alt || smoothedPositions[i].altitude || 0,
-                groundSpeed: smoothedPositions[i].speed || smoothedPositions[i].gs || 0,
-                timestamp: smoothedPositions[i].time ? new Date(smoothedPositions[i].time).getTime() : null
-            })),
-            tronCurtain: null  // Will be populated by updateTronCurtain
-        };
-
-        // Create Tron curtain if enabled
-        if (showTronMode) {
-            updateTronCurtain(trail);
-        }
-
-        // Store track mesh with endpoint mesh reference and trail object
-        HistoricalState.trackMeshes.set(track.hex || track.icao, {
-            line,
-            points,
-            track,
-            instanceIndices,  // Store endpoint mesh indices
-            endpointMesh,     // Store reference to the endpoint sphere mesh
-            trail             // Store trail object for Tron curtains
-        });
-    } else {
-        console.log(`[Historical] Not enough points to create line (${points.length})`);
-    }
-}
 
 /**
  * Display all historical tracks at once (show-all mode)
  * Makes all tracks visible and ensures playback controls are hidden
  */
-function displayAllTracks() {
-    console.log('[Historical] Displaying all tracks');
-
-    // Make all track lines and endpoints visible
-    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail }) => {
-        if (line) line.visible = true;
-        if (endpointMesh) endpointMesh.visible = true;
-        if (trail && trail.tronCurtain) trail.tronCurtain.visible = true;
-    });
-
-    // Make all endpoint spheres visible
-    HistoricalState.endpointMeshes.forEach(mesh => {
-        if (mesh) mesh.visible = true;
-    });
-
-    // Update display mode
-    HistoricalState.displayMode = 'show-all';
-
-    console.log(`[Historical] Made ${HistoricalState.trackMeshes.size} tracks visible`);
-}
 
 /**
  * Generate flight corridor visualization from historical tracks
  * Creates glowing tubes along actual flight paths showing traffic density
  * @returns {void}
  */
-function generateFlightCorridors() {
-    console.log('[HeatMap] Generating grid-based heat map with absolute thresholds');
-
-    // Show funny loading message
-    const statusDiv = document.getElementById('historical-status');
-    if (statusDiv) {
-        const funnyMessages = [
-            '🔥 Calculating airplane spaghetti density...',
-            '🌡️ Measuring sky congestion temperature...',
-            '✈️ Counting how many planes tried to occupy the same spot...',
-            '🧮 Computing flight path chaos coefficient...',
-            '🎨 Mixing flight path colors in 3D blender...',
-            '📐 Triangulating aerial traffic jams...',
-            '🌈 Generating pretty colored clouds from boring data...',
-            '🔬 Analyzing airspace overcrowding syndrome...',
-            '🎯 Finding the busiest spot in the sky...',
-            '🌀 Swirling flight paths into volumetric fog...'
-        ];
-        const randomMessage = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
-        statusDiv.innerHTML = `<div class="spinner"></div><span>${randomMessage}</span>`;
-        statusDiv.className = 'historical-status loading';
-    }
-
-    clearFlightCorridors();
-
-    if (!HistoricalState.tracks || HistoricalState.tracks.length === 0) {
-        console.log('[HeatMap] No tracks available');
-        return;
-    }
-
-    const startTime = performance.now();
-
-    // Step 1: Build spatial density map (count UNIQUE aircraft per cell, not positions)
-    const gridSize = 8;  // 8 scene units (~8km) for density sampling
-    const densityMap = new Map();  // Map of gridKey -> Set<hex>
-
-    HistoricalState.tracks.forEach(track => {
-        if (!track.positions || track.positions.length === 0) return;
-
-        const aircraftHex = track.hex || track.icao || 'unknown';  // Unique aircraft ID
-
-        track.positions.forEach(pos => {
-            const lat = pos.lat || pos.latitude;
-            const lon = pos.lon || pos.longitude;
-            const alt = pos.alt || pos.altitude;
-
-            if (lat == null || lon == null || alt == null) return;
-
-            const scenePos = latLonToXZ(lat, lon);
-            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
-            const y = Math.max(1.0, altitude);
-
-            // Snap to grid for density counting
-            const gridX = Math.floor(scenePos.x / gridSize);
-            const gridY = Math.floor(y / gridSize);
-            const gridZ = Math.floor(scenePos.z / gridSize);
-            const gridKey = `${gridX},${gridY},${gridZ}`;
-
-            // Add unique aircraft to this cell's set
-            if (!densityMap.has(gridKey)) {
-                densityMap.set(gridKey, new Set());
-            }
-            densityMap.get(gridKey).add(aircraftHex);
-        });
-    });
-
-    console.log(`[HeatMap] Density map: ${densityMap.size} cells with unique aircraft counts`);
-
-    // Step 2: Create particles along actual flight paths
-    const positions = [];
-    const colors = [];
-    const sizes = [];
-    let particleCount = 0;
-
-    HistoricalState.tracks.forEach(track => {
-        if (!track.positions || track.positions.length === 0) return;
-
-        // Sample every Nth position along path
-        const sampleInterval = Math.max(3, Math.floor(track.positions.length / 50));
-
-        track.positions.forEach((pos, index) => {
-            if (index % sampleInterval !== 0) return;
-
-            const lat = pos.lat || pos.latitude;
-            const lon = pos.lon || pos.longitude;
-            const alt = pos.alt || pos.altitude;
-
-            if (lat == null || lon == null || alt == null) return;
-
-            const scenePos = latLonToXZ(lat, lon);
-            const altitude = (alt - CONFIG.homeLocation.alt) * 0.3048 * CONFIG.scale * CONFIG.altitudeExaggeration;
-            const y = Math.max(1.0, altitude);
-
-            // Look up UNIQUE AIRCRAFT count at this position
-            const gridX = Math.floor(scenePos.x / gridSize);
-            const gridY = Math.floor(y / gridSize);
-            const gridZ = Math.floor(scenePos.z / gridSize);
-            const gridKey = `${gridX},${gridY},${gridZ}`;
-            const aircraftSet = densityMap.get(gridKey);
-            const uniqueAircraft = aircraftSet ? aircraftSet.size : 1;
-
-            // ABSOLUTE THRESHOLDS based on unique aircraft count
-            // This prevents single flights from appearing "hot"
-            let normalizedDensity;
-            let color;
-
-            if (uniqueAircraft === 1) {
-                // Single aircraft: invisible
-                return;  // Skip rendering - too isolated
-            } else if (uniqueAircraft < 4) {
-                // 2-3 aircraft: Light traffic, blue
-                normalizedDensity = 0.2 + ((uniqueAircraft - 2) / 2) * 0.2;  // 0.2-0.4
-                const t = (normalizedDensity - 0.2) / 0.2;
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0x004488),  // Dark blue
-                    new THREE.Color(0x0088ff),  // Blue
-                    t
-                );
-            } else if (uniqueAircraft < 8) {
-                // 4-7 aircraft: Moderate traffic, cyan-green
-                normalizedDensity = 0.4 + ((uniqueAircraft - 4) / 4) * 0.25;  // 0.4-0.65
-                const t = (normalizedDensity - 0.4) / 0.25;
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0x0088ff),  // Blue
-                    new THREE.Color(0x00ff88),  // Cyan-green
-                    t
-                );
-            } else if (uniqueAircraft < 15) {
-                // 8-14 aircraft: High traffic, yellow
-                normalizedDensity = 0.65 + ((uniqueAircraft - 8) / 7) * 0.2;  // 0.65-0.85
-                const t = (normalizedDensity - 0.65) / 0.2;
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0x00ff88),  // Cyan-green
-                    new THREE.Color(0xffff00),  // Yellow
-                    t
-                );
-            } else {
-                // 15+ aircraft: Very high traffic, red
-                normalizedDensity = 0.85 + Math.min(0.15, (uniqueAircraft - 15) / 30);  // 0.85-1.0
-                const t = (normalizedDensity - 0.85) / 0.15;
-                color = new THREE.Color().lerpColors(
-                    new THREE.Color(0xffff00),  // Yellow
-                    new THREE.Color(0xff0000),  // Red
-                    t
-                );
-            }
-
-            // Add small random offset
-            const offsetX = (Math.random() - 0.5) * 2.0;
-            const offsetY = (Math.random() - 0.5) * 1.0;
-            const offsetZ = (Math.random() - 0.5) * 2.0;
-
-            positions.push(scenePos.x + offsetX, y + offsetY, scenePos.z + offsetZ);
-            colors.push(color.r, color.g, color.b);
-
-            // Particle size based on density
-            const baseSize = 20.0 + normalizedDensity * 80.0;  // 20-100 scene units
-            const sizeVariation = (Math.random() - 0.5) * 20.0;
-            sizes.push(baseSize + sizeVariation);
-
-            particleCount++;
-        });
-    });
-
-    // Create BufferGeometry with attributes
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-
-    // Custom shader material for soft glowing particles
-    // TODO: Improve blending to prevent see-through effect (red shows blue behind it)
-    // Attempted solutions that didn't work:
-    // - depthWrite: true -> Creates shiny bubble appearance
-    // - AdditiveBlending -> Colors wash to white in dense areas
-    // - MaxEquation -> Looks strange/unnatural
-    // Current compromise: Normal blending with see-through (best visual, but not perfect depth)
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            baseOpacity: { value: 0.6 }  // Moderate opacity for fog-like appearance
-        },
-        vertexShader: `
-            attribute float size;
-            varying vec3 vColor;
-
-            void main() {
-                vColor = color;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                gl_PointSize = size * (300.0 / -mvPosition.z);  // Size attenuation
-                gl_Position = projectionMatrix * mvPosition;
-            }
-        `,
-        fragmentShader: `
-            uniform float baseOpacity;
-            varying vec3 vColor;
-
-            void main() {
-                // Calculate distance from center of point
-                vec2 center = gl_PointCoord - vec2(0.5);
-                float dist = length(center);
-
-                // Soft circular gradient for fog-like blending
-                float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
-
-                // Gentle power curve for soft fog appearance
-                alpha = pow(alpha, 2.2);
-
-                // Multiply by base opacity
-                alpha *= baseOpacity;
-
-                // Discard very transparent pixels to reduce overdraw
-                if (alpha < 0.02) discard;
-
-                // Output color with radial alpha falloff
-                gl_FragColor = vec4(vColor, alpha);
-            }
-        `,
-        transparent: true,
-        depthWrite: false,  // Disable to allow soft blending (but causes see-through)
-        depthTest: true,    // Keep particles behind aircraft
-        blending: THREE.NormalBlending,
-        vertexColors: true
-    });
-
-    const particles = new THREE.Points(geometry, material);
-    particles.renderOrder = 50;  // Render before aircraft
-    particles.userData = { isHeatMapParticles: true };
-
-    scene.add(particles);
-    HistoricalState.heatmapMeshes.push(particles);
-
-    const elapsed = (performance.now() - startTime).toFixed(2);
-    console.log(`[HeatMap] ========================================`);
-    console.log(`[HeatMap] Unique aircraft heat map: ${particleCount} particles in ${elapsed}ms`);
-    console.log(`[HeatMap] Grid size: ${gridSize} scene units (~${gridSize}km)`);
-    console.log(`[HeatMap] Color based on UNIQUE AIRCRAFT per cell:`);
-    console.log(`[HeatMap]   Invisible      = 1 aircraft (single flight)`);
-    console.log(`[HeatMap]   🔵 BLUE        = 2-3 aircraft (light traffic)`);
-    console.log(`[HeatMap]   🟢 GREEN       = 4-7 aircraft (moderate traffic)`);
-    console.log(`[HeatMap]   🟡 YELLOW      = 8-14 aircraft (high traffic)`);
-    console.log(`[HeatMap]   🔴 RED         = 15+ aircraft (very high traffic)`);
-    console.log(`[HeatMap] Particle size: 20-100 units (scales with density)`);
-    console.log(`[HeatMap] ========================================`);
-
-    // Update status with completion message
-    if (statusDiv) {
-        statusDiv.innerHTML = `✓ Heat map ready! ${particleCount.toLocaleString()} particles generated in ${elapsed}ms`;
-        statusDiv.className = 'historical-status success';
-    }
-}
 
 /**
  * Simplify corridor path by averaging nearby points
@@ -3751,38 +1184,6 @@ function generateFlightCorridors() {
  * @param {number} groupDistance - Distance threshold for grouping points (in scene units)
  * @returns {THREE.Vector3[]} Simplified array of points
  */
-function simplifyCorridorPath(points, groupDistance) {
-    if (points.length === 0) return [];
-
-    const simplified = [];
-    const used = new Set();
-
-    for (let i = 0; i < points.length; i++) {
-        if (used.has(i)) continue;
-
-        const group = [points[i]];
-        used.add(i);
-
-        // Find all nearby points
-        for (let j = i + 1; j < points.length; j++) {
-            if (used.has(j)) continue;
-
-            const dist = points[i].distanceTo(points[j]);
-            if (dist < groupDistance) {
-                group.push(points[j]);
-                used.add(j);
-            }
-        }
-
-        // Average the group to create a single point
-        const avgPoint = new THREE.Vector3();
-        group.forEach(p => avgPoint.add(p));
-        avgPoint.divideScalar(group.length);
-        simplified.push(avgPoint);
-    }
-
-    return simplified;
-}
 
 /**
  * Get color for heat map based on density
@@ -3790,482 +1191,48 @@ function simplifyCorridorPath(points, groupDistance) {
  * @param {number} normalizedDensity - Value from 0 to 1 (0 = low, 1 = high)
  * @returns {number} Three.js hex color
  */
-function getDensityColor(normalizedDensity) {
-    // Simplified color scale with MAXIMUM contrast for visibility
-    // Blue (low) → Green (medium) → Yellow → Orange → Red (high)
-    // Using pure, vibrant colors that are easy to distinguish
-
-    if (normalizedDensity <= 0.2) {
-        // Deep Blue (very low density)
-        return 0x0000FF;  // Pure blue
-    } else if (normalizedDensity <= 0.4) {
-        // Cyan to Green (low-medium density)
-        return 0x00FFFF;  // Pure cyan
-    } else if (normalizedDensity <= 0.6) {
-        // Green (medium density)
-        return 0x00FF00;  // Pure green
-    } else if (normalizedDensity <= 0.8) {
-        // Yellow to Orange (medium-high density)
-        return 0xFFFF00;  // Pure yellow
-    } else {
-        // Red (high density)
-        return 0xFF0000;  // Pure red
-    }
-}
 
 /**
  * Clear all flight corridor meshes from scene
  * @returns {void}
  */
-function clearFlightCorridors() {
-    HistoricalState.heatmapMeshes.forEach(mesh => {
-        scene.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) mesh.material.dispose();
-    });
-    HistoricalState.heatmapMeshes = [];
-    console.log('[Corridors] Cleared flight corridors');
-}
 
 // Alias for backward compatibility
-function clearHeatMap() {
-    clearFlightCorridors();
-}
 
 /**
  * Show or hide all historical track lines
  * @param {boolean} visible - Whether tracks should be visible
  * @returns {void}
  */
-function showHistoricalTracks(visible) {
-    HistoricalState.trackMeshes.forEach(({line}) => {
-        if (line) line.visible = visible;
-    });
-
-    // Also handle endpoint spheres
-    if (HistoricalState.endpointMeshes) {
-        HistoricalState.endpointMeshes.forEach(mesh => {
-            mesh.visible = visible;
-        });
-    }
-
-    console.log(`[HeatMap] Historical tracks visible: ${visible}`);
-}
 
 /**
  * Show or hide heat map visualization
  * @param {boolean} visible - Whether heat map should be visible
  * @returns {void}
  */
-function setHeatMapVisibility(visible) {
-    HistoricalState.heatmapMeshes.forEach(mesh => {
-        mesh.visible = visible;
-    });
-    console.log(`[HeatMap] Heat map visible: ${visible}`);
-}
 
 // Clear all historical tracks from scene
-function clearHistoricalTracks() {
-    console.log('[Historical] Clearing tracks');
-
-    // SAFETY: Stop playback before clearing tracks
-    if (PlaybackState.isPlaying) {
-        pausePlayback();
-        console.log('[Historical] Stopped playback before clearing tracks');
-    }
-
-    // Remove all track lines and Tron curtains
-    let linesRemoved = 0;
-    let curtainsRemoved = 0;
-    HistoricalState.trackMeshes.forEach(({line, trail}) => {
-        if (line) {
-            scene.remove(line);
-            if (line.geometry) line.geometry.dispose();
-            if (line.material) line.material.dispose();
-            linesRemoved++;
-        }
-        // Remove Tron curtain if present
-        if (trail && trail.tronCurtain) {
-            scene.remove(trail.tronCurtain);
-            if (trail.tronCurtain.geometry) trail.tronCurtain.geometry.dispose();
-            if (trail.tronCurtain.material) trail.tronCurtain.material.dispose();
-            trail.tronCurtain = null;
-            curtainsRemoved++;
-        }
-    });
-    console.log(`[Historical] Removed ${linesRemoved} track lines and ${curtainsRemoved} Tron curtains from scene`);
-
-    // Remove individual endpoint spheres
-    if (HistoricalState.endpointMeshes) {
-        HistoricalState.endpointMeshes.forEach(mesh => {
-            scene.remove(mesh);
-            if (mesh.geometry) mesh.geometry.dispose();
-            if (mesh.material) mesh.material.dispose();
-        });
-        console.log(`[Historical] Removed ${HistoricalState.endpointMeshes.length} endpoint spheres`);
-        HistoricalState.endpointMeshes = [];
-    }
-
-    HistoricalState.trackMeshes.clear();
-    HistoricalState.tracks = [];
-
-    // Clear heat map
-    clearHeatMap();
-
-    console.log('[Historical] Cleanup complete');
-}
 // ============================================================================
 // ============================================================================
 // PLAYBACK ANIMATION FUNCTIONS
 // ============================================================================
 
 // Initialize playback after tracks are loaded
-function initializePlayback() {
-    console.log('[Playback] Initializing playback system');
-
-    // Calculate time range from loaded tracks
-    let earliestTime = Infinity;
-    let latestTime = -Infinity;
-
-    HistoricalState.tracks.forEach(track => {
-        track.positions.forEach(pos => {
-            const timestamp = new Date(pos.time).getTime();
-            if (timestamp < earliestTime) earliestTime = timestamp;
-            if (timestamp > latestTime) latestTime = timestamp;
-        });
-    });
-
-    if (!isFinite(earliestTime) || !isFinite(latestTime)) {
-        console.warn('[Playback] No valid timestamps found in tracks');
-        return;
-    }
-
-    PlaybackState.startTimestamp = earliestTime;
-    PlaybackState.endTimestamp = latestTime;
-    PlaybackState.duration = (latestTime - earliestTime) / 1000; // Convert to seconds
-    PlaybackState.currentTime = 0;
-
-    console.log(`[Playback] Duration: ${PlaybackState.duration.toFixed(1)}s (${(PlaybackState.duration / 60).toFixed(1)} minutes)`);
-
-    // Update UI
-    const totalTimeDisplay = document.getElementById('total-time-display');
-    if (totalTimeDisplay) totalTimeDisplay.textContent = formatPlaybackTime(PlaybackState.duration);
-
-    const timelineScrubber = document.getElementById('timeline-scrubber');
-    if (timelineScrubber) timelineScrubber.max = PlaybackState.duration;
-
-    const playbackControls = document.getElementById('playback-controls');
-    if (playbackControls) playbackControls.style.display = 'block';
-
-    // Initially hide all tracks and endpoints (they'll appear during playback)
-    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail }) => {
-        line.visible = false;
-
-        // Hide endpoint sphere
-        if (endpointMesh) {
-            endpointMesh.visible = false;
-        }
-
-        // Hide Tron curtain
-        if (trail && trail.tronCurtain) {
-            trail.tronCurtain.visible = false;
-        }
-    });
-}
 
 // Format time in HH:MM:SS
-function formatPlaybackTime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
 
 // Start/stop playback
-function togglePlayback() {
-    if (PlaybackState.isPlaying) {
-        pausePlayback();
-    } else {
-        startPlayback();
-    }
-}
 
-function startPlayback() {
-    PlaybackState.isPlaying = true;
-    PlaybackState.lastFrameTime = performance.now();
 
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    if (playPauseBtn) playPauseBtn.textContent = 'Pause';
 
-    const playbackStatus = document.getElementById('playback-status');
-    if (playbackStatus) playbackStatus.textContent = 'Playing...';
-
-    // Hide all tracks when entering playback mode - they'll animate based on timestamps
-    HistoricalState.trackMeshes.forEach(({ line }) => {
-        line.visible = false;
-    });
-
-    animatePlayback();
-    console.log('[Playback] Started');
-}
-
-function pausePlayback() {
-    PlaybackState.isPlaying = false;
-    if (PlaybackState.animationFrameId) {
-        cancelAnimationFrame(PlaybackState.animationFrameId);
-        PlaybackState.animationFrameId = null;
-    }
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    if (playPauseBtn) playPauseBtn.textContent = 'Play';
-
-    const playbackStatus = document.getElementById('playback-status');
-    if (playbackStatus) playbackStatus.textContent = 'Paused';
-
-    console.log('[Playback] Paused');
-}
-
-function restartPlayback() {
-    pausePlayback();
-    PlaybackState.currentTime = 0;
-    updatePlaybackPosition(0);
-    console.log('[Playback] Restarted');
-}
 
 // Main animation loop
-function animatePlayback() {
-    if (!PlaybackState.isPlaying) return;
-
-    const now = performance.now();
-    const deltaTime = (now - PlaybackState.lastFrameTime) / 1000; // Convert to seconds
-    PlaybackState.lastFrameTime = now;
-
-    // Advance time by delta * speed
-    PlaybackState.currentTime += deltaTime * PlaybackState.speed;
-
-    // Loop back to start if we reach the end
-    if (PlaybackState.currentTime >= PlaybackState.duration) {
-        PlaybackState.currentTime = 0;
-    }
-
-    // Update visuals
-    updatePlaybackPosition(PlaybackState.currentTime);
-
-    // Continue animation
-    PlaybackState.animationFrameId = requestAnimationFrame(animatePlayback);
-}
 
 // Update track visibility based on current playback time
-function updatePlaybackPosition(currentTime) {
-    const currentTimestamp = PlaybackState.startTimestamp + (currentTime * 1000);
-
-    // Update UI - support both old and new sidebar
-    const oldTimeDisplay = document.getElementById('current-time-display');
-    if (oldTimeDisplay) {
-        oldTimeDisplay.textContent = formatPlaybackTime(currentTime);
-    }
-
-    const oldTimeline = document.getElementById('timeline-scrubber');
-    if (oldTimeline) {
-        oldTimeline.value = currentTime;
-    }
-
-    // Update sidebar timeline
-    const sidebarTimeline = document.getElementById('sidebar-timeline');
-    if (sidebarTimeline && PlaybackState.duration > 0) {
-        // currentTime is relative (0 to duration), so just divide by duration for progress
-        const progress = currentTime / PlaybackState.duration;
-        sidebarTimeline.value = progress * 100;
-    }
-
-    // Update sidebar time displays
-    const currentTimeDisplay = document.getElementById('sidebar-time-current');
-    const totalTimeDisplay = document.getElementById('sidebar-time-total');
-    if (currentTimeDisplay && totalTimeDisplay) {
-        // currentTime is already relative seconds from start (0 to duration)
-        // PlaybackState.duration is total duration in seconds
-        currentTimeDisplay.textContent = formatPlaybackTime(currentTime);
-        totalTimeDisplay.textContent = formatPlaybackTime(PlaybackState.duration);
-    }
-
-    let visibleTracks = 0;
-
-    // Show/hide tracks based on time
-    HistoricalState.trackMeshes.forEach(({ line, points, track, endpointMesh, trail }, icao) => {
-        if (!track.positions || track.positions.length === 0) return;
-
-        // Find first and last positions within time window
-        const firstPosTime = new Date(track.positions[0].time).getTime();
-        const lastPosTime = new Date(track.positions[track.positions.length - 1].time).getTime();
-
-        let isVisible = false;
-
-        // Determine visibility based on fade setting
-        if (PlaybackState.fadeAfter === 'never') {
-            // Never fade: show track once current time passes its start time
-            isVisible = currentTimestamp >= firstPosTime;
-        } else {
-            // Calculate fade window
-            const fadeWindowMs = PlaybackState.fadeAfter * 1000;
-            const fadeEndTime = lastPosTime + fadeWindowMs;
-
-            // Track is visible if current time is within [start, end + fadeAfter]
-            isVisible = currentTimestamp >= firstPosTime && currentTimestamp <= fadeEndTime;
-        }
-
-        if (isVisible) {
-            line.visible = true;
-            visibleTracks++;
-
-            // Show endpoint sphere
-            if (endpointMesh) {
-                endpointMesh.visible = true;
-            }
-
-            // Show Tron curtain if enabled
-            if (trail && trail.tronCurtain) {
-                trail.tronCurtain.visible = true;
-            }
-        } else {
-            line.visible = false;
-
-            // Hide endpoint sphere
-            if (endpointMesh) {
-                endpointMesh.visible = false;
-            }
-
-            // Hide Tron curtain
-            if (trail && trail.tronCurtain) {
-                trail.tronCurtain.visible = false;
-            }
-        }
-    });
-
-    const playbackStatus = document.getElementById('playback-status');
-    if (playbackStatus) playbackStatus.textContent = `${visibleTracks} aircraft visible`;
-}
 
 // Seek to specific time
-function seekToTime(seconds) {
-    PlaybackState.currentTime = Math.max(0, Math.min(seconds, PlaybackState.duration));
-    updatePlaybackPosition(PlaybackState.currentTime);
-}
 
 // Setup playback control listeners
-function setupPlaybackControls() {
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    const restartBtn = document.getElementById('restart-btn');
-    const speedSelect = document.getElementById('playback-speed');
-    const scrubber = document.getElementById('timeline-scrubber');
-
-    if (!playPauseBtn || !restartBtn || !speedSelect || !scrubber) {
-        console.warn('[Playback] Playback controls not found');
-        return;
-    }
-
-    // Load saved playback speed from localStorage
-    const savedSpeed = SafeStorage.getItem('playbackSpeed');
-    if (savedSpeed !== null) {
-        PlaybackState.speed = parseFloat(savedSpeed);
-        speedSelect.value = savedSpeed;
-        console.log(`[Playback] Loaded saved speed: ${PlaybackState.speed}x`);
-    }
-
-    // Play/Pause
-    playPauseBtn.addEventListener('click', togglePlayback);
-
-    // Restart
-    restartBtn.addEventListener('click', restartPlayback);
-
-    // Speed change
-    speedSelect.addEventListener('change', (e) => {
-        PlaybackState.speed = parseFloat(e.target.value);
-        console.log(`[Playback] Speed changed to ${PlaybackState.speed}x`);
-        // Save to localStorage
-        SafeStorage.setItem('playbackSpeed', PlaybackState.speed);
-    });
-
-    // Skip buttons
-    const skipBack10m = document.getElementById('skip-back-10m');
-    const skipBack1m = document.getElementById('skip-back-1m');
-    const skipForward1m = document.getElementById('skip-forward-1m');
-    const skipForward10m = document.getElementById('skip-forward-10m');
-
-    if (skipBack10m) {
-        skipBack10m.addEventListener('click', () => {
-            const newTime = Math.max(0, PlaybackState.currentTime - 600); // 10 minutes = 600 seconds
-            seekToTime(newTime);
-            console.log(`[Playback] Skipped back 10m to ${formatPlaybackTime(newTime)}`);
-        });
-    }
-
-    if (skipBack1m) {
-        skipBack1m.addEventListener('click', () => {
-            const newTime = Math.max(0, PlaybackState.currentTime - 60); // 1 minute = 60 seconds
-            seekToTime(newTime);
-            console.log(`[Playback] Skipped back 1m to ${formatPlaybackTime(newTime)}`);
-        });
-    }
-
-    if (skipForward1m) {
-        skipForward1m.addEventListener('click', () => {
-            const newTime = Math.min(PlaybackState.duration, PlaybackState.currentTime + 60); // 1 minute = 60 seconds
-            seekToTime(newTime);
-            console.log(`[Playback] Skipped forward 1m to ${formatPlaybackTime(newTime)}`);
-        });
-    }
-
-    if (skipForward10m) {
-        skipForward10m.addEventListener('click', () => {
-            const newTime = Math.min(PlaybackState.duration, PlaybackState.currentTime + 600); // 10 minutes = 600 seconds
-            seekToTime(newTime);
-            console.log(`[Playback] Skipped forward 10m to ${formatPlaybackTime(newTime)}`);
-        });
-    }
-
-    // Timeline scrubber
-    let isScrubbing = false;
-
-    scrubber.addEventListener('mousedown', () => {
-        isScrubbing = true;
-        if (PlaybackState.isPlaying) {
-            pausePlayback();
-        }
-    });
-
-    scrubber.addEventListener('input', (e) => {
-        if (isScrubbing) {
-            seekToTime(parseFloat(e.target.value));
-        }
-    });
-
-    scrubber.addEventListener('mouseup', () => {
-        isScrubbing = false;
-    });
-
-    scrubber.addEventListener('change', (e) => {
-        seekToTime(parseFloat(e.target.value));
-    });
-
-    // Fade tracks option
-    const fadeTracksSelect = document.getElementById('fade-tracks');
-    if (fadeTracksSelect) {
-        fadeTracksSelect.addEventListener('change', (e) => {
-            const value = e.target.value;
-            if (value === 'never') {
-                PlaybackState.fadeAfter = 'never';
-                console.log('[Playback] Fade mode: Never (accumulate all tracks)');
-            } else {
-                PlaybackState.fadeAfter = parseInt(value, 10);
-                console.log(`[Playback] Fade mode: ${PlaybackState.fadeAfter}s after track ends`);
-            }
-
-            // Update current display immediately
-            updatePlaybackPosition(PlaybackState.currentTime);
-        });
-    }
-
-    console.log('[Playback] Controls initialized');
-}
 
 // END PLAYBACK ANIMATION FUNCTIONS
 // ============================================================================
@@ -4274,349 +1241,13 @@ function setupPlaybackControls() {
 // ============================================================================
 
 // Setup historical controls event handlers
-function setupHistoricalControls() {
-    const startTimeInput = document.getElementById('start-time');
-    const endTimeInput = document.getElementById('end-time');
-    const loadButton = document.getElementById('load-historical-data');
-    const statusDiv = document.getElementById('historical-status');
-    const customTimeRange = document.getElementById('custom-time-range');
-    const timePresets = document.getElementsByName('time-preset');
-    const filtersPanel = document.getElementById('historical-filters');
-    const applyFiltersButton = document.getElementById('apply-filters');
-
-    // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
-    const formatDatetimeLocal = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-
-    // Calculate time range based on preset selection
-    const calculateTimeRange = (preset) => {
-        const now = new Date();
-        let hoursAgo;
-
-        if (preset === 'custom') {
-            return null; // User will set manually
-        }
-
-        hoursAgo = parseInt(preset, 10);
-        const startTime = new Date(now.getTime() - (hoursAgo * 60 * 60 * 1000));
-        return { startTime, endTime: now };
-    };
-
-    // Handle time preset changes
-    timePresets.forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            const value = e.target.value;
-
-            if (value === 'custom') {
-                // Show custom time inputs
-                customTimeRange.style.display = 'block';
-
-                // Initialize with current values or last 1 hour
-                if (!startTimeInput.value || !endTimeInput.value) {
-                    const range = calculateTimeRange('1');
-                    startTimeInput.value = formatDatetimeLocal(range.startTime);
-                    endTimeInput.value = formatDatetimeLocal(range.endTime);
-                }
-            } else {
-                // Hide custom inputs and calculate from preset
-                customTimeRange.style.display = 'none';
-                const range = calculateTimeRange(value);
-                startTimeInput.value = formatDatetimeLocal(range.startTime);
-                endTimeInput.value = formatDatetimeLocal(range.endTime);
-
-                // Update state
-                HistoricalState.settings.startTime = range.startTime;
-                HistoricalState.settings.endTime = range.endTime;
-                console.log(`[Historical] Time preset: Last ${value} hour(s)`);
-            }
-        });
-    });
-
-    // Initialize with "Last 1 hour" preset selected
-    const defaultRange = calculateTimeRange('1');
-    startTimeInput.value = formatDatetimeLocal(defaultRange.startTime);
-    endTimeInput.value = formatDatetimeLocal(defaultRange.endTime);
-    HistoricalState.settings.startTime = defaultRange.startTime;
-    HistoricalState.settings.endTime = defaultRange.endTime;
-
-    // Custom time input change handlers
-    startTimeInput.addEventListener('change', (e) => {
-        HistoricalState.settings.startTime = new Date(e.target.value);
-        console.log('[Historical] Start time set to:', HistoricalState.settings.startTime);
-    });
-
-    endTimeInput.addEventListener('change', (e) => {
-        HistoricalState.settings.endTime = new Date(e.target.value);
-        console.log('[Historical] End time set to:', HistoricalState.settings.endTime);
-    });
-
-    // Max tracks is now hardcoded at 10,000 (no UI input)
-    console.log('[Historical] Max tracks fixed at:', HistoricalState.settings.maxTracks);
-
-    // Load Data button click handler
-    loadButton.addEventListener('click', async () => {
-        // Read current time inputs (in case they were set by URL state without triggering change events)
-        if (startTimeInput.value) {
-            HistoricalState.settings.startTime = new Date(startTimeInput.value);
-            console.log('[Historical] Synced startTime from input:', HistoricalState.settings.startTime);
-        }
-        if (endTimeInput.value) {
-            HistoricalState.settings.endTime = new Date(endTimeInput.value);
-            console.log('[Historical] Synced endTime from input:', HistoricalState.settings.endTime);
-        }
-
-        // Validate time range
-        if (!HistoricalState.settings.startTime || !HistoricalState.settings.endTime) {
-            statusDiv.innerHTML = '⚠️ Please select both start and end times';
-            statusDiv.className = 'historical-status error';
-            return;
-        }
-
-        if (HistoricalState.settings.startTime >= HistoricalState.settings.endTime) {
-            statusDiv.innerHTML = '⚠️ Start time must be before end time';
-            statusDiv.className = 'historical-status error';
-            return;
-        }
-
-        // Show loading status with spinner
-        statusDiv.innerHTML = '<div class="spinner"></div><span>Loading tracks...</span>';
-        statusDiv.className = 'historical-status loading';
-        loadButton.disabled = true;
-
-        // Hide filters panel during load
-        filtersPanel.style.display = 'none';
-
-        try {
-            // Clear existing tracks first
-            clearHistoricalTracks();
-
-            // Load new data (NO filtering during load - filters applied after)
-            const stats = await loadHistoricalData();
-
-            // Show success with loaded/total count
-            const trackCount = HistoricalState.tracks.length;
-            const totalAvailable = stats?.unique_aircraft || trackCount;
-
-            if (trackCount === 0) {
-                // No data found
-                statusDiv.innerHTML = '⚠️ No flights found for this time range. Try extending the period.';
-                statusDiv.className = 'historical-status warning';
-            } else if (trackCount < totalAvailable) {
-                // Partial data (hit max_tracks limit)
-                statusDiv.innerHTML = `✓ Loaded ${trackCount}/${totalAvailable} tracks (${stats.total_positions.toLocaleString()} positions)`;
-                statusDiv.className = 'historical-status success';
-
-                // Show filters panel
-                filtersPanel.style.display = 'block';
-
-                // Automatically switch to historical mode to display tracks
-                if (currentMode !== 'historical') {
-                    await switchToHistoricalMode();
-                }
-            } else {
-                // All data loaded
-                statusDiv.innerHTML = `✓ Loaded all ${trackCount} tracks (${stats.total_positions.toLocaleString()} positions)`;
-                statusDiv.className = 'historical-status success';
-
-                // Show display mode selector and filters panel
-                document.getElementById('display-mode-selector').style.display = 'block';
-                filtersPanel.style.display = 'block';
-
-                // Automatically switch to historical mode to display tracks
-                if (currentMode !== 'historical') {
-                    await switchToHistoricalMode();
-                }
-            }
-        } catch (error) {
-            // Better error messages based on error type
-            let errorMessage = '❌ ';
-            if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                errorMessage += 'Cannot reach Track Service. Check if track-service container is running.';
-            } else if (error.message.includes('404')) {
-                errorMessage += 'Track Service endpoint not found. Check API version.';
-            } else if (error.message.includes('500')) {
-                errorMessage += 'Track Service error. Check track-service logs for details.';
-            } else if (error.message.includes('timeout')) {
-                errorMessage += 'Request timed out. Try a smaller time range.';
-            } else {
-                errorMessage += error.message;
-            }
-            statusDiv.innerHTML = errorMessage;
-            statusDiv.className = 'historical-status error';
-        } finally {
-            loadButton.disabled = false;
-        }
-    });
-
-    // Apply Filters button handler
-    applyFiltersButton.addEventListener('click', () => {
-        applyHistoricalFilters();
-        // Update URL with new filter settings
-        URLState.updateFromCurrentState();
-    });
-
-    // Display Mode button handlers
-    const displayModeAllBtn = document.getElementById('display-mode-all');
-    const displayModePlaybackBtn = document.getElementById('display-mode-playback');
-    const displayModeDescription = document.getElementById('display-mode-description');
-    const playbackControlsDiv = document.getElementById('playback-controls');
-
-    // Only set up display mode handlers if elements exist
-    if (!displayModeAllBtn || !displayModePlaybackBtn || !displayModeDescription || !playbackControlsDiv) {
-        console.warn('[Display Mode] Display mode controls not found');
-    } else {
-        displayModeAllBtn.addEventListener('click', () => {
-        console.log('[Display Mode] Switching to Show All mode');
-
-        // Update state
-        HistoricalState.displayMode = 'show-all';
-
-        // Update button appearance
-        displayModeAllBtn.classList.add('active');
-        displayModeAllBtn.style.background = 'var(--accent-primary-dim)';
-        displayModeAllBtn.style.border = '1px solid var(--accent-primary-hover)';
-        displayModePlaybackBtn.classList.remove('active');
-        displayModePlaybackBtn.style.background = '';
-        displayModePlaybackBtn.style.border = '';
-
-        // Update description
-        displayModeDescription.textContent = 'Showing all tracks at once. Click Playback Mode to animate tracks over time.';
-
-        // Show visualization mode selector (heat map options)
-        const visualizationModeSelector = document.getElementById('visualization-mode-selector');
-        if (visualizationModeSelector) {
-            visualizationModeSelector.style.display = 'block';
-        }
-
-        // Hide playback controls
-        playbackControlsDiv.style.display = 'none';
-
-        // Stop any active playback
-        if (PlaybackState.isPlaying) {
-            pausePlayback();
-        }
-
-        // Show all tracks and endpoints immediately
-        HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail }) => {
-            line.visible = true;
-
-            // Show endpoint sphere
-            if (endpointMesh) {
-                endpointMesh.visible = true;
-            }
-
-            // Show Tron curtain if enabled
-            if (trail && trail.tronCurtain) {
-                trail.tronCurtain.visible = true;
-            }
-        });
-
-        // Re-apply filters to respect current filter settings
-        applyHistoricalFilters();
-
-        console.log('[Display Mode] Switched to Show All mode');
-
-        // Update URL with current app state
-        URLState.updateFromCurrentState();
-    });
-
-    displayModePlaybackBtn.addEventListener('click', () => {
-        console.log('[Display Mode] Switching to Playback mode');
-
-        // Update state
-        HistoricalState.displayMode = 'playback';
-
-        // Update button appearance
-        displayModePlaybackBtn.classList.add('active');
-        displayModePlaybackBtn.style.background = 'var(--accent-primary-dim)';
-        displayModePlaybackBtn.style.border = '1px solid var(--accent-primary-hover)';
-        displayModeAllBtn.classList.remove('active');
-        displayModeAllBtn.style.background = '';
-        displayModeAllBtn.style.border = '';
-
-        // Update description
-        displayModeDescription.textContent = 'Playback mode: tracks will animate based on their timestamps. Use controls below to play/pause.';
-
-        // Hide visualization mode selector (heat map not available in playback mode)
-        const visualizationModeSelector = document.getElementById('visualization-mode-selector');
-        if (visualizationModeSelector) {
-            visualizationModeSelector.style.display = 'none';
-        }
-
-        // Clear heat map if it exists
-        clearHeatMap();
-
-        // Initialize playback system
-        initializePlayback();
-
-        console.log('[Display Mode] Switched to Playback mode');
-
-        // Update URL with current app state
-        URLState.updateFromCurrentState();
-    });
-
-    // Heat map visualization mode toggle (radio buttons)
-    document.querySelectorAll('input[name="display-mode"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            const newMode = e.target.value;
-            HistoricalState.heatmapMode = newMode;
-            console.log(`[HeatMap] Visualization mode changed to ${newMode}`);
-
-            // Apply visibility changes based on mode
-            switch (newMode) {
-                case 'tracks':
-                    // Show tracks, hide heat map
-                    showHistoricalTracks(true);
-                    setHeatMapVisibility(false);
-                    break;
-
-                case 'heatmap':
-                    // Hide tracks, show flight corridors
-                    showHistoricalTracks(false);
-                    setHeatMapVisibility(true);
-
-                    // Generate flight corridors if not already created
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateFlightCorridors();
-                    }
-                    break;
-
-                case 'both':
-                    // Show both
-                    showHistoricalTracks(true);
-                    setHeatMapVisibility(true);
-
-                    // Generate flight corridors if not already created
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateFlightCorridors();
-                    }
-                    break;
-            }
-
-            // Update URL with visualization mode
-            URLState.updateFromCurrentState();
-        });
-    });
-    } // End of display mode controls check
-
-    // Tron mode is now handled by the unified toggle in Settings panel
-}
 
 // Clear all live aircraft from scene
 function clearLiveAircraft() {
     console.log('[Mode] Clearing live aircraft');
 
     // Stop live updates
-    if (liveUpdateInterval) {
-        clearInterval(liveUpdateInterval);
-        liveUpdateInterval = null;
-    }
+    stopLiveUpdates();
 
     // Remove aircraft meshes (using Map methods)
     aircraftMeshes.forEach(mesh => {
@@ -4711,7 +1342,7 @@ async function switchToLiveMode(skipURLUpdate = false) {
 
     // SAFETY: Stop playback if it's running
     if (PlaybackState.isPlaying) {
-        pausePlayback();
+        HistoricalMode.pausePlayback();
         console.log('[Mode] Stopped playback when switching to live mode');
     }
 
@@ -4719,12 +1350,12 @@ async function switchToLiveMode(skipURLUpdate = false) {
     renderer.domElement.classList.add('mode-transition', 'fading');
 
     // Wait for fade
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
 
     currentMode = 'live';
 
     // Clear historical tracks
-    clearHistoricalTracks();
+    HistoricalMode.clearHistoricalTracks();
 
     // Sidebar handles mode display
 
@@ -4747,10 +1378,11 @@ async function switchToLiveMode(skipURLUpdate = false) {
     if (historicalModeBtn) historicalModeBtn.classList.remove('active');
 
     // Start live updates
-    if (!liveUpdateInterval) {
-        fetchAircraftData();
-        liveUpdateInterval = setInterval(fetchAircraftData, CONFIG.updateInterval);
-    }
+    startLiveUpdates({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
 
     // Load recent trails if enabled
     if (RecentTrailsState.enabled) {
@@ -4761,70 +1393,76 @@ async function switchToLiveMode(skipURLUpdate = false) {
     updateSidebarMode();
 
     // Fade back in
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, TIMING.PANEL_ANIMATION_DELAY));
     renderer.domElement.classList.remove('fading');
 
     // Update URL to reflect live mode (unless loading from URL)
     if (!skipURLUpdate) {
-        URLState.updateFromCurrentState();
+        updateURLFromCurrentState();
     }
 }
 
 // Switch to historical mode
-async function switchToHistoricalMode(skipURLUpdate = false) {
-    if (currentMode === 'historical') return;
 
-    console.log('[Mode] Switching to Historical mode');
+// ============================================================================
+// URL STATE WRAPPERS
+// ============================================================================
+// Wrapper functions to bridge between app.js and url-state-manager.js module
 
-    // CRITICAL: Stop live updates FIRST to prevent race conditions
-    if (liveUpdateInterval) {
-        clearInterval(liveUpdateInterval);
-        liveUpdateInterval = null;
-        console.log('[Mode] Stopped live update interval');
-    }
+/**
+ * Helper to format date for datetime-local input (YYYY-MM-DDTHH:mm)
+ * @param {string} dateStr - ISO date string
+ * @returns {string} Formatted date string for datetime-local input
+ */
+function formatForDatetimeInput(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
 
-    // Set mode before fade to prevent any updates during transition
-    currentMode = 'historical';
-
-    // Add fade transition
-    renderer.domElement.classList.add('mode-transition', 'fading');
-
-    // Wait for fade
-    await new Promise(resolve => setTimeout(resolve, 150));
-
-    // Clear live aircraft (meshes, labels, trails)
-    clearLiveAircraft();
-
-    // Force a render to ensure removal takes effect
-    if (typeof renderer !== 'undefined' && renderer.render) {
-        renderer.render(scene, camera);
-        console.log('[Mode] Forced render after clearing live aircraft');
-    }
-
-    // Hide live mode options section
-    const liveOptionsSection = document.getElementById('live-mode-options-section');
-    if (liveOptionsSection) {
-        liveOptionsSection.style.display = 'none';
-    }
-
-    // Update mode button active states
-    const liveModeBtn = document.getElementById('live-mode-btn');
-    const historicalModeBtn = document.getElementById('historical-mode-btn');
-    if (historicalModeBtn) historicalModeBtn.classList.add('active');
-    if (liveModeBtn) liveModeBtn.classList.remove('active');
-
-    // Update sidebar to show historical mode content
-    updateSidebarMode();
-
-    // Fade back in
-    await new Promise(resolve => setTimeout(resolve, 150));
-    renderer.domElement.classList.remove('fading');
-
-    // Update URL to reflect historical mode (unless loading from URL)
-    if (!skipURLUpdate) {
-        URLState.updateFromCurrentState();
-    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
+
+/**
+ * Apply URL parameters to app state (wrapper for URLState.applyFromURL)
+ * @returns {Promise<boolean>} True if URL state was applied
+ */
+async function applyURLFromState() {
+    const deps = {
+        AppFeatures,
+        switchToLiveMode,
+        switchToHistoricalMode: HistoricalMode.switchToHistoricalMode,
+        HistoricalState,
+        showTronMode,
+        setShowTronMode: (value) => { showTronMode = value; },
+        clearAllHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        clearFlightCorridors: HistoricalMode.clearFlightCorridors,
+        formatForDatetimeInput
+    };
+    return await URLState.applyFromURL(deps);
+}
+
+/**
+ * Update URL from current app state (wrapper for URLState.updateFromCurrentState)
+ */
+function updateURLFromCurrentState() {
+    const deps = {
+        currentMode,
+        HistoricalState,
+        showTronMode,
+        SafeStorage,
+        selectedAircraft
+    };
+    URLState.updateFromCurrentState(deps);
+}
+
+// Initialize browser navigation handler
+initializeBrowserNavigation(applyURLFromState);
 
 // Setup mode button event listeners
 function setupModeButtonListeners() {
@@ -4841,7 +1479,7 @@ function setupModeButtonListeners() {
 
     if (historicalModeBtn && AppFeatures.historical) {
         historicalModeBtn.addEventListener('click', () => {
-            switchToHistoricalMode();
+            HistoricalMode.switchToHistoricalMode();
             historicalModeBtn.classList.add('active');
             if (liveModeBtn) liveModeBtn.classList.remove('active');
         });
@@ -4965,7 +1603,7 @@ function setupTronModeListener() {
         // console.log(`[TronMode] ${showTronMode ? 'Enabled' : 'Disabled'}`);
 
         // Update URL to reflect Tron mode state
-        URLState.updateFromCurrentState();
+        updateURLFromCurrentState();
 
         if (showTronMode) {
             // Create curtains for all existing trails
@@ -5075,7 +1713,11 @@ function initializeUIForFeatures() {
     setupTronModeListener();
 }
 
-// Async wrapper to handle feature detection before Three.js init
+/**
+ * Initialize the application
+ * Handles feature detection before Three.js initialization
+ * @async
+ */
 async function initializeApp() {
     console.log('=== ADS-B 3D Initializing ===');
 
@@ -5194,10 +1836,10 @@ async function initializeApp() {
     }
 
     // Step 6: Apply URL state if present (shareable links)
-    await URLState.applyFromURL();
+    await applyURLFromState();
 
     // Step 7: Setup mobile touch UX enhancements
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= UI.MOBILE_BREAKPOINT) {
         setupMobileTouchUX();
     }
 
@@ -5243,6 +1885,11 @@ function init() {
 
     // Limit pixel ratio to 2 max (4K/5K displays don't need >2x)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Expose globals for smoke tests and debugging
+    window.scene = scene;
+    window.camera = camera;
+    window.renderer = renderer;
 
     // Lights - Daylight simulation
     const ambientLight = new THREE.AmbientLight(CONFIG.sceneAmbient, 0.6);
@@ -5310,11 +1957,69 @@ function init() {
     // Store beacon reference for pulsing animation
     window.homeBeacon = beacon;
 
+    // Initialize Camera & Rendering module with dependencies (must be before setupMouseControls)
+    CameraRendering = initCameraRendering({
+        scene,
+        camera,
+        renderer,
+        THREE,
+        CameraState,
+        FollowState,
+        TrailConfig,
+        aircraftMeshes,
+        staleTrails,
+        CONFIG,
+        TIMING,
+        getSelectedAircraft: () => selectedAircraft,
+        setSelectedAircraft: (aircraft) => { selectedAircraft = aircraft; },
+        updateSkyColors,
+        updateSidebarMiniRadar,
+        updateSidebarHeading,
+        updateFollowButtonText,
+        hideUnfollowButton,
+        showAircraftContextMenu,
+        showAircraftDetail,
+        selectAircraft
+    });
+    console.log('[CameraRendering] Module initialized');
+
     // Mouse controls
-    setupMouseControls();
+    CameraRendering.setupMouseControls();
 
     // Window resize
-    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('resize', CameraRendering.onWindowResize);
+
+    // Initialize Historical Mode module with dependencies (must be before setupUIControls)
+    HistoricalMode = initHistoricalMode({
+        scene,
+        camera,
+        renderer,
+        HistoricalState,
+        PlaybackState,
+        latLonToXZ,
+        smoothAltitudes,
+        updateAircraft,
+        updateUI,
+        getSpeedColor,
+        getAltitudeColor,
+        updateTronCurtain,
+        trailColorMode,
+        showTronMode,
+        SafeStorage,
+        clearLiveAircraft,
+        stopLiveUpdates,
+        startLiveUpdates,
+        loadHistoricalData,
+        updateSidebarMode,
+        updateURLFromCurrentState,
+        getCurrentMode: () => currentMode,
+        setCurrentMode: (mode) => { currentMode = mode; },
+        AppFeatures,
+        TIMING,
+        isMilitaryAircraft,
+        filterSidebarTracks
+    });
+    console.log('[HistoricalMode] Module initialized');
 
     // Setup UI controls
     setupUIControls();
@@ -5323,13 +2028,16 @@ function init() {
     loadDailyStats();
 
     // Check for daily reset every minute
-    setInterval(checkDailyReset, 60000);
+    setInterval(checkDailyReset, TIMING.STATS_UPDATE_INTERVAL);
 
     // Setup aircraft click interaction
     setupAircraftClick();
 
     // Initialize sidebar event handlers
     setupSidebarEventHandlers();
+
+    // Initialize custom calendar picker
+    CalendarPicker.init();
 
     // Ensure sidebar is in correct mode
     updateSidebarMode();
@@ -5340,20 +2048,23 @@ function init() {
     // SVG aircraft system loaded via aircraft-svg-system.js
 
     // Start animation loop
-    animate();
+    CameraRendering.animate();
 
     // Start fetching aircraft data (live mode by default)
-    fetchAircraftData();
-    liveUpdateInterval = setInterval(fetchAircraftData, CONFIG.updateInterval);
+    startLiveUpdates({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
 
     // Start trail cleanup timer (runs every 60 seconds)
-    setInterval(cleanupOldTrailPositions, 60000);
+    setInterval(cleanupOldTrailPositions, TIMING.TRAIL_CLEANUP_INTERVAL);
     console.log('[TrailFade] Cleanup timer started (60s interval)');
 
     // Load recent trails on startup if enabled and Track API available
     if (RecentTrailsState.enabled && AppFeatures.historical && currentMode === 'live') {
         console.log('[RecentTrails] Auto-loading trails on startup');
-        setTimeout(() => loadRecentTrails(), 2000); // Wait 2s for initial aircraft data
+        setTimeout(() => loadRecentTrails(), TIMING.RECENT_TRAILS_DELAY); // Wait 2s for initial aircraft data
     }
 }
 
@@ -5493,6 +2204,7 @@ function createGroundPlane() {
 
     // Load all tiles
     let tilesLoaded = 0;
+    let tilesFailed = 0;
     const totalTiles = tilesWide * tilesHigh;
     const halfGrid = Math.floor(tilesWide / 2);
 
@@ -5551,6 +2263,8 @@ function createGroundPlane() {
             };
             img.onerror = function() {
                 console.warn(`Failed to load tile ${tileX},${tileY}`);
+                tilesFailed++;
+
                 // Draw dark gray fallback
                 ctx.fillStyle = '#1a1a1a';
                 const canvasX = (dx + halfGrid) * tileSize;
@@ -5569,6 +2283,11 @@ function createGroundPlane() {
                     texture.generateMipmaps = true;
                     material.map = texture;
                     material.needsUpdate = true;
+
+                    // Notify user if many tiles failed
+                    if (tilesFailed > totalTiles * 0.5) {
+                        showNotification(`Map tiles failed to load (${tilesFailed}/${totalTiles}). Check network connection.`, 'warning');
+                    }
                 }
             };
             img.src = tileUrl;
@@ -5664,6 +2383,30 @@ function createExtendedGrid() {
 
 // ========== AIRPORT/RUNWAY FUNCTIONS ==========
 
+/**
+ * Fetch with timeout to prevent hanging on slow/offline servers
+ * @param {string} url - The URL to fetch
+ * @param {number} [timeoutMs=10000] - Timeout in milliseconds
+ * @returns {Promise<Response>} The fetch response
+ * @throws {Error} If the request times out or fails
+ */
+async function fetchWithTimeout(url, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timed out after ${timeoutMs}ms`);
+        }
+        throw error;
+    }
+}
+
 // Parse CSV data
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
@@ -5698,7 +2441,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 async function fetchAirports() {
     try {
         console.log('Fetching airports data...');
-        const response = await fetch('https://davidmegginson.github.io/ourairports-data/airports.csv');
+        const response = await fetchWithTimeout(API.AIRPORTS_CSV, 15000);
         const csvText = await response.text();
         const allAirports = parseCSV(csvText);
 
@@ -5740,7 +2483,7 @@ async function fetchAirports() {
 async function fetchRunways() {
     try {
         console.log('Fetching runways data...');
-        const response = await fetch('https://davidmegginson.github.io/ourairports-data/runways.csv');
+        const response = await fetchWithTimeout(API.RUNWAYS_CSV, 15000);
         const csvText = await response.text();
         const allRunways = parseCSV(csvText);
 
@@ -5928,8 +2671,7 @@ function addDistanceRings() {
         scene.add(ring);
 
         // Add distance label at north position of ring
-        const label = CONFIG.distanceRingLabels[index] || `${distance.toFixed(0)} km`;
-        const distanceLabel = createDistanceRingLabel(label);
+        const distanceLabel = createDistanceRingLabel(`${distance} km`);
         distanceLabel.position.set(0, 0.5, -radius); // North side of ring, slightly elevated
         scene.add(distanceLabel);
     });
@@ -5959,12 +2701,7 @@ function createDistanceRingLabel(text) {
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
-    const spriteMaterial = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false
-    });
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
 
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.scale.set(20, 5, 1); // Much larger - similar to aircraft labels
@@ -5973,411 +2710,11 @@ function createDistanceRingLabel(text) {
 }
 
 // Sync camera angles from current position (for smooth transition to free orbit)
-function syncCameraAnglesFromPosition() {
-    const centerPoint = followMode && followedAircraftHex ?
-        aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-
-    if (!centerPoint) return;
-
-    // Calculate relative position
-    const relativePos = camera.position.clone().sub(centerPoint);
-
-    // Calculate distance
-    cameraDistance = relativePos.length();
-
-    // Calculate angles
-    const horizontalDist = Math.sqrt(relativePos.x * relativePos.x + relativePos.z * relativePos.z);
-    cameraAngleY = Math.atan2(horizontalDist, relativePos.y);
-    cameraAngleX = Math.atan2(relativePos.z, relativePos.x);
-}
 
 // Update camera position based on angles and distance
-function updateCameraPosition(centerPoint = new THREE.Vector3(0, 0, 0)) {
-    if (!followMode || !followLocked) {
-        const x = cameraDistance * Math.sin(cameraAngleY) * Math.cos(cameraAngleX);
-        const y = cameraDistance * Math.cos(cameraAngleY);
-        const z = cameraDistance * Math.sin(cameraAngleY) * Math.sin(cameraAngleX);
 
-        camera.position.set(
-            centerPoint.x + x,
-            centerPoint.y + y,
-            centerPoint.z + z
-        );
-        camera.lookAt(centerPoint);
-    }
-}
-
-function setupMouseControls() {
-    let previousMousePosition = { x: 0, y: 0 };
-    let mouseDownPosition = { x: 0, y: 0 };
-    let actuallyDragged = false;
-
-    const canvas = document.getElementById('canvas');
-
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        actuallyDragged = false; // Reset drag tracking
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-        mouseDownPosition = { x: e.clientX, y: e.clientY }; // Track initial position
-
-        // Sync camera angles with current position before starting drag
-        // This ensures dragging continues from current orientation
-        syncCameraAnglesFromPosition();
-
-        // If user starts dragging during locked follow mode, unlock it
-        if (followMode && followLocked) {
-            followLocked = false;
-            updateFollowButtonText();
-        }
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const deltaX = e.clientX - previousMousePosition.x;
-            const deltaY = e.clientY - previousMousePosition.y;
-
-            // Calculate total distance moved from initial mousedown
-            const totalDeltaX = e.clientX - mouseDownPosition.x;
-            const totalDeltaY = e.clientY - mouseDownPosition.y;
-            const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
-
-            // Only consider it "dragging" if moved more than 5 pixels
-            if (totalDistance > 5) {
-                actuallyDragged = true;
-            }
-
-            cameraAngleX += deltaX * 0.005;
-            cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2, cameraAngleY - deltaY * 0.005));
-
-            // Update camera only if not in locked follow mode
-            if (!followMode || !followLocked) {
-                const followTarget = followMode && followedAircraftHex ?
-                    aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                updateCameraPosition(followTarget);
-            }
-
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-        }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-        wasDragging = actuallyDragged; // Only set if actually moved significantly
-        isDragging = false;
-        actuallyDragged = false;
-    });
-
-    canvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-
-        // Sync camera angles with current position before zooming
-        // This ensures zooming continues from current orientation
-        syncCameraAnglesFromPosition();
-
-        // If user zooms during locked follow mode, unlock it
-        if (followMode && followLocked) {
-            followLocked = false;
-            updateFollowButtonText();
-        }
-
-        const oldDistance = cameraDistance;
-        // Zoom limits: 10 (close-up) to 1200 (wide view for large-area feeders)
-        cameraDistance = Math.max(10, Math.min(1200, cameraDistance + e.deltaY * 0.1));
-
-        // Update camera only if not in locked follow mode
-        if (!followMode || !followLocked) {
-            const followTarget = followMode && followedAircraftHex ?
-                aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-            updateCameraPosition(followTarget);
-        }
-    });
-
-    // Touch controls for mobile devices
-    setupTouchControls(canvas);
-}
 
 // Setup touch controls for mobile
-function setupTouchControls(canvas) {
-    let touchStartPositions = [];
-    let initialPinchDistance = null;
-    let initialCameraDistance = null;
-    let touchStartTime = 0;
-    let touchMoved = false;
-    let wasTouchDragging = false;
-
-    // Add long-press and double-tap support
-    let longPressTimer = null;
-    let lastTapTime = 0;
-    const LONG_PRESS_TIME = 500; // milliseconds
-    const DOUBLE_TAP_TIME = 300; // milliseconds
-
-    canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        touchStartPositions = Array.from(e.touches).map(touch => ({
-            x: touch.clientX,
-            y: touch.clientY
-        }));
-        touchStartTime = Date.now();
-        touchMoved = false;
-
-        if (e.touches.length === 1) {
-            // Single touch - prepare for rotation and long-press detection
-            isDragging = true;
-            syncCameraAnglesFromPosition();
-
-            // Start long-press timer
-            longPressTimer = setTimeout(() => {
-                // Long-press detected - show aircraft context menu
-                const touch = e.touches[0];
-                const raycaster = new THREE.Raycaster();
-                const mouse = new THREE.Vector2();
-
-                mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
-
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
-
-                if (intersects.length > 0) {
-                    // Found an aircraft - show context menu
-                    showAircraftContextMenu(touch.clientX, touch.clientY, intersects[0]);
-                }
-
-                longPressTimer = null;
-            }, LONG_PRESS_TIME);
-
-            // Unlock follow mode if active
-            if (followMode && followLocked) {
-                followLocked = false;
-                updateFollowButtonText();
-            }
-        } else if (e.touches.length === 2) {
-            // Two finger touch - prepare for pinch/zoom
-            isDragging = false;
-
-            // Cancel long-press when switching to two fingers
-            if (longPressTimer) {
-                clearTimeout(longPressTimer);
-                longPressTimer = null;
-            }
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            initialPinchDistance = Math.sqrt(dx * dx + dy * dy);
-            initialCameraDistance = cameraDistance;
-            // console.log(`[Mobile Zoom] Start pinch - initial distance: ${initialCameraDistance.toFixed(0)}, pinch: ${initialPinchDistance.toFixed(0)}`);
-
-            syncCameraAnglesFromPosition();
-
-            // Unlock follow mode if active
-            if (followMode && followLocked) {
-                followLocked = false;
-                updateFollowButtonText();
-            }
-        }
-    });
-
-    canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-
-        // Mark as moved if touch position changed significantly
-        if (e.touches.length > 0 && touchStartPositions.length > 0) {
-            const deltaX = e.touches[0].clientX - touchStartPositions[0].x;
-            const deltaY = e.touches[0].clientY - touchStartPositions[0].y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-            if (distance > 10) {  // 10px threshold for tap vs drag
-                touchMoved = true;
-
-                // Cancel long-press if user moves finger
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    longPressTimer = null;
-                }
-            }
-        }
-
-        if (e.touches.length === 1 && isDragging) {
-            // Single finger drag - rotate camera
-            const touch = e.touches[0];
-            const deltaX = touch.clientX - touchStartPositions[0].x;
-            const deltaY = touch.clientY - touchStartPositions[0].y;
-
-            cameraAngleX += deltaX * 0.005;
-            cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2, cameraAngleY - deltaY * 0.005));
-
-            // Update camera only if not in locked follow mode
-            if (!followMode || !followLocked) {
-                const followTarget = followMode && followedAircraftHex ?
-                    aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                updateCameraPosition(followTarget);
-            }
-
-            touchStartPositions = [{ x: touch.clientX, y: touch.clientY }];
-        } else if (e.touches.length === 2) {
-            // Two finger pinch - zoom
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-            if (initialPinchDistance !== null) {
-                const scale = currentDistance / initialPinchDistance;
-                // Standard mobile behavior: spread fingers (scale > 1) = zoom IN (decrease distance)
-                // pinch fingers (scale < 1) = zoom OUT (increase distance)
-                // So we divide by scale
-                const newDistance = initialCameraDistance / scale;
-
-                // Apply zoom with same limits as desktop
-                // When hitting the max, clamp to max instead of resetting
-                const oldCameraDistance = cameraDistance;
-                // Pinch zoom limits: 10 (close) to 1200 (far) - supports large-area feeders
-                cameraDistance = Math.max(10, Math.min(1200, newDistance));
-
-                // Debug logging disabled after fixing zoom issues
-                // console.log(`[Mobile Zoom] Pinch - scale: ${scale.toFixed(2)}, old: ${oldCameraDistance.toFixed(0)}, new: ${cameraDistance.toFixed(0)}, initial: ${initialCameraDistance.toFixed(0)}`);
-
-                // Update camera only if not in locked follow mode
-                if (!followMode || !followLocked) {
-                    const followTarget = followMode && followedAircraftHex ?
-                        aircraftMeshes.get(followedAircraftHex)?.position : new THREE.Vector3(0, 0, 0);
-                    updateCameraPosition(followTarget);
-                }
-            }
-        }
-    });
-
-    canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-
-        // Clear long-press timer if active
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-
-        // Capture drag state before resetting
-        wasTouchDragging = touchMoved;
-
-        // Detect tap (quick touch without movement)
-        const touchDuration = Date.now() - touchStartTime;
-        const wasTap = !wasTouchDragging && touchDuration < 300 && touchStartPositions.length === 1;
-
-        // Check for double-tap to reset camera
-        const currentTime = Date.now();
-        if (wasTap && currentTime - lastTapTime < DOUBLE_TAP_TIME && currentTime - lastTapTime > 0) {
-            // Double-tap detected - reset camera
-            resetCamera();
-            lastTapTime = 0; // Reset to prevent triple tap
-            return; // Don't process as single tap
-        } else if (wasTap) {
-            lastTapTime = currentTime;
-        }
-
-        if (wasTap && e.changedTouches.length > 0) {
-            // This was a tap - perform aircraft selection
-            const touch = e.changedTouches[0];
-            const rect = canvas.getBoundingClientRect();
-            const mouse = {
-                x: ((touch.clientX - rect.left) / rect.width) * 2 - 1,
-                y: -((touch.clientY - rect.top) / rect.height) * 2 + 1
-            };
-
-            // Update raycaster with tap position
-            raycaster.setFromCamera(mouse, camera);
-
-            // Check for intersections with aircraft meshes, labels, airports, historical tracks, and endpoints
-            const aircraftArray = Array.from(aircraftMeshes.values());
-            const labelArray = Array.from(aircraftLabels.values());
-            // Only include tracks and endpoints that are IN THE SCENE (have a parent)
-            const historicalTracksArray = Array.from(HistoricalState.trackMeshes.values())
-                .filter(tm => tm.line.parent)
-                .map(tm => tm.line);
-            const endpointsArray = (HistoricalState.endpointMeshes || [])
-                .filter(endpoint => endpoint.parent);
-            const allClickableObjects = [...aircraftArray, ...labelArray, ...airportMeshes, ...historicalTracksArray, ...endpointsArray];
-            const intersects = raycaster.intersectObjects(allClickableObjects, true);
-
-            if (intersects.length > 0) {
-                const tappedObject = intersects[0].object;
-
-                // Check if we tapped a historical endpoint
-                if (tappedObject.userData && tappedObject.userData.isHistoricalEndpoint) {
-                    showHistoricalTrackDetail(tappedObject.userData);
-                    return;
-                }
-
-                // Check if we tapped a historical track line
-                if (tappedObject.userData && tappedObject.userData.isHistoricalTrack) {
-                    showHistoricalTrackDetail(tappedObject.userData);
-                    return;
-                }
-
-                // Check if we tapped an airport label
-                for (const airportSprite of airportMeshes) {
-                    if (airportSprite === tappedObject && airportSprite.userData.isAirportLabel) {
-                        showAirportDetail(airportSprite.userData.airport);
-                        return;
-                    }
-                }
-
-                // Check if we tapped an aircraft label
-                for (const [hex, labelGroup] of aircraftLabels.entries()) {
-                    if (labelGroup === tappedObject || labelGroup.children.includes(tappedObject)) {
-                        showAircraftDetail(hex);
-                        return;
-                    }
-                }
-
-                // Otherwise, find the parent Group (aircraft) for this tapped mesh
-                let aircraftGroup = tappedObject;
-                while (aircraftGroup && aircraftGroup.parent && aircraftGroup.parent.type !== 'Scene') {
-                    aircraftGroup = aircraftGroup.parent;
-                }
-
-                // Find the hex for this aircraft group
-                // Check the tapped object, its parent, and all ancestors
-                for (const [hex, mesh] of aircraftMeshes.entries()) {
-                    if (mesh === aircraftGroup ||
-                        mesh === tappedObject ||
-                        mesh.children.includes(tappedObject) ||
-                        tappedObject.parent === mesh) {
-                        console.log(`[Tap] Detected tap on aircraft ${hex}, showing details`);
-                        showAircraftDetail(hex);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (e.touches.length === 0) {
-            // All fingers lifted
-            // console.log(`[Mobile Zoom] All fingers lifted - final distance: ${cameraDistance.toFixed(0)}`);
-            isDragging = false;
-            initialPinchDistance = null;
-            initialCameraDistance = null;
-            touchStartPositions = [];
-            touchMoved = false;
-            wasTouchDragging = false;
-        } else if (e.touches.length === 1) {
-            // One finger remaining - reset for single touch
-            // console.log(`[Mobile Zoom] One finger remaining - current distance: ${cameraDistance.toFixed(0)}`);
-            touchStartPositions = [{
-                x: e.touches[0].clientX,
-                y: e.touches[0].clientY
-            }];
-            initialPinchDistance = null;
-            initialCameraDistance = null;
-            touchStartTime = Date.now();
-            touchMoved = false;
-            wasTouchDragging = false;
-        }
-    });
-
-    canvas.addEventListener('touchcancel', (e) => {
-        e.preventDefault();
-        isDragging = false;
-        initialPinchDistance = null;
-        initialCameraDistance = null;
-        touchStartPositions = [];
-    });
-}
 
 // Update follow button text based on current state
 function updateFollowButtonText() {
@@ -6409,30 +2746,6 @@ function hideUnfollowButton() {
 }
 
 // Reset camera to default position and stop following
-function resetCamera() {
-    // Turn off follow mode FIRST to prevent interference with animation
-    if (followMode) {
-        followMode = false;
-        followedAircraftHex = null;
-        const followBtn = document.getElementById('toggle-follow');
-        if (followBtn) {
-            followBtn.style.display = 'none';
-        }
-        updateFollowButtonText();
-        hideUnfollowButton();
-    }
-
-    // Smooth camera animation to default position (facing north)
-    const homePos = new THREE.Vector3(0, 50, 100);
-    const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-    animateCameraToPosition(homePos, homeLookAt, 1000, () => {
-        // Animation complete - update camera angles
-        cameraAngleX = 0; // Facing north
-        cameraAngleY = Math.PI / 6;
-        cameraDistance = 100;
-    });
-}
 
 /**
  * Sanitize HTML to prevent XSS attacks
@@ -6648,14 +2961,14 @@ function setupUIControls() {
 
     // Reset camera button
     document.getElementById('reset-camera').addEventListener('click', () => {
-        resetCamera();
+        CameraRendering.resetCamera();
     });
 
     // Unfollow button
     const unfollowBtn = document.getElementById('unfollow-btn');
     if (unfollowBtn) {
         unfollowBtn.addEventListener('click', () => {
-            resetCamera();
+            CameraRendering.resetCamera();
         });
     }
 
@@ -6798,7 +3111,7 @@ function setupUIControls() {
         }
 
         // Update URL to reflect state
-        URLState.updateFromCurrentState();
+        updateURLFromCurrentState();
 
         // Check for conflict with preload time
         validateFadePreloadConflict();
@@ -6967,7 +3280,7 @@ function setupUIControls() {
         // Regenerate flight corridors if they exist and are visible
         if (currentMode === 'historical' && HistoricalState.heatmapMeshes.length > 0) {
             console.log(`[AltitudeScale] Regenerating flight corridors with new scale ${newScale}x`);
-            generateFlightCorridors(); // Will clear old meshes and create new ones with correct altitude
+            HistoricalMode.generateFlightCorridors(); // Will clear old meshes and create new ones with correct altitude
         }
     });
 
@@ -7102,9 +3415,10 @@ function setupUIControls() {
             if (followMode) {
                 if (followLocked) {
                     // Switching from locked to free - sync angles first
-                    syncCameraAnglesFromPosition();
+                    CameraRendering.syncCameraAnglesFromPosition();
                 }
                 followLocked = !followLocked;
+                FollowState.locked = followLocked; // Sync for camera-rendering module
                 updateFollowButtonText();
             }
         } else {
@@ -7119,21 +3433,36 @@ function setupUIControls() {
                     followedAircraftHex = selectedAircraft;
                     followLocked = true; // Start in locked mode
                     cameraReturnInProgress = false;
+
+                    // Sync FollowState for camera-rendering module
+                    FollowState.mode = true;
+                    FollowState.hex = selectedAircraft;
+                    FollowState.locked = true;
+
                     // Hide aircraft detail panel during follow mode so it doesn't block view
                     document.getElementById('aircraft-detail').style.display = 'none';
+                    // Show unfollow button when following an aircraft
+                    showUnfollowButton();
                 } else {
                     followMode = false;
                     followedAircraftHex = null;
+
+                    // Sync FollowState for camera-rendering module
+                    FollowState.mode = false;
+                    FollowState.hex = null;
+
+                    // Hide unfollow button when not following
+                    hideUnfollowButton();
 
                     // Smooth camera animation to initial position (same as reset button)
                     const homePos = new THREE.Vector3(0, 50, 100);
                     const homeLookAt = new THREE.Vector3(0, 0, 0);
 
-                    animateCameraToPosition(homePos, homeLookAt, 1000, () => {
+                    CameraRendering.animateCameraToPosition(homePos, homeLookAt, 1000, () => {
                         // Animation complete - update camera angles
                         cameraAngleX = 0; // Facing north
                         cameraAngleY = Math.PI / 6;
-                        cameraDistance = 100;
+                        cameraDistance = UI.FOCUS_DISTANCE;
                         cameraReturnInProgress = false;
 
                         // Show aircraft detail panel again when follow mode ends
@@ -7185,9 +3514,9 @@ function setupUIControls() {
     // Historical controls (legacy - only run if old panel exists)
     // New sidebar handles historical controls via setupSidebarEventHandlers()
     if (document.getElementById('start-time')) {
-        setupHistoricalControls();
+        HistoricalMode.setupHistoricalControls();
     }
-    setupPlaybackControls();
+    HistoricalMode.setupPlaybackControls();
 
     // Keyboard shortcuts
     setupKeyboardShortcuts();
@@ -7201,7 +3530,7 @@ function setupCollapseablePanels() {
     console.log('[Collapse] Setup called - Found', collapseButtons.length, 'collapse buttons and', headerButtons.length, 'header buttons');
 
     // Check if we're on mobile
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
 
     // Load saved collapse states from localStorage
     const savedStates = JSON.parse(SafeStorage.getItem('panelCollapseStates') || '{}');
@@ -7314,7 +3643,7 @@ function setupCollapseablePanels() {
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
-            const nowMobile = window.innerWidth <= 768;
+            const nowMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
 
             // Remove mobile-collapsed class when resizing to desktop
             if (!nowMobile) {
@@ -7817,56 +4146,125 @@ function latLonToXZ(lat, lon) {
     return { x, z };
 }
 
-// Fetch aircraft data from Ultrafeeder
-let fetchErrorCount = 0;
-const MAX_FETCH_ERRORS = 5;
+// ============================================================================
+// DATA FETCHING - Wrapper Functions
+// ============================================================================
+// Wrappers for data service modules that handle dependency injection
 
+// Historical playback variables (used by loadHistoricalTracks)
+let historicalTracks = {};
+let playbackStartTime = null;
+let playbackEndTime = null;
+let playbackCurrentTime = null;
+
+// Fetch aircraft data from Ultrafeeder (wrapper for module function)
 async function fetchAircraftData() {
-    try {
-        // Use BASE_PATH from config.js, default to '' if not defined
-        const basePath = window.ADSB_CONFIG?.BASE_PATH || '';
-        const response = await fetch(`${basePath}/data/aircraft.json`);
+    await fetchAircraftDataModule({
+        currentMode,
+        updateAircraft,
+        updateUI
+    });
+    // Update local reference for radar display
+    liveRadarData = getLiveRadarData();
+}
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+// ============================================================================
+// HISTORICAL DATA SERVICE WRAPPERS
+// ============================================================================
+// These wrappers inject app.js dependencies into the historical data module
 
-        const data = await response.json();
+// Wrapper for loadHistoricalTracks (replaces old implementation at line 910)
+async function loadHistoricalTracks(hoursAgo = 1) {
+    const deps = {
+        HistoricalState,
+        historicalTracks,
+        playbackStartTime,
+        playbackEndTime,
+        playbackCurrentTime,
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility
+    };
 
-        // Validate data structure
-        if (!data || typeof data !== 'object') {
-            throw new Error('Invalid data format received');
-        }
+    const result = await loadHistoricalTracksModule(hoursAgo, deps);
 
-        // Reset error count on successful fetch
-        fetchErrorCount = 0;
+    // Sync modified values back to local variables
+    playbackStartTime = deps.playbackStartTime;
+    playbackEndTime = deps.playbackEndTime;
+    playbackCurrentTime = deps.playbackCurrentTime;
 
-        // Always store live data for radar (even in historical mode)
-        liveRadarData = data.aircraft || [];
+    return result;
+}
 
-        // Only update 3D scene if in live mode
-        if (currentMode === 'live') {
-            updateAircraft(data.aircraft || []);
-            updateUI(data);
-        }
-    } catch (error) {
-        fetchErrorCount++;
-        console.error(`Error fetching aircraft data (${fetchErrorCount}/${MAX_FETCH_ERRORS}):`, error);
+// Wrapper for loadHistoricalData (replaces old implementation at line 976)
+async function loadHistoricalData() {
+    return await loadHistoricalDataModule({
+        HistoricalState,
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility,
+        updateURLFromCurrentState
+    });
+}
 
-        // Show error in UI if repeated failures
-        if (fetchErrorCount >= MAX_FETCH_ERRORS) {
-            const infoDiv = document.getElementById('aircraft-count');
-            const headerDiv = document.getElementById('aircraft-count-header');
-            if (infoDiv) {
-                infoDiv.textContent = 'Connection Error';
-                infoDiv.style.color = '#ff4444';
-            }
-            if (headerDiv) {
-                headerDiv.textContent = '(Error)';
-                headerDiv.style.color = '#ff4444';
-            }
-        }
-    }
+// Wrapper for loadHistoricalTracksCustom (replaces old implementation at line 9637)
+async function loadHistoricalTracksCustom(startTime, endTime) {
+    const deps = {
+        HistoricalState,
+        historicalTracks,
+        playbackStartTime,
+        playbackEndTime,
+        playbackCurrentTime,
+        renderHistoricalTracks: HistoricalMode.renderHistoricalTracks,
+        clearHistoricalTracks: HistoricalMode.clearHistoricalTracks,
+        applyHistoricalFilters: HistoricalMode.applyHistoricalFilters,
+        generateFlightCorridors: HistoricalMode.generateFlightCorridors,
+        showHistoricalTracks: HistoricalMode.showHistoricalTracks,
+        setHeatMapVisibility: HistoricalMode.setHeatMapVisibility
+    };
+
+    const result = await loadHistoricalTracksCustomModule(startTime, endTime, deps);
+
+    // Sync modified values back to local variables
+    playbackStartTime = deps.playbackStartTime;
+    playbackEndTime = deps.playbackEndTime;
+    playbackCurrentTime = deps.playbackCurrentTime;
+
+    return result;
+}
+
+// Wrapper for loadFullTrailForAircraft (replaces old implementation at line 1320)
+async function loadFullTrailForAircraft(icao) {
+    return await loadFullTrailForAircraftModule(icao, {
+        AppFeatures,
+        FullTrailsState,
+        API,
+        smoothAltitudes,
+        trails,
+        latLonToXZ,
+        CONFIG,
+        scene,
+        THREE,
+        showTrails,
+        trailColorMode,
+        getSpeedColor,
+        getAltitudeColor
+    });
+}
+
+// Wrapper for loadRecentTrails (replaces old implementation at line 1552)
+async function loadRecentTrails() {
+    return await loadRecentTrailsModule({
+        RecentTrailsState,
+        currentMode,
+        clearAllTrails,
+        addRecentTrailsToLiveMode
+    });
 }
 
 /**
@@ -9056,52 +5454,6 @@ function hslToRgb(h, s, l) {
 }
 
 /**
- * Get altitude-based color for aircraft and trails (tar1090 color scheme)
- * Converts scene units to feet and returns RGB color value
- * @param {number} altitudeSceneUnits - Altitude in Three.js scene units
- * @returns {number} RGB color value as hex number (e.g., 0xff0000 for red)
- */
-function getAltitudeColor(altitudeSceneUnits) {
-    // Convert scene units back to actual feet for color determination
-    // Reverse: scene units / exaggeration / scale / 0.3048 + home alt
-    const altitudeFeet = (altitudeSceneUnits / CONFIG.altitudeExaggeration / CONFIG.scale / 0.3048) + CONFIG.homeLocation.alt;
-
-    // tar1090 exact color scheme using HSL interpolation
-    // Ground/Unknown
-    if (altitudeFeet < 500) {
-        return hslToRgb(0, 0, 45); // Ground - gray
-    }
-
-    // tar1090 altitude color scale (from config.js)
-    // Key waypoints: 2000ft (H=20), 10000ft (H=140), 40000ft (H=300)
-    // Adjusted S=100%, L=65% (maximum saturation, rich vibrant colors on dark map)
-    const saturation = 100;
-    const lightness = 65;
-    let hue;
-
-    if (altitudeFeet <= 2000) {
-        hue = 20; // Orange
-    } else if (altitudeFeet <= 10000) {
-        // Interpolate from 20 (orange) to 140 (light green)
-        const ratio = (altitudeFeet - 2000) / (10000 - 2000);
-        hue = 20 + ratio * (140 - 20);
-    } else if (altitudeFeet <= 40000) {
-        // Interpolate from 140 (light green) to 300 (magenta)
-        const ratio = (altitudeFeet - 10000) / (40000 - 10000);
-        hue = 140 + ratio * (300 - 140);
-    } else {
-        hue = 300; // Magenta for >40000ft
-    }
-
-    return hslToRgb(hue, saturation, lightness);
-}
-
-/**
- * Get speed-based color for trails (green to red gradient)
- * @param {number} groundSpeed - Ground speed in knots
- * @returns {number} RGB color value as hex number (e.g., 0x00ff00 for green)
- */
-/**
  * Get color based on altitude (matches tar1090 color scheme)
  * @param {number} altitudeValue - Altitude (in scene units for 3D, or feet for UI)
  * @param {boolean} returnAsString - Return as CSS color string for canvas
@@ -9349,7 +5701,6 @@ function updateUI(data) {
             }
 
             item.innerHTML = `
-                <div class="aircraft-callsign">${callsign}${verticalIndicator} ${badges}</div>
                 <div class="aircraft-details">
                     ${type} • ${alt} • ${speed} • ${dist}
                 </div>
@@ -9401,47 +5752,6 @@ function updateUI(data) {
 
 // Reusable smooth camera animation function
 // Uses ease-in-out cubic for smooth acceleration and deceleration
-function animateCameraToPosition(targetPosition, targetLookAt, duration = 1500, onComplete = null) {
-    const startPos = camera.position.clone();
-    const startLookAt = new THREE.Vector3(0, 0, -1)
-        .applyQuaternion(camera.quaternion)
-        .add(camera.position);
-    const startTime = Date.now();
-
-    function easeInOutCubic(t) {
-        return t < 0.5
-            ? 4 * t * t * t
-            : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    }
-
-    function animate() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Ease-in-out cubic for smooth start and end
-        const easeProgress = easeInOutCubic(progress);
-
-        // Smoothly interpolate both position and look-at target
-        const currentPos = new THREE.Vector3().lerpVectors(startPos, targetPosition, easeProgress);
-        const currentLookAt = new THREE.Vector3().lerpVectors(startLookAt, targetLookAt, easeProgress);
-
-        camera.position.copy(currentPos);
-        camera.lookAt(currentLookAt);
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            // Animation complete - ensure final position is exact
-            camera.position.copy(targetPosition);
-            camera.lookAt(targetLookAt);
-            if (onComplete) {
-                onComplete();
-            }
-        }
-    }
-
-    animate();
-}
 
 /**
  * Select an aircraft and show its detail panel
@@ -9465,47 +5775,6 @@ function selectAircraft(hex) {
     }
 }
 
-function focusOnAircraft(hex) {
-    const mesh = aircraftMeshes.get(hex);
-    if (!mesh) return;
-
-    // Show aircraft details
-    showAircraftDetail(hex);
-
-    // Load full trail if not already loaded (only in live mode with Track API available)
-    if (currentMode === 'live' && AppFeatures.historical && !FullTrailsState.icaos.has(hex)) {
-        loadFullTrailForAircraft(hex);
-    }
-
-    // Smooth camera transition to aircraft
-    const targetPos = mesh.position;
-    const distance = 30; // Distance from aircraft
-    const height = 15; // Height above aircraft
-
-    // Calculate new camera position
-    const newCameraPos = targetPos.clone().add(new THREE.Vector3(distance, height, distance));
-
-    // Use reusable camera animation function
-    animateCameraToPosition(newCameraPos, targetPos, 1000, () => {
-        // Animation complete - enable follow mode in free orbit
-        followMode = true;
-        followedAircraftHex = hex;
-        followLocked = false; // Free orbit mode, not locked
-        cameraReturnInProgress = false;
-
-        // Sync camera angles from current position for smooth free orbit
-        syncCameraAnglesFromPosition();
-
-        // Update follow button to show it's active in free orbit mode
-        updateFollowButtonText();
-
-        // Keep the detail panel visible (unlike locked follow mode)
-        document.getElementById('aircraft-detail').style.display = 'block';
-
-        // Show unfollow button
-        showUnfollowButton();
-    });
-}
 
 /**
  * Highlight or unhighlight an aircraft in the 3D scene
@@ -9755,214 +6024,10 @@ function updateMiniStatistics(aircraftList) {
     }
 }
 
-// Last sky update time
-let lastSkyUpdate = 0;
-let lastStaleTrailCleanup = 0;
+// Camera rendering handled by camera-rendering.js module (see CameraState object)
 
-// Frame rate limiting variables
-let lastFrameTime = 0;
-const targetFPS = 30;  // Limit to 30fps instead of 60fps
-const frameInterval = 1000 / targetFPS;
 
-function animate() {
-    requestAnimationFrame(animate);
 
-    // Limit frame rate to reduce GPU usage
-    const now = Date.now();
-    const deltaTime = now - lastFrameTime;
-
-    if (deltaTime < frameInterval) {
-        return;  // Skip this frame
-    }
-
-    lastFrameTime = now - (deltaTime % frameInterval);
-
-    // Update sky colors every 60 seconds
-    if (now - lastSkyUpdate > 60000) {
-        updateSkyColors();
-        lastSkyUpdate = now;
-    }
-
-    // Clean up old stale trails to prevent memory leak
-    // Remove trails from aircraft that disappeared more than 30 minutes ago
-    if (now - lastStaleTrailCleanup > 60000) { // Check every minute
-        const thirtyMinutes = 30 * 60 * 1000;
-        staleTrails.forEach((trail, hex) => {
-            // Determine fade time (in milliseconds)
-            // If trailFadeTime is 0 (Never) or auto-fade is disabled, use 30 minutes as fallback
-            let fadeTimeMs;
-            if (!autoFadeTrails || trailFadeTime === 0) {
-                fadeTimeMs = thirtyMinutes;
-            } else if (trailFadeTime === -1) {
-                // Immediate mode: should have been cleaned already, but just in case
-                fadeTimeMs = 0;
-            } else {
-                fadeTimeMs = trailFadeTime * 1000;
-            }
-
-            if (now - trail.lastUpdate > fadeTimeMs) {
-                // Remove from scene
-                scene.remove(trail.line);
-                if (trail.gapLine) scene.remove(trail.gapLine);
-                if (trail.tronCurtain) scene.remove(trail.tronCurtain);
-
-                // Dispose geometries and materials
-                trail.line.geometry.dispose();
-                trail.line.material.dispose();
-                if (trail.gapLine) {
-                    trail.gapLine.geometry.dispose();
-                    trail.gapLine.material.dispose();
-                }
-                if (trail.tronCurtain) {
-                    trail.tronCurtain.geometry.dispose();
-                    trail.tronCurtain.material.dispose();
-                }
-
-                // Remove from map
-                staleTrails.delete(hex);
-            }
-        });
-        lastStaleTrailCleanup = now;
-    }
-
-    // Pulse the home beacon light
-    if (window.homeBeacon) {
-        const time = Date.now() * 0.002; // Slow pulse
-        const intensity = 0.5 + Math.sin(time) * 0.5; // Oscillate between 0 and 1
-        window.homeBeacon.material.emissiveIntensity = intensity;
-    }
-
-    // Update sidebar mini radar and heading (every frame for smooth updates)
-    if (camera && CONFIG && CONFIG.homeLocation) {
-        updateSidebarMiniRadar();
-        updateSidebarHeading();
-    }
-
-    // Handle follow mode camera
-    if (followMode && followedAircraftHex) {
-        const aircraft = aircraftMeshes.get(followedAircraftHex);
-
-        if (aircraft) {
-            const targetPos = aircraft.position.clone();
-
-            if (followLocked) {
-                // Locked mode - camera stays directly behind aircraft
-                const track = aircraft.userData.track || 0;
-                const trackRad = track * Math.PI / 180;
-
-                // Calculate position directly behind aircraft
-                const distanceBehind = 50;
-                const heightAbove = 30;
-
-                // Behind the aircraft is opposite to its heading
-                // track=0 (North, -Z) means behind is +Z (South)
-                // track=90 (East, +X) means behind is -X (West)
-                const offsetX = -Math.sin(trackRad) * distanceBehind;
-                const offsetZ = Math.cos(trackRad) * distanceBehind;
-                const offset = new THREE.Vector3(offsetX, heightAbove, offsetZ);
-
-                const cameraTarget = targetPos.clone().add(offset);
-
-                // Use faster lerp for more responsive tracking (0.2 instead of 0.08)
-                camera.position.lerp(cameraTarget, 0.2);
-
-                // Look directly at the aircraft
-                camera.lookAt(targetPos);
-            } else {
-                // Free orbit mode - maintain camera angles but follow aircraft position
-                updateCameraPosition(targetPos);
-            }
-
-            cameraReturnInProgress = false;
-        } else {
-            // Aircraft disappeared - turn off follow mode and smoothly return camera
-            followMode = false;
-            followedAircraftHex = null;
-            const followBtn = document.getElementById('toggle-follow');
-            if (followBtn) {
-                followBtn.style.display = 'none';
-            }
-            hideUnfollowButton();
-            document.getElementById('aircraft-detail').style.display = 'none';
-            selectedAircraft = null;
-
-            // Clear URL parameter since aircraft is no longer visible
-            const url = new URL(window.location);
-            url.searchParams.delete('icao');
-            window.history.replaceState({}, '', url);
-
-            // Smooth camera animation to initial position
-            const homePos = new THREE.Vector3(0, 50, 100);
-            const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-            animateCameraToPosition(homePos, homeLookAt, 1000, () => {
-                // Animation complete - update camera angles
-                cameraAngleX = 0; // Facing north
-                cameraAngleY = Math.PI / 6;
-                cameraDistance = 100;
-            });
-
-            updateFollowButtonText();
-        }
-    }
-
-    // Smooth camera return to home position
-    if (cameraReturnInProgress) {
-        const homePos = new THREE.Vector3(0, 50, 100);
-        const homeLookAt = new THREE.Vector3(0, 0, 0);
-
-        // Lerp camera position
-        camera.position.lerp(homePos, 0.02); // Slower return
-
-        // Smoothly adjust camera direction
-        const currentLookAt = new THREE.Vector3();
-        camera.getWorldDirection(currentLookAt);
-        currentLookAt.multiplyScalar(100).add(camera.position);
-
-        const targetDirection = homeLookAt.clone().sub(camera.position).normalize();
-        const currentDirection = currentLookAt.clone().sub(camera.position).normalize();
-
-        // Lerp the direction
-        currentDirection.lerp(targetDirection, 0.02);
-        const newLookAt = camera.position.clone().add(currentDirection.multiplyScalar(100));
-        camera.lookAt(newLookAt);
-
-        // Stop when close enough to home
-        if (camera.position.distanceTo(homePos) < 1) {
-            camera.position.copy(homePos);
-            camera.lookAt(homeLookAt);
-            cameraReturnInProgress = false;
-        }
-    }
-
-    renderer.render(scene, camera);
-}
-
-function updateRendererSize() {
-    const isLocked = document.body.classList.contains('sidebar-locked');
-    const sidebar = document.getElementById('unified-sidebar');
-    const sidebarWidth = sidebar ? parseInt(getComputedStyle(sidebar).width, 10) : 320;
-
-    let width, height;
-
-    if (isLocked) {
-        // When locked, use remaining space to left of sidebar
-        width = window.innerWidth - sidebarWidth;
-        height = window.innerHeight;
-    } else {
-        // When unlocked, use full window
-        width = window.innerWidth;
-        height = window.innerHeight;
-    }
-
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
-}
-
-function onWindowResize() {
-    updateRendererSize();
-}
 
 // Setup aircraft click interaction
 function setupAircraftClick() {
@@ -10096,8 +6161,8 @@ function setupAircraftClick() {
 
     canvas.addEventListener('click', (event) => {
         // Ignore clicks that happened after camera dragging
-        if (wasDragging) {
-            wasDragging = false;
+        if (CameraState.wasDragging) {
+            CameraState.wasDragging = false;
             console.log('[Click] Ignoring click due to dragging');
             return;
         }
@@ -10141,13 +6206,13 @@ function setupAircraftClick() {
 
             // Check if we clicked a historical endpoint
             if (clickedObject.userData && clickedObject.userData.isHistoricalEndpoint) {
-                showHistoricalTrackDetail(clickedObject.userData);
+                HistoricalMode.showHistoricalTrackDetail(clickedObject.userData);
                 return;
             }
 
             // Check if we clicked a historical track line
             if (clickedObject.userData && clickedObject.userData.isHistoricalTrack) {
-                showHistoricalTrackDetail(clickedObject.userData);
+                HistoricalMode.showHistoricalTrackDetail(clickedObject.userData);
                 return;
             }
 
@@ -10225,7 +6290,7 @@ function setupAircraftClick() {
  * - Visual feedback for touch actions
  */
 function setupMobileTouchUX() {
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.innerWidth <= UI.MOBILE_BREAKPOINT;
     if (!isMobile) return; // Only on mobile
 
     // Long-press detection for aircraft
@@ -10272,7 +6337,14 @@ function showAircraftContextMenu(x, y, intersection) {
 
     const actions = [
         { label: '👁️ Select', action: () => selectAircraftByHex(aircraftHex) },
-        { label: '📍 Follow', action: () => { selectAircraftByHex(aircraftHex); toggleFollowMode(); } },
+        { label: '📍 Follow', action: () => {
+            selectAircraftByHex(aircraftHex);
+            // Trigger follow mode via the follow button click handler
+            const followBtn = document.getElementById('toggle-follow');
+            if (followBtn && !followMode) {
+                followBtn.click();
+            }
+        }},
         { label: 'ℹ️ Info', action: () => showAircraftDetails(aircraftHex) },
     ];
 
@@ -10332,7 +6404,7 @@ function selectAircraftByHex(hex) {
 }
 
 // Initialize mobile UX when DOM is ready
-if (window.innerWidth <= 768) {
+if (window.innerWidth <= UI.MOBILE_BREAKPOINT) {
     // Will be called from init() after Three.js setup
 }
 
@@ -10359,11 +6431,40 @@ function checkUrlParameters() {
         const hexLower = icao.toLowerCase();
         let trailsLoaded = false; // Flag to prevent double-loading
 
+        // Helper function to set up aircraft from URL
+        const setupAircraftFromUrl = (hex) => {
+            console.log(`[URL] Loading aircraft from URL: ${hex.toUpperCase()}`);
+
+            // Select and highlight the aircraft
+            selectAircraft(hex);
+
+            // Enable follow mode
+            followMode = true;
+            followedAircraftHex = hex;
+            followLocked = false; // Start unlocked so user can orbit
+
+            // Sync FollowState for camera-rendering module
+            FollowState.mode = true;
+            FollowState.hex = hex;
+            FollowState.locked = false;
+
+            // Set camera to a reasonable zoom-out distance
+            CameraState.distance = UI.URL_FOCUS_DISTANCE;
+
+            // Focus camera on aircraft with the new distance
+            CameraRendering.focusOnAircraft(hex);
+
+            // Show unfollow button
+            showUnfollowButton();
+            updateFollowButtonText();
+
+            // Hide detail panel since we're in follow mode
+            document.getElementById('aircraft-detail').style.display = 'none';
+        };
+
         // Check if this aircraft exists
         if (aircraftMeshes.has(hexLower)) {
-            console.log(`[URL] Loading aircraft from URL: ${icao}`);
-            // Use focusOnAircraft instead of showAircraftDetail to get camera animation
-            focusOnAircraft(hexLower);
+            setupAircraftFromUrl(hexLower);
 
             // If Track API is available, load 5min of recent trails
             if (AppFeatures.historical) {
@@ -10378,7 +6479,7 @@ function checkUrlParameters() {
             // Aircraft not yet loaded, try again in a moment
             setTimeout(() => {
                 if (aircraftMeshes.has(hexLower) && !trailsLoaded) {
-                    focusOnAircraft(hexLower);
+                    setupAircraftFromUrl(hexLower);
 
                     if (AppFeatures.historical) {
                         console.log(`[URL] Auto-loading 5min of recent trails for ${icao}`);
@@ -10425,7 +6526,7 @@ function showAircraftNotFoundMessage(icao) {
     // Auto-remove after 5 seconds
     setTimeout(() => {
         notification.style.animation = 'slideUp 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
+        setTimeout(() => notification.remove(), TIMING.NOTIFICATION_FADE);
     }, 5000);
 
     // Clear the URL parameter
@@ -10535,7 +6636,7 @@ async function showAircraftDetail(hex) {
     }
 
     // ========== BUILD HTML WITH SECTIONS ==========
-    let contentHtml = '<div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">';
+    let contentHtml = '<div style="display: flex; flex-direction: column; gap: 8px;">';
 
     // Signal section (compact inline)
     if (signalData.length > 0) {
@@ -10587,11 +6688,8 @@ async function showAircraftDetail(hex) {
     contentHtml += '</div>';
     contentHtml += '</div></div>';
 
-    // Photo container
+    // Photo container (hidden on mobile via CSS)
     contentHtml += '<div id="aircraft-photo-container" style="margin-top: 8px;"></div>';
-
-    // Add bottom padding to ensure all content is scrollable on mobile
-    contentHtml += '<div style="padding-bottom: 20px;"></div>';
     contentHtml += '</div>';
 
     document.getElementById('detail-content').innerHTML = contentHtml;
@@ -10621,10 +6719,24 @@ async function showAircraftDetail(hex) {
         if (shouldShowFollow) {
             detailFollowBtn.style.display = 'block';
             detailFollowBtn.onclick = () => {
-                // Use focusOnAircraft to zoom and follow
-                focusOnAircraft(hex);
-                detailFollowBtn.textContent = '✓ Following';
-                detailFollowBtn.style.background = '#28a745';
+                // Enable follow mode directly
+                selectedAircraft = hex;
+                followMode = true;
+                followedAircraftHex = hex;
+                followLocked = true;
+
+                // Sync FollowState for camera-rendering module
+                FollowState.mode = true;
+                FollowState.hex = hex;
+                FollowState.locked = true;
+
+                // Hide aircraft detail panel during follow mode
+                document.getElementById('aircraft-detail').style.display = 'none';
+
+                // Show unfollow button
+                showUnfollowButton();
+                updateFollowButtonText();
+
                 console.log(`[Follow] Now following aircraft ${hex}`);
             };
 
@@ -10723,131 +6835,6 @@ async function showAircraftDetail(hex) {
 }
 
 // Show historical track detail panel
-function showHistoricalTrackDetail(userData) {
-    const track = userData.track;
-    const icao = userData.icao;
-    const panel = document.getElementById('aircraft-detail');
-
-    // Debug: Log track fields to identify data structure
-    console.log(`[HistoricalDetail] Track ${icao}:`, {
-        callsign: track.callsign,
-        registration: track.registration,
-        t: track.t,
-        type: track.type,
-        aircraft_type: track.aircraft_type,
-        type_designator: track.type_designator,
-        positions: track.positions?.length
-    });
-
-    // Use callsign or ICAO as title
-    const displayName = track.callsign?.trim() || track.registration || icao || 'Unknown';
-    document.getElementById('detail-callsign').textContent = displayName;
-
-    // Build detail grid
-    const details = [];
-
-    // Add military status if applicable
-    if (userData.isMilitary) {
-        const militaryBgColor = getCSSVar('military-color');
-        const militaryLabel = `<span style="background: ${militaryBgColor}; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold;">MILITARY AIRCRAFT</span>`;
-        details.push({ label: 'Classification', value: militaryLabel });
-    }
-
-    // Basic track info
-    if (track.callsign) details.push({ label: 'Callsign', value: track.callsign.trim() });
-    if (track.registration) details.push({ label: 'Registration', value: track.registration });
-    details.push({ label: 'ICAO Hex', value: icao });
-
-    // Aircraft type info - try multiple field names
-    // Some historical APIs use 't', others use 'aircraft_type', 'type', etc.
-    const aircraftType = track.t || track.type || track.aircraft_type || track.type_designator;
-    if (aircraftType) {
-        details.push({ label: 'Aircraft Type', value: aircraftType });
-    }
-
-    // Position count
-    if (track.positions && track.positions.length > 0) {
-        details.push({ label: 'Positions', value: `${track.positions.length} data points` });
-
-        // Time range
-        const firstPos = track.positions[0];
-        const lastPos = track.positions[track.positions.length - 1];
-
-        if (firstPos.time && lastPos.time) {
-            const startTime = new Date(firstPos.time);
-            const endTime = new Date(lastPos.time);
-            const duration = (endTime - startTime) / 1000 / 60; // minutes
-
-            details.push({
-                label: 'First Seen',
-                value: startTime.toLocaleTimeString()
-            });
-            details.push({
-                label: 'Last Seen',
-                value: endTime.toLocaleTimeString()
-            });
-            details.push({
-                label: 'Duration',
-                value: `${Math.round(duration)} minutes`
-            });
-        }
-
-        // Altitude range
-        const altitudes = track.positions
-            .map(p => p.alt || p.altitude)
-            .filter(a => a != null);
-
-        if (altitudes.length > 0) {
-            const minAlt = Math.min(...altitudes);
-            const maxAlt = Math.max(...altitudes);
-            details.push({
-                label: 'Altitude Range',
-                value: `${Math.round(minAlt).toLocaleString()} - ${Math.round(maxAlt).toLocaleString()} ft`
-            });
-        }
-
-        // Speed (if available in any position)
-        const speeds = track.positions
-            .map(p => p.gs || p.ground_speed)
-            .filter(s => s != null);
-
-        if (speeds.length > 0) {
-            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-            details.push({
-                label: 'Avg Speed',
-                value: `${Math.round(avgSpeed)} kts`
-            });
-        }
-    }
-
-    // Render detail grid
-    const detailGrid = document.getElementById('detail-content');
-    if (!detailGrid) {
-        console.error('[Historical] detail-content element not found in DOM');
-        return;
-    }
-    detailGrid.innerHTML = details.map(d => `
-        <div class="detail-label">${d.label}</div>
-        <div class="detail-value">${d.value}</div>
-    `).join('');
-
-    // Show panel
-    panel.style.display = 'block';
-
-    // Hide follow button for historical tracks
-    const followBtn = document.getElementById('toggle-follow');
-    if (followBtn) {
-        followBtn.style.display = 'none';
-    }
-
-    // Hide photo section for historical tracks
-    const photoContainer = document.getElementById('aircraft-photo');
-    if (photoContainer) {
-        photoContainer.innerHTML = '<div style="font-size: 11px; color: #888; margin-top: 8px;">Historical track data</div>';
-    }
-
-    console.log('[Historical] Showing detail for track:', icao);
-}
 
 // Show airport detail panel when airport label is clicked
 async function showAirportDetail(airport) {
@@ -10970,7 +6957,7 @@ initializeTheme();
 initializeApp();
 
 // Load military aircraft database (async, non-blocking)
-loadMilitaryDatabase();
+loadMilitaryDatabase(SafeStorage);
 
 // Note: setupSidebarEventHandlers() now called from init() after DOM is ready
 
@@ -11058,7 +7045,7 @@ function updateStaleAircraft() {
 }
 
 // Start checking for stale aircraft periodically
-setInterval(updateStaleAircraft, 2000); // Check every 2 seconds
+setInterval(updateStaleAircraft, TIMING.STALE_CHECK_INTERVAL);
 
 // ============================================================================
 // SIDEBAR EVENT HANDLERS
@@ -11085,13 +7072,18 @@ function updateCustomDuration() {
     const durationDisplay = document.getElementById('custom-duration-display');
 
     if (!startInput || !endInput || !durationDisplay) return;
-    if (!startInput.value || !endInput.value) {
+
+    // Read from data attribute (ISO format) set by calendar picker
+    const startDatetime = startInput.dataset.datetime;
+    const endDatetime = endInput.dataset.datetime;
+
+    if (!startDatetime || !endDatetime) {
         durationDisplay.textContent = 'Duration: --';
         return;
     }
 
-    const startTime = new Date(startInput.value);
-    const endTime = new Date(endInput.value);
+    const startTime = new Date(startDatetime);
+    const endTime = new Date(endDatetime);
     const diffMs = endTime - startTime;
 
     if (diffMs <= 0) {
@@ -11116,77 +7108,237 @@ function updateCustomDuration() {
     durationDisplay.style.color = 'var(--text-secondary)';
 }
 
+// ============================================================================
+// CUSTOM CALENDAR PICKER
+// ============================================================================
+
+/**
+ * Custom calendar picker for datetime selection
+ */
+const CalendarPicker = {
+    currentDate: new Date(),
+    selectedDate: null,
+    targetInput: null,
+    overlay: null,
+
+    /**
+     * Initialize the calendar picker
+     */
+    init() {
+        const picker = document.getElementById('calendar-picker');
+        if (!picker) return;
+
+        // Create overlay for closing
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'calendar-overlay';
+        this.overlay.style.display = 'none';
+        document.body.appendChild(this.overlay);
+
+        // Bind events
+        document.getElementById('calendar-prev-month')?.addEventListener('click', () => this.changeMonth(-1));
+        document.getElementById('calendar-next-month')?.addEventListener('click', () => this.changeMonth(1));
+        document.getElementById('calendar-cancel')?.addEventListener('click', () => this.close());
+        document.getElementById('calendar-ok')?.addEventListener('click', () => this.confirm());
+        this.overlay.addEventListener('click', () => this.close());
+
+        // Attach to datetime inputs
+        const startInput = document.getElementById('custom-start-time');
+        const endInput = document.getElementById('custom-end-time');
+
+        if (startInput) {
+            startInput.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.open(startInput);
+            });
+        }
+
+        if (endInput) {
+            endInput.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.open(endInput);
+            });
+        }
+    },
+
+    /**
+     * Open the calendar picker for a specific input
+     * @param {HTMLInputElement} input - The datetime input element
+     */
+    open(input) {
+        this.targetInput = input;
+
+        // Parse existing value from data attribute or use current date
+        const storedDatetime = input.dataset.datetime;
+        if (storedDatetime) {
+            this.selectedDate = new Date(storedDatetime);
+            this.currentDate = new Date(storedDatetime);
+        } else {
+            this.selectedDate = new Date();
+            this.currentDate = new Date();
+        }
+
+        // Set time inputs
+        document.getElementById('calendar-hour').value = this.selectedDate.getHours();
+        document.getElementById('calendar-minute').value = this.selectedDate.getMinutes();
+
+        // Render and show
+        this.render();
+        this.overlay.style.display = 'block';
+        document.getElementById('calendar-picker').style.display = 'block';
+    },
+
+    /**
+     * Close the calendar picker
+     */
+    close() {
+        this.overlay.style.display = 'none';
+        document.getElementById('calendar-picker').style.display = 'none';
+        this.targetInput = null;
+    },
+
+    /**
+     * Confirm selection and update input
+     */
+    confirm() {
+        if (!this.targetInput || !this.selectedDate) {
+            this.close();
+            return;
+        }
+
+        // Get time from inputs
+        const hour = parseInt(document.getElementById('calendar-hour').value) || 0;
+        const minute = parseInt(document.getElementById('calendar-minute').value) || 0;
+
+        this.selectedDate.setHours(hour, minute, 0, 0);
+
+        // Format for datetime-local input (YYYY-MM-DDTHH:MM) - store in data attribute
+        const year = this.selectedDate.getFullYear();
+        const month = String(this.selectedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(this.selectedDate.getDate()).padStart(2, '0');
+        const hours = String(hour).padStart(2, '0');
+        const minutes = String(minute).padStart(2, '0');
+
+        const isoValue = `${year}-${month}-${day}T${hours}:${minutes}`;
+        this.targetInput.dataset.datetime = isoValue;
+
+        // Format for display (human-readable)
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const displayValue = `${monthNames[this.selectedDate.getMonth()]} ${day}, ${year} ${hours}:${minutes}`;
+        this.targetInput.value = displayValue;
+
+        // Trigger change event for duration update
+        this.targetInput.dispatchEvent(new Event('change'));
+
+        this.close();
+    },
+
+    /**
+     * Change the displayed month
+     * @param {number} delta - Months to add (-1 or 1)
+     */
+    changeMonth(delta) {
+        this.currentDate.setMonth(this.currentDate.getMonth() + delta);
+        this.render();
+    },
+
+    /**
+     * Render the calendar
+     */
+    render() {
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'];
+
+        // Update header
+        document.getElementById('calendar-month-year').textContent =
+            `${monthNames[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
+
+        // Get first day of month and total days
+        const year = this.currentDate.getFullYear();
+        const month = this.currentDate.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+        // Today for highlighting
+        const today = new Date();
+        const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+
+        // Build days grid
+        const daysContainer = document.getElementById('calendar-days');
+        daysContainer.innerHTML = '';
+
+        // Previous month days
+        for (let i = firstDay - 1; i >= 0; i--) {
+            const day = daysInPrevMonth - i;
+            const dayEl = this.createDayElement(day, true, false, false);
+            dayEl.dataset.date = new Date(year, month - 1, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+
+        // Current month days
+        for (let day = 1; day <= daysInMonth; day++) {
+            const isToday = isCurrentMonth && day === today.getDate();
+            const isSelected = this.selectedDate &&
+                this.selectedDate.getFullYear() === year &&
+                this.selectedDate.getMonth() === month &&
+                this.selectedDate.getDate() === day;
+
+            const dayEl = this.createDayElement(day, false, isToday, isSelected);
+            dayEl.dataset.date = new Date(year, month, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+
+        // Next month days to fill grid
+        const totalCells = firstDay + daysInMonth;
+        const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+        for (let day = 1; day <= remainingCells; day++) {
+            const dayEl = this.createDayElement(day, true, false, false);
+            dayEl.dataset.date = new Date(year, month + 1, day).toISOString();
+            daysContainer.appendChild(dayEl);
+        }
+    },
+
+    /**
+     * Create a day element
+     * @param {number} day - Day number
+     * @param {boolean} otherMonth - Is from another month
+     * @param {boolean} isToday - Is today
+     * @param {boolean} isSelected - Is selected
+     * @returns {HTMLElement}
+     */
+    createDayElement(day, otherMonth, isToday, isSelected) {
+        const el = document.createElement('div');
+        el.className = 'calendar-day';
+        el.textContent = day;
+
+        if (otherMonth) el.classList.add('other-month');
+        if (isToday) el.classList.add('today');
+        if (isSelected) el.classList.add('selected');
+
+        el.addEventListener('click', () => {
+            this.selectedDate = new Date(el.dataset.date);
+            this.render();
+        });
+
+        return el;
+    }
+};
+
 /**
  * Load historical tracks with custom date/time range
  */
-async function loadHistoricalTracksCustom(startTime, endTime) {
-    const maxTracks = HistoricalState.settings.maxTracks;
-
-    // Update HistoricalState settings for URL persistence
-    HistoricalState.settings.startTime = startTime;
-    HistoricalState.settings.endTime = endTime;
-
-    console.log('[Historical] Loading tracks for custom range:', {
-        start: startTime.toISOString(),
-        end: endTime.toISOString()
-    });
-
-    // Clear existing tracks first to prevent stacking
-    clearHistoricalTracks();
-
-    try {
-        let apiUrl = `/api/tracks/bulk/timelapse?start=${startTime.toISOString()}&end=${endTime.toISOString()}&max_tracks=${maxTracks}&resolution=full`;
-
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(`[Historical] Loaded ${data.tracks?.length || 0} tracks from custom range`);
-
-        // Store tracks in both global variable (for backwards compat) and HistoricalState
-        historicalTracks = {};
-        HistoricalState.tracks = [];
-        playbackStartTime = null;
-        playbackEndTime = null;
-
-        if (data.tracks) {
-            data.tracks.forEach(track => {
-                const icao = track.hex || track.icao;
-                if (icao) {
-                    historicalTracks[icao] = track;
-                }
-                HistoricalState.tracks.push(track);
-
-                // Update time bounds
-                track.positions.forEach(pos => {
-                    const timestamp = new Date(pos.timestamp || pos.time).getTime() / 1000;
-                    if (!playbackStartTime || timestamp < playbackStartTime) {
-                        playbackStartTime = timestamp;
-                    }
-                    if (!playbackEndTime || timestamp > playbackEndTime) {
-                        playbackEndTime = timestamp;
-                    }
-                });
-            });
-
-            // Render the tracks visually
-            renderHistoricalTracks();
-        }
-
-        // Set current time to start
-        playbackCurrentTime = playbackStartTime;
-
-        return data.tracks || [];
-    } catch (error) {
-        console.error('[Historical] Error loading tracks:', error);
-        throw error;
-    }
-}
 
 function setupSidebarEventHandlers() {
     console.log('[Sidebar] Setting up event handlers...');
+
+    // Populate timezone indicator for datetime inputs
+    const tzIndicator = document.getElementById('timezone-indicator');
+    if (tzIndicator) {
+        tzIndicator.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
 
     // Sidebar toggle
     const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -11222,7 +7374,7 @@ function setupSidebarEventHandlers() {
 
             // Live update viewport while dragging (if locked)
             if (document.body.classList.contains('sidebar-locked')) {
-                updateRendererSize();
+                CameraRendering.updateRendererSize();
             }
         });
 
@@ -11233,7 +7385,7 @@ function setupSidebarEventHandlers() {
 
                 // Update viewport size when locked (after resizing sidebar)
                 if (document.body.classList.contains('sidebar-locked')) {
-                    updateRendererSize();
+                    CameraRendering.updateRendererSize();
                 }
             }
         });
@@ -11243,14 +7395,14 @@ function setupSidebarEventHandlers() {
     const lockButton = document.getElementById('sidebar-lock');
     if (lockButton) {
         // Load lock state from localStorage
-        const isLocked = localStorage.getItem('sidebarLocked') === 'true';
+        const isLocked = localStorage.getItem(STORAGE_KEYS.SIDEBAR_LOCKED) === 'true';
         if (isLocked) {
             document.body.classList.add('sidebar-locked');
             lockButton.classList.add('locked');
             const lockIcon = lockButton.querySelector('.lock-icon');
             lockIcon.className = 'lock-icon mdi mdi-lock';
             lockButton.title = 'Unlock sidebar';
-            updateRendererSize();
+            CameraRendering.updateRendererSize();
         }
 
         lockButton.addEventListener('click', (e) => {
@@ -11266,7 +7418,7 @@ function setupSidebarEventHandlers() {
                 lockButton.classList.remove('locked');
                 lockIcon.className = 'lock-icon mdi mdi-lock-open-variant';
                 lockButton.title = 'Lock sidebar open';
-                localStorage.setItem('sidebarLocked', 'false');
+                localStorage.setItem(STORAGE_KEYS.SIDEBAR_LOCKED, 'false');
 
                 // Show toggle button when unlocked
                 if (sidebarToggle) {
@@ -11278,7 +7430,7 @@ function setupSidebarEventHandlers() {
                 lockButton.classList.add('locked');
                 lockIcon.className = 'lock-icon mdi mdi-lock';
                 lockButton.title = 'Unlock sidebar';
-                localStorage.setItem('sidebarLocked', 'true');
+                localStorage.setItem(STORAGE_KEYS.SIDEBAR_LOCKED, 'true');
 
                 // Ensure sidebar is visible when locking
                 if (sidebar.classList.contains('collapsed')) {
@@ -11294,7 +7446,7 @@ function setupSidebarEventHandlers() {
             }
 
             // Update renderer size to match new layout
-            updateRendererSize();
+            CameraRendering.updateRendererSize();
         });
 
         // Hide toggle button on initial load if locked
@@ -11318,7 +7470,7 @@ function setupSidebarEventHandlers() {
     if (historicalTab) {
         historicalTab.addEventListener('click', () => {
             if (currentMode !== 'historical') {
-                switchToHistoricalMode();
+                HistoricalMode.switchToHistoricalMode();
             }
         });
     }
@@ -11382,13 +7534,17 @@ function setupSidebarEventHandlers() {
                     const startInput = document.getElementById('custom-start-time');
                     const endInput = document.getElementById('custom-end-time');
 
-                    if (!startInput.value || !endInput.value) {
+                    // Read from data attribute (ISO format) set by calendar picker
+                    const startDatetime = startInput?.dataset.datetime;
+                    const endDatetime = endInput?.dataset.datetime;
+
+                    if (!startDatetime || !endDatetime) {
                         resultsInfo.textContent = 'Please select start and end times';
                         return;
                     }
 
-                    const startTime = new Date(startInput.value);
-                    const endTime = new Date(endInput.value);
+                    const startTime = new Date(startDatetime);
+                    const endTime = new Date(endDatetime);
 
                     if (startTime >= endTime) {
                         resultsInfo.textContent = 'Start time must be before end time';
@@ -11436,7 +7592,7 @@ function setupSidebarEventHandlers() {
                 updateSidebarTrackList();
 
                 // Update URL state to include historical parameters and visualization mode
-                URLState.updateFromCurrentState();
+                updateURLFromCurrentState();
             } catch (error) {
                 console.error('Error loading tracks:', error);
                 resultsInfo.textContent = 'Error loading tracks';
@@ -11465,7 +7621,7 @@ function setupSidebarEventHandlers() {
 
             // Switch to show all tracks mode
             if (historicalTracks) {
-                displayAllTracks();
+                HistoricalMode.displayAllTracks();
             }
         });
 
@@ -11480,14 +7636,14 @@ function setupSidebarEventHandlers() {
             }
 
             // Clear heat map if it exists
-            clearHeatMap();
+            HistoricalMode.clearHeatMap();
 
             // Update state
             HistoricalState.displayMode = 'playback';
 
             // Switch to playback mode
             if (historicalTracks) {
-                initializePlayback();
+                HistoricalMode.initializePlayback();
             }
         });
     }
@@ -11500,30 +7656,24 @@ function setupSidebarEventHandlers() {
             HistoricalState.heatmapMode = newMode;
             console.log(`[Visualization] Mode changed to: ${newMode}`);
 
-            // Apply visibility changes based on mode
+            // Apply visibility changes based on mode (visualizations already generated on load)
             switch (newMode) {
                 case 'tracks':
-                    showHistoricalTracks(true);
-                    setHeatMapVisibility(false);
+                    HistoricalMode.showHistoricalTracks(true);
+                    HistoricalMode.setHeatMapVisibility(false);
                     break;
                 case 'heatmap':
-                    showHistoricalTracks(false);
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateFlightCorridors(); // Generate heat map if not exists
-                    }
-                    setHeatMapVisibility(true);
+                    HistoricalMode.showHistoricalTracks(false);
+                    HistoricalMode.setHeatMapVisibility(true);
                     break;
                 case 'both':
-                    showHistoricalTracks(true);
-                    if (HistoricalState.heatmapMeshes.length === 0) {
-                        generateFlightCorridors(); // Generate heat map if not exists
-                    }
-                    setHeatMapVisibility(true);
+                    HistoricalMode.showHistoricalTracks(true);
+                    HistoricalMode.setHeatMapVisibility(true);
                     break;
             }
 
             // Update URL state
-            URLState.updateFromCurrentState();
+            updateURLFromCurrentState();
         });
     });
 
@@ -11532,10 +7682,10 @@ function setupSidebarEventHandlers() {
     if (playPauseBtn) {
         playPauseBtn.addEventListener('click', () => {
             if (PlaybackState.isPlaying) {
-                pausePlayback();
+                HistoricalMode.pausePlayback();
                 playPauseBtn.innerHTML = '▶️ Play';
             } else {
-                startPlayback();
+                HistoricalMode.startPlayback();
                 playPauseBtn.innerHTML = '⏸ Pause';
             }
         });
@@ -11544,7 +7694,7 @@ function setupSidebarEventHandlers() {
     const restartBtn = document.getElementById('sidebar-restart');
     if (restartBtn) {
         restartBtn.addEventListener('click', () => {
-            restartPlayback();
+            HistoricalMode.restartPlayback();
             document.getElementById('sidebar-play-pause').innerHTML = '▶️ Play';
         });
     }
@@ -11553,7 +7703,7 @@ function setupSidebarEventHandlers() {
     const speedSelect = document.getElementById('sidebar-playback-speed');
     if (speedSelect) {
         speedSelect.addEventListener('change', () => {
-            playbackSpeed = parseFloat(speedSelect.value);
+            PlaybackState.speed = parseFloat(speedSelect.value);
         });
     }
 
@@ -11569,7 +7719,7 @@ function setupSidebarEventHandlers() {
         const btn = document.getElementById(id);
         if (btn) {
             btn.addEventListener('click', () => {
-                skipPlayback(minutes * 60);
+                HistoricalMode.skipPlayback(minutes * 60);
             });
         }
     });
@@ -11581,7 +7731,7 @@ function setupSidebarEventHandlers() {
             const progress = parseFloat(timeline.value) / 100;
             if (playbackStartTime && playbackEndTime) {
                 playbackCurrentTime = playbackStartTime + (playbackEndTime - playbackStartTime) * progress;
-                updatePlaybackPosition(playbackCurrentTime);
+                HistoricalMode.updatePlaybackPosition(playbackCurrentTime);
             }
         });
     }
@@ -11599,7 +7749,7 @@ function setupSidebarEventHandlers() {
     if (applyFiltersBtn) {
         applyFiltersBtn.addEventListener('click', () => {
             console.log('[Sidebar] Apply Filters button clicked');
-            applyHistoricalFilters();
+            HistoricalMode.applyHistoricalFilters();
         });
     }
 
@@ -11820,21 +7970,16 @@ function updateSidebarLiveStats(data) {
             </div>
         `;
 
-        // Click to follow aircraft and show detail panel
+        // Click to select aircraft and show detail panel
         item.addEventListener('click', () => {
-            const mesh = aircraftMeshes.get(ac.hex);
-            if (mesh) {
-                followTarget = mesh;
+            // Highlight selected aircraft in sidebar
+            document.querySelectorAll('.sidebar-aircraft-item').forEach(el => {
+                el.classList.remove('selected');
+            });
+            item.classList.add('selected');
 
-                // Highlight selected aircraft
-                document.querySelectorAll('.sidebar-aircraft-item').forEach(el => {
-                    el.classList.remove('selected');
-                });
-                item.classList.add('selected');
-
-                // Show aircraft detail panel (same as clicking on the map)
-                showAircraftDetail(ac.hex);
-            }
+            // Use selectAircraft for full selection logic (detail panel, highlight, trails)
+            selectAircraft(ac.hex);
         });
 
         // Hover effect - use the existing highlightAircraft function
@@ -11949,13 +8094,32 @@ function updateSidebarTrackList() {
                 track: track,
                 isMilitary: isMilitary
             };
-            showHistoricalTrackDetail(userData);
+            HistoricalMode.showHistoricalTrackDetail(userData);
 
             // Also focus camera on the track
-            focusOnTrack(hex);
+            CameraRendering.focusOnTrack(hex);
         });
 
         trackList.appendChild(item);
+    });
+}
+
+
+/**
+ * Apply comprehensive filters to historical tracks (altitude, speed, positions, military)
+ * Filters both 3D scene visibility and sidebar list
+ */
+
+function filterSidebarAircraft() {
+    const searchTerm = document.getElementById('sidebar-aircraft-search').value.toLowerCase();
+
+    const items = document.querySelectorAll('#sidebar-aircraft-list .sidebar-aircraft-item');
+    items.forEach(item => {
+        const flight = item.querySelector('[data-flight]')?.textContent.toLowerCase() || '';
+        const hex = item.dataset.hex?.toLowerCase() || '';
+
+        const matches = !searchTerm || flight.includes(searchTerm) || hex.includes(searchTerm);
+        item.style.display = matches ? 'block' : 'none';
     });
 }
 
@@ -11973,158 +8137,6 @@ function filterSidebarTracks() {
         const matchesSearch = !searchTerm || flight.includes(searchTerm) || hex.toLowerCase().includes(searchTerm);
 
         item.style.display = matchesSearch ? 'block' : 'none';
-    });
-}
-
-/**
- * Apply comprehensive filters to historical tracks (altitude, speed, positions, military)
- * Filters both 3D scene visibility and sidebar list
- */
-function applyHistoricalFilters() {
-    console.log('[Historical] Applying filters');
-
-    // Get filter values
-    const militaryOnly = document.getElementById('filter-military-only')?.checked || false;
-    const altMinInput = document.getElementById('filter-altitude-min');
-    const altMaxInput = document.getElementById('filter-altitude-max');
-    const minPosInput = document.getElementById('filter-min-positions');
-    const spdMinInput = document.getElementById('filter-speed-min');
-    const spdMaxInput = document.getElementById('filter-speed-max');
-
-    const minAlt = parseInt(altMinInput?.value) || 0;
-    const maxAlt = parseInt(altMaxInput?.value) || 999999;
-    const minPositions = parseInt(minPosInput?.value) || 0;
-    const minSpeed = parseInt(spdMinInput?.value) || 0;
-    const maxSpeed = parseInt(spdMaxInput?.value) || 999999;
-
-    console.log('[Historical] Filter settings:', { militaryOnly, minAlt, maxAlt, minPositions, minSpeed, maxSpeed });
-
-    let visibleCount = 0;
-    let hiddenCount = 0;
-
-    // Apply filters to each track mesh
-    HistoricalState.trackMeshes.forEach(({ line, endpointMesh, trail, track }, icao) => {
-        // track is stored in the trackMeshes object directly
-        if (!track) {
-            console.warn(`[Historical] No track data for ${icao}`);
-            return;
-        }
-
-        let visible = true;
-
-        // Military filter
-        if (militaryOnly && !(track.is_military || isMilitaryAircraft(icao))) {
-            visible = false;
-        }
-
-        // Minimum positions filter
-        if (track.positions && track.positions.length < minPositions) {
-            visible = false;
-        }
-
-        // Altitude filter (check if ALL positions are in range)
-        if (track.positions && track.positions.length > 0) {
-            const allAltitudesInRange = track.positions.every(pos => {
-                const alt = pos.alt || pos.altitude || 0;
-                return alt >= minAlt && alt <= maxAlt;
-            });
-            if (!allAltitudesInRange) {
-                visible = false;
-            }
-        }
-
-        // Speed filter (check if ALL positions have speed in range)
-        if (track.positions && track.positions.length > 0) {
-            const allSpeedsInRange = track.positions.every(pos => {
-                const speed = pos.gs || pos.speed || 0;
-                return speed >= minSpeed && speed <= maxSpeed;
-            });
-            if (!allSpeedsInRange) {
-                visible = false;
-            }
-        }
-
-        // Update visibility in scene
-        if (visible) {
-            if (line && !line.parent) scene.add(line);
-            if (endpointMesh && !endpointMesh.parent) scene.add(endpointMesh);
-            if (trail && trail.tronCurtain && !trail.tronCurtain.parent && showTronMode) {
-                scene.add(trail.tronCurtain);
-            }
-            visibleCount++;
-        } else {
-            if (line && line.parent) scene.remove(line);
-            if (endpointMesh && endpointMesh.parent) scene.remove(endpointMesh);
-            if (trail && trail.tronCurtain && trail.tronCurtain.parent) {
-                scene.remove(trail.tronCurtain);
-            }
-            hiddenCount++;
-        }
-    });
-
-    console.log(`[Historical] Filters applied: ${visibleCount} visible, ${hiddenCount} hidden`);
-
-    // Also update sidebar list to match filters
-    filterSidebarTracks();
-}
-
-function filterSidebarAircraft() {
-    const searchTerm = document.getElementById('sidebar-aircraft-search').value.toLowerCase();
-
-    const items = document.querySelectorAll('#sidebar-aircraft-list .sidebar-aircraft-item');
-    items.forEach(item => {
-        const flight = item.querySelector('[data-flight]')?.textContent.toLowerCase() || '';
-        const hex = item.dataset.hex?.toLowerCase() || '';
-
-        const matches = !searchTerm || flight.includes(searchTerm) || hex.includes(searchTerm);
-        item.style.display = matches ? 'block' : 'none';
-    });
-}
-
-function skipPlayback(seconds) {
-    if (!playbackCurrentTime) return;
-
-    playbackCurrentTime += seconds;
-    playbackCurrentTime = Math.max(playbackStartTime, Math.min(playbackEndTime, playbackCurrentTime));
-    updatePlaybackPosition(playbackCurrentTime);
-
-    // Update timeline
-    const progress = (playbackCurrentTime - playbackStartTime) / (playbackEndTime - playbackStartTime);
-    document.getElementById('sidebar-timeline').value = progress * 100;
-}
-
-function focusOnTrack(hex) {
-    const track = historicalTracks[hex];
-    if (!track || track.positions.length === 0) return;
-
-    // Get middle position of track
-    const midIndex = Math.floor(track.positions.length / 2);
-    const midPos = track.positions[midIndex];
-
-    // Focus camera on this position
-    const targetPosition = new THREE.Vector3(
-        midPos.longitude * COORD_SCALE,
-        midPos.altitude * ALTITUDE_SCALE,
-        -midPos.latitude * COORD_SCALE
-    );
-
-    cameraTarget = targetPosition;
-    followTarget = null; // Stop following any aircraft
-
-    // Highlight the track
-    scene.traverse(child => {
-        if (child.userData && child.userData.hex === hex) {
-            // Highlight this track
-            if (child.material) {
-                child.material.opacity = 1;
-                child.material.linewidth = 3;
-            }
-        } else if (child.userData && child.userData.hex) {
-            // Dim other tracks
-            if (child.material) {
-                child.material.opacity = 0.3;
-            }
-        }
     });
 }
 
@@ -12397,8 +8409,8 @@ function setupThemeUI() {
             card.addEventListener('click', () => {
                 const themeName = card.dataset.theme;
 
-                // Apply theme
-                applyTheme(themeName);
+                // Apply theme (with scene update)
+                applyThemeWithScene(themeName);
 
                 // Update active indicators
                 document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active'));

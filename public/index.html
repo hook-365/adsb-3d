@@ -1086,6 +1086,192 @@
             align-items: center;
         }
 
+        /* Custom Calendar Picker */
+        .calendar-picker {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-primary-dim);
+            border-radius: 12px;
+            padding: 16px;
+            z-index: 10001;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            min-width: 280px;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            font-weight: bold;
+        }
+
+        .calendar-nav {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .calendar-nav:hover {
+            background: var(--accent-primary-dim);
+        }
+
+        .calendar-weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .calendar-days {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            border: 1px solid transparent;
+        }
+
+        .calendar-day:hover {
+            background: var(--accent-primary-dim);
+        }
+
+        .calendar-day.other-month {
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+
+        .calendar-day.selected {
+            background: var(--accent-primary);
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .calendar-day.today {
+            border-color: var(--accent-primary);
+        }
+
+        .calendar-time {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .calendar-time-input {
+            width: 50px;
+            padding: 6px;
+            text-align: center;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .calendar-time-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .calendar-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .calendar-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .calendar-btn:hover {
+            background: var(--bg-secondary);
+        }
+
+        .calendar-btn-primary {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #fff;
+        }
+
+        .calendar-btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .calendar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+        }
+
+        .calendar-input {
+            cursor: pointer !important;
+            font-size: 12px !important;
+            padding: 10px 12px !important;
+            background: var(--bg-tertiary) !important;
+            border: 1px dashed var(--accent-primary-dim) !important;
+            border-radius: 6px !important;
+            color: var(--text-primary) !important;
+            width: 100%;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+
+        .calendar-input:hover {
+            border-color: var(--accent-primary) !important;
+            border-style: solid !important;
+            background: var(--bg-secondary) !important;
+            box-shadow: 0 0 8px rgba(68, 138, 255, 0.3);
+        }
+
+        .calendar-input:focus {
+            outline: none;
+            border-color: var(--accent-primary) !important;
+            border-style: solid !important;
+        }
+
         .loading {
             position: absolute;
             top: 50%;
@@ -1268,6 +1454,30 @@
 
         #aircraft-detail .close-btn:hover {
             color: var(--text-accent);
+        }
+
+        #aircraft-detail .detail-footer {
+            padding: 10px 16px;
+            background: rgba(0, 0, 0, 0.95);
+            border-top: 1px solid rgba(74, 158, 255, 0.3);
+            flex-shrink: 0;
+        }
+
+        #aircraft-detail .detail-footer .full-width-btn {
+            width: 100%;
+            padding: 10px 16px;
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #aircraft-detail .detail-footer .full-width-btn:hover {
+            background: var(--accent-secondary);
         }
 
         #unfollow-btn {
@@ -2705,50 +2915,58 @@
                 width: auto;
                 left: 20px;
                 right: 20px;
-                top: 10%;  /* Position near top instead of center */
+                top: 60px;  /* Position below header area */
                 bottom: auto;
                 transform: none; /* Remove centering transform */
-                max-height: 85vh; /* Limit total panel height */
+                max-height: 70vh; /* Reduced height to fit on screen */
+                flex-direction: column;
+                /* Note: display is controlled by JS - don't override display:none here */
+            }
+
+            /* When shown, use flexbox layout */
+            #aircraft-detail[style*="display: block"],
+            #aircraft-detail[style*="display:block"] {
+                display: flex !important;
             }
 
             #aircraft-detail .detail-header {
-                padding: 10px 12px;
+                padding: 8px 12px;
                 background: linear-gradient(135deg, rgba(0, 0, 0, 0.98), rgba(10, 20, 30, 0.95));
                 border-bottom: 1px solid var(--accent-primary);
+                flex-shrink: 0;
             }
 
             #aircraft-detail h3 {
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 600;
                 color: var(--text-primary);
             }
 
             #aircraft-detail .detail-body {
-                padding: 12px;
-                padding-bottom: 20px; /* Extra bottom padding */
-                max-height: calc(85vh - 50px); /* Maximum scrollable area */
+                padding: 8px 12px;
+                flex: 1;
+                min-height: 0; /* Allow flex shrinking */
                 overflow-y: auto;
                 overflow-x: hidden;
                 -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-                scroll-padding-bottom: 20px; /* Ensure bottom content is visible */
             }
 
             #aircraft-detail .detail-grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;  /* Two equal columns for mobile */
-                gap: 8px 12px;
+                gap: 6px 10px;
                 font-size: 11px;
-                line-height: 1.4;
+                line-height: 1.3;
             }
 
             #aircraft-detail .detail-item {
                 display: flex;
                 flex-direction: column;
-                gap: 3px;
+                gap: 2px;
             }
 
             #aircraft-detail .detail-label {
-                font-size: 10px;
+                font-size: 9px;
                 color: var(--text-secondary);
                 opacity: 0.8;
                 text-transform: uppercase;
@@ -2756,31 +2974,43 @@
             }
 
             #aircraft-detail .detail-value {
-                font-size: 11px;
+                font-size: 10px;
                 color: var(--text-primary);
                 font-weight: 500;
                 word-break: break-word;
             }
 
             #aircraft-detail .section-header {
-                font-size: 10px;
-                padding: 6px 0 3px 0;
-                margin: 8px 0 4px 0;
+                font-size: 9px;
+                padding: 4px 0 2px 0;
+                margin: 6px 0 3px 0;
                 color: var(--text-accent);
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
 
             #aircraft-detail .close-btn {
-                font-size: 20px;
-                padding: 4px 8px;
+                font-size: 24px;
+                padding: 4px 10px;
                 background: transparent;
                 color: var(--text-primary);
+                min-width: 44px;
+                min-height: 44px;
             }
 
-            #aircraft-detail #detail-follow-btn {
-                margin-top: 10px;
-                padding: 6px 12px;
-                font-size: 11px;
+            #aircraft-detail .detail-footer {
+                padding: 8px 12px;
+                flex-shrink: 0;
+            }
+
+            #aircraft-detail .detail-footer .full-width-btn {
+                padding: 12px 16px;
+                font-size: 13px;
+                min-height: 44px; /* Touch target */
+            }
+
+            /* Hide photo on mobile to save space */
+            #aircraft-photo-container {
+                display: none !important;
             }
 
             /* Adjust altitude chart for mobile - compact and always visible */
@@ -3087,6 +3317,13 @@
                         <span class="stat-label">Updated:</span>
                         <span class="stat-value" id="sidebar-last-update">--</span>
                     </div>
+                    <div class="stat-item" id="api-status-stat" style="display: none;">
+                        <span class="stat-label">Track API:</span>
+                        <span class="stat-value" id="api-status-inline">
+                            <span class="api-status-dot-small" id="api-status-dot-inline"></span>
+                            <span id="api-status-text-inline">--</span>
+                        </span>
+                    </div>
                 </div>
 
                 <div class="sidebar-divider"></div>
@@ -3144,14 +3381,17 @@
                     <div id="time-custom-section" style="display: none;">
                         <div style="margin-bottom: 8px;">
                             <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start Date/Time:</label>
-                            <input type="datetime-local" id="custom-start-time" class="sidebar-select" style="font-size: 11px; padding: 6px;">
+                            <input type="text" id="custom-start-time" class="sidebar-select calendar-input" value="📅 Click to select..." readonly>
                         </div>
                         <div>
                             <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End Date/Time:</label>
-                            <input type="datetime-local" id="custom-end-time" class="sidebar-select" style="font-size: 11px; padding: 6px;">
+                            <input type="text" id="custom-end-time" class="sidebar-select calendar-input" value="📅 Click to select..." readonly>
                         </div>
                         <div style="margin-top: 6px; font-size: 10px; color: var(--text-secondary);">
                             <span id="custom-duration-display">Duration: --</span>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 9px; color: var(--text-secondary); opacity: 0.7;">
+                            Times are in your local timezone (<span id="timezone-indicator"></span>)
                         </div>
                     </div>
 
@@ -3576,6 +3816,8 @@
         </div>
         <div class="detail-body">
             <div class="detail-grid" id="detail-content"></div>
+        </div>
+        <div class="detail-footer">
             <button id="detail-follow-btn" class="full-width-btn">
                 📍 Follow Aircraft
             </button>
@@ -3894,27 +4136,89 @@
         </div>
     </div>
 
+    <!-- Custom Calendar Picker -->
+    <div id="calendar-picker" class="calendar-picker" style="display: none;">
+        <div class="calendar-header">
+            <button class="calendar-nav" id="calendar-prev-month">‹</button>
+            <span id="calendar-month-year">January 2025</span>
+            <button class="calendar-nav" id="calendar-next-month">›</button>
+        </div>
+        <div class="calendar-weekdays">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div id="calendar-days" class="calendar-days">
+            <!-- Days will be generated by JS -->
+        </div>
+        <div class="calendar-time">
+            <label>Time:</label>
+            <input type="number" id="calendar-hour" min="0" max="23" value="12" class="calendar-time-input">
+            <span>:</span>
+            <input type="number" id="calendar-minute" min="0" max="59" value="0" class="calendar-time-input">
+        </div>
+        <div class="calendar-actions">
+            <button id="calendar-cancel" class="calendar-btn">Cancel</button>
+            <button id="calendar-ok" class="calendar-btn calendar-btn-primary">OK</button>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Dynamically load config.js and app.js with correct path
+        // Dynamically load config.js, constants.js, and app.js with correct path
         // This handles both /3d and /3d/ correctly
         (function() {
             // Get the current path and ensure it ends with /
             let scriptPath = window.location.pathname;
-            if (!scriptPath.endsWith('/')) {
+            // If path ends with .html file, use the directory part
+            if (scriptPath.endsWith('.html')) {
+                scriptPath = scriptPath.substring(0, scriptPath.lastIndexOf('/') + 1);
+            } else if (!scriptPath.endsWith('/')) {
                 scriptPath = scriptPath + '/';
             }
+            // Ensure we have at least root path
+            if (!scriptPath || scriptPath === '') {
+                scriptPath = '/';
+            }
 
-            function loadScript(src) {
+            function loadScript(src, isModule = false) {
                 const script = document.createElement('script');
                 // Add cache-busting timestamp to force fresh load
                 script.src = scriptPath + src + '?v=' + Date.now();
+                if (isModule) {
+                    script.type = 'module';
+                }
                 document.body.appendChild(script);
+                return script;
             }
 
+            // Load config.js first (dynamically generated env vars)
             loadScript('config.js');
+
+            // Load constants.js as a module (refactored constants)
+            loadScript('constants.js', true);
+
+            // Load theme-manager.js as a module (refactored theme system)
+            loadScript('theme-manager.js', true);
+
+            // Load url-state-manager.js as a module (refactored URL state management)
+            loadScript('url-state-manager.js', true);
+
+            // Load aircraft-database.js as a module (refactored aircraft database and specs)
+            loadScript('aircraft-database.js', true);
+
+            // Load data-service-live.js as a module (refactored live data fetching)
+            loadScript('data-service-live.js', true);
+
+            // Load data-service-historical.js as a module (refactored historical data loading)
+            loadScript('data-service-historical.js', true);
+
+            // Load historical-mode.js as a module (historical track rendering, playback, heat maps)
+            loadScript('historical-mode.js', true);
+
+            // Load aircraft-svg-system.js
             loadScript('aircraft-svg-system.js');
-            loadScript('app.js');
+
+            // Load app.js as a module (imports from constants.js, theme-manager.js, and url-state-manager.js)
+            loadScript('app.js', true);
         })();
     </script>
 </body>
