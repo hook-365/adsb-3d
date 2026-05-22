@@ -848,6 +848,13 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 #status .warn { color: var(--warn); }
 #status .err { color: var(--bad); }
 
+/* In side-by-side stereo the view is split per eye; a single full-width
+   footer spanning both halves is unusable (in a headset) or broken-looking
+   (on a flat preview), so drop it entirely while stereo is on. */
+body.stereo-on #status {
+  display: none;
+}
+
 /* ─── Altitude legend (footer) ────────────────────────────────────── */
 
 /* Forced onto its own row at the bottom of the footer: flex-basis 100%

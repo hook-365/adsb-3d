@@ -86,10 +86,14 @@ const labelRenderer = createLabelRenderer();
 // so it's hidden while stereo is on. StereoEffect leaves the renderer
 // viewport parked on the right half after each frame, so switching back
 // to mono has to restore the full-frame viewport explicitly.
+//
+// `stereo-on` on <body> lets CSS drop chrome that can't be split per eye
+// — notably the footer status bar, which spans both eye halves.
 const stereoEffect = new StereoEffect(world.renderer);
 function applyStereoMode(): void {
   const on = getSettings().stereo;
   labelRenderer.domElement.style.display = on ? 'none' : '';
+  document.body.classList.toggle('stereo-on', on);
   if (!on) {
     world.renderer.setScissorTest(false);
     world.renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
