@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ADS-B 3D — Redesign</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <script src="/config.js"></script>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div id="loading-overlay" class="loading-overlay" hidden>
+      <div class="loading-card">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <div class="loading-title" id="loading-title">Loading…</div>
+        <div class="loading-detail" id="loading-detail"></div>
+      </div>
+    </div>
+    <header id="hud">
+      <div class="hud-title">
+        <svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" fill="currentColor"/>
+        </svg>
+        <span class="hud-wordmark">ADS-B 3D</span>
+        <span class="hud-live" aria-label="Live data feed">live</span>
+      </div>
+      <div class="hud-loc">
+        <div class="hud-loc-name" id="hud-loc-name">—</div>
+        <div class="hud-loc-coords" id="hud-loc-coords">—</div>
+      </div>
+      <div class="hud-acars" id="hud-acars" hidden>
+        <span class="hud-acars-dot"></span>
+        <span class="hud-acars-label" id="hud-acars-label">acars</span>
+      </div>
+    </header>
+    <span id="settings-slot" class="settings-slot"></span>
+    <div id="voice-panel" class="voice-panel" hidden></div>
+    <footer id="status">
+      <div id="time-controls" class="time-controls" data-mode="live">
+        <div class="tc-mode" role="tablist" aria-label="Time mode">
+          <button id="tc-mode-live" type="button" class="active" role="tab">Live</button>
+          <button id="tc-mode-hist" type="button" role="tab">Historical</button>
+        </div>
+        <div id="tc-expanded" class="tc-expanded" hidden>
+          <div id="tc-presets" class="tc-presets" aria-label="Window presets"></div>
+          <div class="tc-scrub">
+            <button id="tc-play" type="button" class="tc-play" aria-label="Play">▶</button>
+            <input id="tc-scrubber" class="tc-scrubber" type="range" min="0" max="1000" value="1000" aria-label="Playback cursor" />
+            <span id="tc-cursor" class="tc-cursor">—</span>
+          </div>
+          <div class="tc-meta">
+            <span id="tc-range" class="tc-range">—</span>
+            <div id="tc-rates" class="tc-rates" aria-label="Playback speed"></div>
+            <label class="tc-heatmap">
+              <input id="tc-heatmap" type="checkbox" />
+              <span>heatmap</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <span id="feed-selector" class="feed-selector" hidden></span>
+      <span id="feed-status">feed: …</span>
+      <span id="aircraft-count">aircraft: 0</span>
+      <span id="frame-rate">— fps</span>
+      <span id="clocks" class="clocks" title="Local · UTC">—:— · —:—Z</span>
+      <button id="share-btn" type="button" class="status-btn" title="Copy a shareable link">share</button>
+      <button id="recenter-btn" type="button" class="status-btn" title="Recenter view on home">recenter</button>
+      <span class="footer-links">
+        <a href="https://github.com/hook-365/adsb-3d" target="_blank" rel="noopener noreferrer" class="footer-link" title="Source on GitHub" aria-label="GitHub repository">github</a>
+        <a href="https://buymeacoffee.com/anthonyhook" target="_blank" rel="noopener noreferrer" class="footer-link footer-link-coffee" title="Support development" aria-label="Buy me a coffee">☕</a>
+      </span>
+    </footer>
+    <button id="panel-toggle" aria-label="Toggle aircraft list" aria-controls="aircraft-panel" aria-expanded="true">
+      <span class="icon" aria-hidden="true"></span>
+      <span class="badge" id="panel-toggle-count">0</span>
+    </button>
+    <aside id="aircraft-panel" aria-label="Aircraft list">
+      <header>
+        <div class="panel-title">
+          <span>Aircraft</span>
+          <span id="panel-count" class="panel-count">0</span>
+        </div>
+        <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" autocomplete="off" />
+        <div class="panel-filters" id="panel-filters" role="tablist" aria-label="Filter by status">
+          <button type="button" class="filter active" data-filter="all">All</button>
+          <button type="button" class="filter" data-filter="air">Air</button>
+          <button type="button" class="filter" data-filter="ground">Ground</button>
+          <button type="button" class="filter" data-filter="mil">Mil</button>
+          <button type="button" class="filter" data-filter="emerg">Emerg</button>
+        </div>
+      </header>
+      <div class="panel-cols" role="row">
+        <button class="col col-flight" data-sort="flight">Flight</button>
+        <button class="col col-alt" data-sort="alt">Alt</button>
+        <button class="col col-spd" data-sort="spd">Spd</button>
+        <button class="col col-dist" data-sort="dist">Dist</button>
+      </div>
+      <ul id="panel-list" role="list"></ul>
+    </aside>
+    <section id="panel-detail" hidden>
+      <header>
+        <div class="ident">
+          <span class="callsign" id="detail-callsign"></span>
+          <span class="hex" id="detail-hex"></span>
+        </div>
+        <div class="detail-actions">
+          <button class="detail-share" id="detail-share" aria-label="Copy a shareable link to this aircraft" title="Copy share link">🔗</button>
+          <button class="close" id="detail-close" aria-label="Clear selection">×</button>
+        </div>
+      </header>
+      <a class="photo" id="detail-photo" hidden target="_blank" rel="noopener noreferrer">
+        <img id="detail-photo-img" alt="" />
+        <span class="photo-credit" id="detail-photo-credit"></span>
+      </a>
+      <div class="phase-row" id="detail-phase-row" hidden>
+        <span class="phase-chip" id="detail-phase"></span>
+        <span class="phase-at" id="detail-phase-at"></span>
+      </div>
+      <div class="route" id="detail-route" hidden>
+        <span class="airport" id="detail-origin"></span>
+        <span class="arrow">→</span>
+        <span class="airport" id="detail-destination"></span>
+        <span class="route-source" id="detail-route-source" hidden></span>
+      </div>
+      <div class="route-names" id="detail-route-names" hidden></div>
+      <div class="route-eta" id="detail-route-eta" hidden></div>
+      <div class="chips" id="detail-chips" hidden></div>
+      <section class="airframe" id="detail-airframe">
+        <h3>Airframe</h3>
+        <dl class="grid">
+          <dt>Type</dt><dd id="detail-type">—</dd>
+          <dt id="detail-icao-label" hidden>ICAO</dt><dd id="detail-icao" hidden>—</dd>
+          <dt>Reg.</dt><dd id="detail-reg">—</dd>
+          <dt id="detail-operator-label" hidden>Operator</dt><dd id="detail-operator" hidden>—</dd>
+          <dt id="detail-class-label" hidden>Class</dt><dd id="detail-class" hidden>—</dd>
+        </dl>
+      </section>
+      <dl class="grid">
+        <dt>Alt</dt><dd id="detail-alt">—</dd>
+        <dt>Vert.</dt><dd id="detail-vrate">—</dd>
+        <dt>Spd</dt><dd id="detail-spd">—</dd>
+        <dt>Hdg</dt><dd id="detail-hdg">—</dd>
+        <dt>Sqk</dt><dd id="detail-squawk">—</dd>
+        <dt>Pos</dt><dd id="detail-pos">—</dd>
+        <dt>Range</dt><dd id="detail-range">—</dd>
+        <dt>Seen</dt><dd id="detail-seen">—</dd>
+      </dl>
+      <section class="autopilot" id="detail-autopilot" hidden>
+        <h3>Autopilot</h3>
+        <dl class="grid">
+          <dt id="detail-ap-alt-label">Sel. Alt</dt><dd id="detail-ap-alt">—</dd>
+          <dt id="detail-ap-hdg-label">Sel. Hdg</dt><dd id="detail-ap-hdg">—</dd>
+          <dt id="detail-ap-qnh-label">QNH</dt><dd id="detail-ap-qnh">—</dd>
+          <dt id="detail-ap-modes-label">Modes</dt><dd id="detail-ap-modes">—</dd>
+        </dl>
+      </section>
+      <section class="acars" id="detail-acars" hidden>
+        <h3>ACARS <span class="count" id="detail-acars-count">0</span></h3>
+        <ul id="detail-acars-list"></ul>
+      </section>
+    </section>
+    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-label="ACARS message browser">
+      <div class="acars-backdrop" id="acars-backdrop"></div>
+      <section class="acars-panel">
+        <header>
+          <div class="acars-title">
+            <h2>ACARS messages</h2>
+            <span class="acars-counts" id="acars-browser-counts">0 / 0</span>
+          </div>
+          <button class="acars-close" id="acars-browser-close" type="button" aria-label="Close">×</button>
+        </header>
+        <div class="acars-toolbar">
+          <input type="search" id="acars-browser-search" placeholder="filter text · flight · reg · label" autocomplete="off" />
+          <select id="acars-browser-label" aria-label="Filter by label">
+            <option value="">All labels</option>
+          </select>
+        </div>
+        <ul class="acars-rows" id="acars-browser-rows" role="list"></ul>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

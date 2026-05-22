@@ -1,0 +1,56 @@
+# Environment configuration (contains sensitive data)
+.env
+
+# Local docker-compose for testing (use docker-compose.example.yml as template)
+docker-compose.yml
+
+# Docker volumes and persistent data
+timescaledb/data/
+ultrafeeder/
+prometheus/
+
+# Build artifacts
+*.log
+*.tmp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node modules (if developing locally)
+node_modules/
+
+# Testing and development
+test/
+*.test.js
+coverage/
+
+# Backup files
+*.bak
+*.backup
+*.sql.gz
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Claude Code local state + Python bytecode caches
+.claude/
+__pycache__/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/dist-tsc/
+frontend/tsconfig.tsbuildinfo
+
+# Local screenshots / scratch images
+Screenshot.jpg
+Screenshot*.png

@@ -1,0 +1,64 @@
+# Standalone compose for the redesigned frontend, hooked into the existing
+# rf-services backend stack (ultrafeeder, track-service, acars-service) via
+# the external seg_monitoring network. Mirrors the prod adsb-3d service env
+# but on its own container/port so the production app keeps running untouched.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up --build -d
+#   open http://localhost:8186/
+#
+# Real LAT/LON/LOCATION_NAME live in the env_file below (gitignored) — the
+# fallbacks here are intentional placeholders so this committed file never
+# leaks the operator's coordinates. Override via that env_file or a local
+# .env next to this compose.
+
+services:
+  adsb-3d-redesign:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adsb-3d-redesign
+    hostname: adsb-3d-redesign
+    restart: unless-stopped
+    mem_limit: 192m
+    security_opt:
+      - no-new-privileges:true
+    # Pull the FEED{N}_* env vars from the prod env file so multi-feed
+    # routing works without re-declaring every feed here. Variables we
+    # override below take precedence.
+    env_file:
+      - /storage/docker/rf-services/.env
+    environment:
+      - TZ=${TZ:-America/Chicago}
+      - LATITUDE=${LATITUDE:-45.0000}
+      - LONGITUDE=${LONGITUDE:--90.0000}
+      - ALTITUDE=${ALTITUDE:-1000ft}
+      - LOCATION_NAME=${LOCATION_NAME:-My Station (redesign)}
+      - FEEDER_URL=http://${FEEDER_HOST:-ultrafeeder}
+      - ENABLE_HISTORICAL=${ENABLE_HISTORICAL:-true}
+      # ACARS was retired when this station's Airspy was repurposed for
+      # the voice scanner. Re-enable + restart acarsdec on the Pi if
+      # you want ACARS messages back.
+      - ENABLE_ACARS=${ENABLE_ACARS:-false}
+      - ENABLE_VOICE=${ENABLE_VOICE:-true}
+      - TRACK_API_HOST=track-service:8000
+      - ACARS_API_HOST=acars-service:8000
+      # Voice services live in the rf-services/voice-services stack.
+      # Both reachable inside seg_monitoring by container name.
+      - VOICE_STREAM_HOST=voice-icecast:8000
+      - VOICE_EVENTS_HOST=voice-events:8001
+      - HIDE_TOWER=true
+    ports:
+      - "8186:80"
+    volumes:
+      - adsb-3d-redesign-tiles:/tiles
+    networks:
+      - seg_monitoring
+
+networks:
+  seg_monitoring:
+    external: true
+
+volumes:
+  adsb-3d-redesign-tiles:
+    name: adsb-3d-redesign-tiles
