@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- `HIDE_TOWER=true` now also hides the home-position marker on the map, not
+  just the coordinate readout in the HUD — the receiver location is no longer
+  pinpointed on the map when the flag is set.
+
 ## [0.1.0] — 2026-05-21
 
 First public release of the rewrite. Replaces the original 14k-line
@@ -97,4 +105,5 @@ vanilla-JS monolith (`app.js`) with a typed, reconciler-driven architecture.
 
 ---
 
+[Unreleased]: https://github.com/hook-365/adsb-3d/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/hook-365/adsb-3d/releases/tag/v0.1.0

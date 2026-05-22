@@ -125,17 +125,23 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   scene.add(cardinalsGroup);
 
   // Home antenna marker — a small dot on the ground at the receiver's
-  // location, like tar1090. No tower, no toggle: it's a quiet anchor for
-  // the scene origin and shouldn't compete visually with aircraft.
-  const home = new Mesh(
-    new CircleGeometry(1.2, 24),
-    new MeshBasicMaterial({ color: 0xffd66b, transparent: true, opacity: 0.95, depthWrite: false }),
+  // location, like tar1090. Suppressed when HIDE_TOWER is set so the exact
+  // receiver position isn't pinpointed on a public deployment (the scene
+  // still centres here; the range rings remain the visual anchor).
+  const towerHidden = Boolean(
+    (window as { TOWER_CONFIG?: { hidden?: boolean } }).TOWER_CONFIG?.hidden,
   );
-  home.rotation.x = -Math.PI / 2;
-  home.position.y = 0.07;
-  home.renderOrder = 2; // draw above range rings + tile layer
-  home.name = 'home-marker';
-  scene.add(home);
+  if (!towerHidden) {
+    const home = new Mesh(
+      new CircleGeometry(1.2, 24),
+      new MeshBasicMaterial({ color: 0xffd66b, transparent: true, opacity: 0.95, depthWrite: false }),
+    );
+    home.rotation.x = -Math.PI / 2;
+    home.position.y = 0.07;
+    home.renderOrder = 2; // draw above range rings + tile layer
+    home.name = 'home-marker';
+    scene.add(home);
+  }
 
   // Apply settings changes live. Visibility-only flags toggle directly;
   // a basemap change requires rebuilding the tile layer (textures and

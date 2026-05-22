@@ -8,6 +8,8 @@ ADS-B feeder.
 Works with anything that publishes readsb's `aircraft.json` — tar1090,
 ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
+**[Live demo →](https://adsb3d.hook.technology)** — explore a running instance in your browser.
+
 > [!WARNING]
 > **Ran the older monolithic version?** This is a ground-up rewrite and
 > carries **breaking changes** — read [Upgrading](#upgrading) before you pull.
