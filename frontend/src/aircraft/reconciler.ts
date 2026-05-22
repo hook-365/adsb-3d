@@ -26,6 +26,7 @@ import { toScene } from '../core/coords';
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { passesFilter } from '../core/filter';
+import { altitudeColor } from '../core/altitude-color';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -94,43 +95,8 @@ const TRAIL_MAT_DASHED_SELECTED = new LineDashedMaterial({
   linewidth: 2,
 });
 
-// tar1090's `ColorByAlt` scheme (config.js in the tar1090 / readsb-protobuf
-// repo). Piecewise-linear hue interpolation in HSL; saturation/lightness
-// fixed for airborne aircraft, separate dimmer color for ground.
-//   2000 ft  → hue 20  (orange)
-//   10000 ft → hue 140 (light green)
-//   40000 ft → hue 300 (magenta)
-const TAR1090_HUE_STOPS: ReadonlyArray<{ alt: number; hue: number }> = [
-  { alt: 2000, hue: 20 },
-  { alt: 10000, hue: 140 },
-  { alt: 40000, hue: 300 },
-];
-const TAR1090_AIR_S = 0.85;
-const TAR1090_AIR_L = 0.5;
-const TAR1090_GROUND_HSL = { h: 230 / 360, s: 0.4, l: 0.3 };
-const TAR1090_MILITARY_HEX = 0xff6b81;
-
-function altitudeHue(altFt: number): number {
-  const stops = TAR1090_HUE_STOPS;
-  if (altFt <= stops[0]!.alt) return stops[0]!.hue;
-  for (let i = 0; i < stops.length - 1; i++) {
-    const a = stops[i]!;
-    const b = stops[i + 1]!;
-    if (altFt <= b.alt) {
-      const t = (altFt - a.alt) / (b.alt - a.alt);
-      return a.hue + (b.hue - a.hue) * t;
-    }
-  }
-  return stops[stops.length - 1]!.hue;
-}
-
-function altitudeColor(altFt: number, military: boolean, onGround = false): Color {
-  if (military) return new Color(TAR1090_MILITARY_HEX);
-  if (onGround) {
-    return new Color().setHSL(TAR1090_GROUND_HSL.h, TAR1090_GROUND_HSL.s, TAR1090_GROUND_HSL.l);
-  }
-  return new Color().setHSL(altitudeHue(altFt) / 360, TAR1090_AIR_S, TAR1090_AIR_L);
-}
+// Aircraft colors (cone / trail / icon) come from the tar1090 ColorByAlt
+// palette in core/altitude-color.ts — shared so the footer legend matches.
 
 interface RenderEntry {
   group: Group;

@@ -1,4 +1,4 @@
-import { getSettings, updateSettings, type Settings } from '../core/settings';
+import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
 
 // Gear button + popover panel. Mounted into a slot the host page provides
 // in the header (#settings-slot) and a panel container appended to <body>
@@ -95,6 +95,26 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           { value: 'hillshade', label: 'ESRI Hillshade' },
           { value: 'satellite', label: 'ESRI Satellite' },
         ],
+      },
+    ],
+  },
+  {
+    heading: 'Stereo / VR',
+    rows: [
+      {
+        kind: 'toggle',
+        key: 'stereo',
+        label: 'Side-by-side stereo',
+        description: 'Split the view into left/right eye halves for Google Cardboard or a phone VR headset.',
+      },
+      {
+        kind: 'range',
+        key: 'stereoStrength',
+        label: 'Stereo strength',
+        description: 'Eye separation when stereo is on. Higher gives deeper 3D but more eye strain.',
+        min: 1,
+        max: 100,
+        step: 1,
       },
     ],
   },
@@ -244,12 +264,37 @@ export function mountSettingsPanel(): void {
         valueEl.className = 'settings-range-value';
         const fmt = row.format ?? ((v: number) => String(v));
         valueEl.textContent = fmt(initial);
+
+        // Reset-to-default button. Disabled (not hidden) while the slider
+        // already sits at its factory value, so the row width never jumps.
+        const defaultVal = Number(getDefaultSettings()[row.key]);
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'settings-range-reset';
+        resetBtn.textContent = '↺';
+        resetBtn.title = `Reset to default (${fmt(defaultVal)})`;
+        resetBtn.setAttribute('aria-label', `Reset ${row.label} to default`);
+        const syncReset = (v: number): void => {
+          resetBtn.disabled = v === defaultVal;
+        };
+        syncReset(initial);
+
         input.addEventListener('input', () => {
           const v = Number(input.value);
           valueEl.textContent = fmt(v);
+          syncReset(v);
           updateSettings({ [row.key]: v } as Partial<Settings>);
         });
-        wrap.append(input, valueEl);
+        // The reset button lives inside the same <label> as the slider, so
+        // stop the click from also retargeting the label to the input.
+        resetBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          input.value = String(defaultVal);
+          valueEl.textContent = fmt(defaultVal);
+          syncReset(defaultVal);
+          updateSettings({ [row.key]: defaultVal } as Partial<Settings>);
+        });
+        wrap.append(input, valueEl, resetBtn);
         rowEl.appendChild(wrap);
       }
 

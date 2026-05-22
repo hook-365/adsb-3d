@@ -763,6 +763,37 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   text-align: right;
 }
 
+.settings-range-reset {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(76, 200, 255, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.1s, transform 0.1s;
+}
+
+.settings-range-reset:hover:not(:disabled) {
+  border-color: rgba(76, 200, 255, 0.6);
+  transform: rotate(-45deg);
+}
+
+.settings-range-reset:disabled {
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: default;
+}
+
 @media (max-width: 600px) {
   /* On phones the sidebar covers most of the screen anyway, so just float
      the settings as a full-width sheet over everything regardless of
@@ -816,6 +847,61 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 #status .ok { color: var(--good); }
 #status .warn { color: var(--warn); }
 #status .err { color: var(--bad); }
+
+/* ─── Altitude legend (footer) ────────────────────────────────────── */
+
+/* Forced onto its own row at the bottom of the footer: flex-basis 100%
+   makes it wrap below every other status item, and the hairline rule
+   separates it from the busier line above. */
+.altitude-legend {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(76, 200, 255, 0.12);
+}
+
+.altitude-legend .al-cap {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9px;
+}
+
+/* Gradient bar + altitude ticks stacked. Fixed width so the five ticks
+   line up with the bar (the gradient is linear in feet). */
+.altitude-legend .al-ramp {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 280px;
+}
+
+.altitude-legend .al-bar {
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.altitude-legend .al-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.altitude-legend .al-note {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  /* The ramp survives on phones (it's the key); the verbose note doesn't. */
+  .altitude-legend .al-note { display: none; }
+}
 
 /* ─── Loading overlay ─────────────────────────────────────────────── */
 

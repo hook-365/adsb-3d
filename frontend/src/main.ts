@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
 import { AircraftStore } from './aircraft/store';
 import { AircraftReconciler } from './aircraft/reconciler';
 import { LiveFeed } from './feed/live';
@@ -28,6 +29,7 @@ import { createAircraftDetail } from './ui/aircraft-detail';
 import { attachPanelToggle } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
+import { mountAltitudeLegend } from './ui/altitude-legend';
 import { mountAcarsBrowser } from './ui/acars-browser';
 import { mountTimeControls } from './ui/time-controls';
 import { mountVoicePanel } from './ui/voice-panel';
@@ -71,10 +73,30 @@ let activeFeed = getActiveFeed();
 mountFeedSelector({ feeds: getFeeds(), active: activeFeed, mode: feedMode });
 mountSettingsPanel();
 mountTimeControls();
+mountAltitudeLegend();
 
 const world = createWorld(canvas);
 const controls = attachControls(world.camera, world.renderer);
 const labelRenderer = createLabelRenderer();
+
+// Side-by-side stereo rendering — Tier 1 of the VR support request
+// (issue #6). No WebXR; just a split left/right-eye view that works on
+// any display and feeds a Google Cardboard / phone VR headset. The
+// CSS2D label layer is a single DOM overlay that can't be split per eye,
+// so it's hidden while stereo is on. StereoEffect leaves the renderer
+// viewport parked on the right half after each frame, so switching back
+// to mono has to restore the full-frame viewport explicitly.
+const stereoEffect = new StereoEffect(world.renderer);
+function applyStereoMode(): void {
+  const on = getSettings().stereo;
+  labelRenderer.domElement.style.display = on ? 'none' : '';
+  if (!on) {
+    world.renderer.setScissorTest(false);
+    world.renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  }
+}
+subscribeSettings(applyStereoMode);
+applyStereoMode();
 
 const initialSelectedHex = readSelectedHex();
 
@@ -757,8 +779,18 @@ function tick(t: number): void {
   reconciler.syncFrame();
   reconciler.updateLabelLOD();
   aircraftCount.textContent = `aircraft: ${reconciler.count}`;
-  world.renderer.render(world.scene, world.camera);
-  labelRenderer.render(world.scene, world.camera);
+  if (getSettings().stereo) {
+    // Put the zero-parallax plane on the orbit target and scale eye
+    // separation with viewing distance, so the depth stays comfortable
+    // whether zoomed out to the whole airspace or in on one aircraft.
+    const dist = world.camera.position.distanceTo(controls.target);
+    world.camera.focus = dist;
+    stereoEffect.setEyeSeparation(dist * getSettings().stereoStrength * 0.0005);
+    stereoEffect.render(world.scene, world.camera);
+  } else {
+    world.renderer.render(world.scene, world.camera);
+    labelRenderer.render(world.scene, world.camera);
+  }
   requestAnimationFrame(tick);
 }
 

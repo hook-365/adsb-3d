@@ -300,6 +300,27 @@ Channel labels are derived from a single `CHANNELS` table in the sidecar that
 drives both the stats parser and the call indexer. Keep the labels and
 frequencies in that table mirrored to the channels in `rtl_airband.conf`.
 
+### Clip duration
+
+The sidecar measures each clip's length by **scanning the actual MPEG audio
+frames** (`mp3_audio_duration()` in `app.py`) — it does **not** read the MP3's
+Xing/Info header.
+
+This is deliberate. rtl_airband writes per-transmission clips whose LAME Xing
+header carries a frame count that is *cumulative since the encoder started*,
+not per-file. Any header-trusting reader — `mutagen`, `ffprobe -show_format`,
+a browser's `<audio>.duration` — therefore reports the channel's entire
+airtime-since-boot (tens of minutes) for every short clip; `ffmpeg` itself
+flags it with *"filesize and duration do not match"*. Counting frames is the
+only reliable measure, and it needs no audio library — just the
+bitrate/sample-rate tables in `app.py`.
+
+The raw `.mp3` files still carry the bogus header, so anything playing
+`/voice/calls/<id>/audio` directly sees a wrong `<audio>.duration` (playback
+still stops correctly at the last real frame). The viewer's voice panel
+sidesteps this by displaying the call's frame-scanned `durationS` field rather
+than the `<audio>` element's duration.
+
 ## Retention
 
 Per-transmission recording is compact — silence is never written, so disk

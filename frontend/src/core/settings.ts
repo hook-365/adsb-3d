@@ -32,6 +32,18 @@ export interface Settings {
   labelDensity: number;
   /** Subscribe to the ACARS message stream + render its UI. */
   acarsMessages: boolean;
+  /**
+   * Side-by-side stereo rendering (left/right eye halves) for Google
+   * Cardboard or a phone VR headset. CSS2D labels are hidden while on —
+   * a single DOM layer can't be split per-eye.
+   */
+  stereo: boolean;
+  /**
+   * Stereo eye separation as a 1–100 slider. Eye offset scales with
+   * viewing distance; higher values give stronger depth but more eye
+   * strain. Only applies while `stereo` is on.
+   */
+  stereoStrength: number;
   /** Slippy-map basemap provider proxied by nginx /tiles/{provider}/... */
   basemap: Basemap;
   distanceUnit: DistanceUnit;
@@ -46,6 +58,8 @@ const DEFAULTS: Settings = {
   aircraftLabels: true,
   labelDensity: 0,
   acarsMessages: true,
+  stereo: false,
+  stereoStrength: 50,
   basemap: 'dark',
   distanceUnit: 'nm',
   speedUnit: 'kt',
@@ -72,6 +86,11 @@ const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Readonly<Settings> {
   return current;
+}
+
+/** Factory defaults — used by the settings panel to offer per-row resets. */
+export function getDefaultSettings(): Readonly<Settings> {
+  return DEFAULTS;
 }
 
 export function updateSettings(patch: Partial<Settings>): void {
