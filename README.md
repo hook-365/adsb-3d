@@ -50,12 +50,13 @@ Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
 3D scene re-tints in place. Plays especially well with the FAA chart
 basemaps below.
 
-**VR (experimental)** — an "Enter VR" button in the settings panel opens
-an immersive WebXR session for any connected headset (Meta Quest, Vision
-Pro, Index, …). Phase 1 is **viewing-only**: head tracking works, you can
-look around the airspace, but there's no controller input or in-VR UI
-yet. The existing side-by-side stereo mode (for phone-in-Cardboard) is
-still there for users without a real headset.
+**VR / AR (experimental)** — "Enter VR" opens an immersive WebXR
+session for any connected headset, with laser-pointer controllers, an
+in-VR wrist menu for settings, and thumbstick locomotion. "Enter AR"
+opens a passthrough session on devices that support `immersive-ar`.
+Built without a real headset on hand, so issue reports are welcome.
+Side-by-side stereo (Cardboard) is still there for anything without
+WebXR.
 
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
@@ -98,16 +99,10 @@ and port — e.g. `http://192.168.1.50:8080`. If the page loads but stays
 empty, this is almost always why: check `docker logs adsb-3d` (the
 container reports `unhealthy` until it can reach the feeder).
 
-For a fuller setup, copy `.env.example` to `.env` and start from
-`docker-compose.example.yml` — both are in the repo root, with
-track-service, ACARS, and TimescaleDB ready to uncomment.
-
-- **Historical mode:** add `track-service` + `timescaledb` and set
-  `ENABLE_HISTORICAL=true`.
-- **ACARS:** run `acars-service` against an acarshub TCP feed and set
-  `ENABLE_ACARS=true`.
-- **Voice scanner:** set `ENABLE_VOICE=true` plus `VOICE_STREAM_HOST` /
-  `VOICE_EVENTS_HOST` — full walkthrough in [docs/VOICE.md](docs/VOICE.md).
+For historical playback, ACARS, or the voice scanner, copy
+`.env.example` to `.env` and start from `docker-compose.example.yml`
+in the repo root. Both have track-service, ACARS, and TimescaleDB
+ready to uncomment; the `ENABLE_*` flags below switch each on.
 
 ## Reverse proxy
 
@@ -130,16 +125,11 @@ FEED1_LON=-90.0000
 FEED1_ALT=1000
 FEED1_ACARS=true              # optional
 
-FEED2_NAME=Remote Site A
+FEED2_NAME=Remote Site
 FEED2_URL=192.0.2.10:8086     # host:port of another adsb-3d instance
 FEED2_LAT=43.0000
 FEED2_LON=-89.0000
 FEED2_COLOR=#ff8c4c           # optional
-
-FEED3_NAME=Remote Site B
-FEED3_URL=192.0.2.20:8086
-FEED3_LAT=43.0000
-FEED3_LON=-87.0000
 ```
 
 Slot 1 is always local — `FEED1_URL` is ignored. Slots 2+ point at other
@@ -167,14 +157,8 @@ Parsing stops at the first missing `FEEDN_NAME`.
 **Multi-feed:** `FEEDN_NAME`, `FEEDN_LAT`, `FEEDN_LON`, `FEEDN_ALT`,
 `FEEDN_URL`, `FEEDN_COLOR`, `FEEDN_ACARS` — see [Multi-feed](#multi-feed).
 
-**Advanced / rarely needed:** `MAP_ZOOM` (`8`) and `MAP_GRID_SIZE` (`21`)
-tune the initial basemap view; `BASE_PATH` overrides the reverse-proxy
-subpath (see [Reverse proxy](#reverse-proxy)); `FEED_MODE` is
-auto-synthesized from your `FEEDN_*` slots — don't set it manually.
-
-**Track-service** (when running it directly): `FEEDER_URL`, `DB_HOST`,
-`DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `COLLECTION_INTERVAL`
-(default 5s), `RETENTION_DAYS` (default 90).
+**Reverse proxy:** `BASE_PATH` overrides the auto-detected subpath
+(see [Reverse proxy](#reverse-proxy)).
 
 ## Controls
 
@@ -196,16 +180,10 @@ pull, but review these first:
 
 - **`ENABLE_HISTORICAL` defaults to `false`** (was `true`) — set it
   explicitly to `true` if you run `track-service`.
-- **`ENABLE_SATELLITES` is removed** — delete it; satellite tracking is
-  gone (also remove any `/tle` rule from an external reverse proxy).
 - **`ENABLE_VOICE=true` now requires `VOICE_STREAM_HOST` +
   `VOICE_EVENTS_HOST`** — the container fails fast without them.
 - **`track-service` / `acars-service` run as non-root** (uid `10001`) —
   host paths bind-mounted into them must be writable by that uid.
-- In-browser settings (basemap, units, label density) **reset once** —
-  `localStorage` keys changed in the rewrite.
-- Multi-feed: a hand-written `FEEDS_CONFIG` JSON still works, but flat
-  `FEEDN_*` variables are now recommended.
 
 Full detail in [CHANGELOG.md](CHANGELOG.md).
 
@@ -273,21 +251,16 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 ## Recent changes
 
-The full history lives in [CHANGELOG.md](CHANGELOG.md). Highlights:
+The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
-- **v0.2.0** (2026-05-27) — **Color themes**: five built-in palettes
-  (Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast)
-  with an `Auto` option that follows `prefers-color-scheme`; live switching
-  with no scene rebuild. **FAA aeronautical chart basemaps** (US only):
-  Sectional, Sectional + Roads, Helicopter, IFR Low, IFR High, served via
-  VFRMap with auto-discovery of the 56-day chart cycle at container start.
-- **v0.1.1** (2026-05-22) — `HIDE_TOWER=true` now also hides the home
-  marker dot on the map, not just the HUD coordinate readout.
-- **v0.1.0** (2026-05-21) — First public release of the rewrite. Replaces
-  the ~14k-line vanilla-JS monolith with a TypeScript / Three.js
-  reconciler-driven architecture; introduces historical playback, the 3D
-  airway-density heatmap, ACARS, multi-feed, and the optional voice
-  scanner. See the [Upgrading](#upgrading) section for breaking changes.
+- **v0.3.0** (2026-05-27): WebXR for real headsets (experimental), with
+  controllers, an in-VR wrist menu, locomotion, and AR passthrough.
+- **v0.2.0** (2026-05-27): Five color themes (auto-follows system
+  light/dark) and FAA aeronautical chart basemaps (US only).
+- **v0.1.1** (2026-05-22): `HIDE_TOWER=true` now hides the home marker
+  on the map as well as the HUD coordinates.
+- **v0.1.0** (2026-05-21): First public release of the TypeScript /
+  Three.js rewrite. See the [Upgrading](#upgrading) section.
 
 ## License
 

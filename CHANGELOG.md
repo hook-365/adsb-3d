@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Browser tab title** now reads `ADS-B 3D · {feed location}` instead
+  of the leftover `ADS-B 3D — Redesign` placeholder, and updates on
+  feed switch.
+
 ## [0.3.0] — 2026-05-27
 
 ### Added
