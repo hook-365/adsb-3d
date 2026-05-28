@@ -39,14 +39,22 @@ export function normalizeRawAircraft(raw: RawAircraft, nowMs: number): Aircraft 
   if (distanceFromHomeNm(raw.lat, raw.lon) > RANGE_NM) return null;
 
   const onGround = raw.alt_baro === 'ground';
-  const altFt =
-    onGround
-      ? 0
-      : typeof raw.alt_baro === 'number'
-        ? raw.alt_baro
-        : typeof raw.alt_geom === 'number'
-          ? raw.alt_geom
-          : 0;
+  // Distinguish "really at altitude X" from "no altitude field in this
+  // frame". readsb occasionally publishes position updates with both
+  // alt_baro and alt_geom missing — the store substitutes the previous
+  // known altitude for those frames so the trail doesn't dip to ground.
+  let altFt = 0;
+  let altFtKnown = false;
+  if (onGround) {
+    altFt = 0;
+    altFtKnown = true;
+  } else if (typeof raw.alt_baro === 'number') {
+    altFt = raw.alt_baro;
+    altFtKnown = true;
+  } else if (typeof raw.alt_geom === 'number') {
+    altFt = raw.alt_geom;
+    altFtKnown = true;
+  }
 
   // Prefer seen_pos (seconds since last position update) for the staleness/
   // fade logic so ground-speed-only messages don't reset the freshness timer.
@@ -64,6 +72,7 @@ export function normalizeRawAircraft(raw: RawAircraft, nowMs: number): Aircraft 
     lat: raw.lat,
     lon: raw.lon,
     altFt,
+    altFtKnown,
     onGround,
     groundSpeedKt: typeof raw.gs === 'number' ? raw.gs : null,
     trackDeg: typeof raw.track === 'number' ? raw.track : null,

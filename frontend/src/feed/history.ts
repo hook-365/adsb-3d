@@ -30,7 +30,11 @@ interface RawSingleResponse {
   positions?: RawTrackPoint[];
 }
 
-const BACKFILL_WINDOW_MS = 30 * 60 * 1000;
+// Default backfill window when a HistoryBackfillConfig doesn't supply one.
+// Per-feed values come from feeds.ts (`backfillWindowMs`) and reflect the
+// trail cap — unlimited trails on the local feed get 24h, bounded feeds
+// get a value proportional to the cap with a 30 min floor.
+const DEFAULT_BACKFILL_WINDOW_MS = 30 * 60 * 1000;
 // Short enough that the cold-load wave doesn't sit idle, long enough that
 // rapidly-arriving aircraft from a single feed snapshot batch into one call.
 const BATCH_DEBOUNCE_MS = 50;
@@ -41,24 +45,53 @@ const BATCH_MAX_HEXES = 200;
 const RETRY_INITIAL_MS = 30 * 1000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
 
-function parsePoint(p: RawTrackPoint): TrailPoint | null {
+// Parse a single raw track point into (ms, lat, lon, altFt|null). altFt is
+// null when the upstream sample carried no altitude (alt_baro / alt_geom
+// both missing, and not the explicit 'ground' string). parsePoints walks
+// these in time order and forward-inherits the last known altitude so a
+// transient missing-altitude sample doesn't tank the trail to ground.
+interface PartialPoint {
+  ms: number;
+  lat: number;
+  lon: number;
+  altFt: number | null;
+}
+
+function parsePartialPoint(p: RawTrackPoint): PartialPoint | null {
   if (typeof p.lat !== 'number' || typeof p.lon !== 'number' || !p.time) return null;
   const ms = Date.parse(p.time);
   if (Number.isNaN(ms)) return null;
-  let altFt = 0;
+  let altFt: number | null;
   if (typeof p.alt_baro === 'number') altFt = p.alt_baro;
   else if (typeof p.alt_geom === 'number') altFt = p.alt_geom;
-  // alt_baro may be the string "ground" — leave altFt at 0 in that case.
+  else if (p.alt_baro === 'ground') altFt = 0;
+  else altFt = null;
   return { ms, lat: p.lat, lon: p.lon, altFt };
 }
 
-function parsePoints(raw: RawTrackPoint[] | undefined): TrailPoint[] {
-  const out: TrailPoint[] = [];
-  for (const p of raw ?? []) {
-    const tp = parsePoint(p);
-    if (tp) out.push(tp);
+export function parsePoints(raw: RawTrackPoint[] | undefined): TrailPoint[] {
+  if (!raw || raw.length === 0) return [];
+  const partials: PartialPoint[] = [];
+  for (const p of raw) {
+    const pp = parsePartialPoint(p);
+    if (pp) partials.push(pp);
   }
-  out.sort((a, b) => a.ms - b.ms);
+  partials.sort((a, b) => a.ms - b.ms);
+  const out: TrailPoint[] = [];
+  let lastAlt: number | null = null;
+  for (const p of partials) {
+    if (p.altFt !== null) {
+      lastAlt = p.altFt;
+      out.push({ ms: p.ms, lat: p.lat, lon: p.lon, altFt: p.altFt });
+    } else if (lastAlt !== null) {
+      // No altitude this sample — keep position, inherit altitude from
+      // the most recent good sample. Avoids the trail dipping to ground
+      // for one frame and snapping back up.
+      out.push({ ms: p.ms, lat: p.lat, lon: p.lon, altFt: lastAlt });
+    }
+    // else: leading no-altitude samples (before any good fix) are dropped
+    // rather than rendered at zero.
+  }
   return out;
 }
 
@@ -129,6 +162,13 @@ export interface HistoryBackfillConfig {
    * from live data going forward instead of being backfilled.
    */
   enabled: boolean;
+  /**
+   * How far back to ask the track-service for. Defaults to 30 min when
+   * unset, matching legacy behavior. Feeds with a longer (or unlimited)
+   * trail cap want a larger window so trails arrive pre-populated rather
+   * than building up only from live data.
+   */
+  windowMs?: number;
 }
 
 export class HistoryBackfill {
@@ -142,6 +182,7 @@ export class HistoryBackfill {
   private flushing = false;
   private readonly apiBase: string;
   private readonly enabled: boolean;
+  private readonly windowMs: number;
 
   private storeUnsub: (() => void) | null = null;
   private stopped = false;
@@ -149,6 +190,7 @@ export class HistoryBackfill {
   constructor(private readonly store: AircraftStore, config: HistoryBackfillConfig) {
     this.apiBase = config.apiBase;
     this.enabled = config.enabled;
+    this.windowMs = config.windowMs ?? DEFAULT_BACKFILL_WINDOW_MS;
     if (this.enabled) {
       this.storeUnsub = store.subscribe((snapshot) => this.scan(snapshot));
     }
@@ -168,12 +210,17 @@ export class HistoryBackfill {
     this.queue.clear();
   }
 
-  /** Force a refresh for one aircraft (e.g. on user selection). */
-  refresh(hex: string): void {
+  /**
+   * Force a refresh for one aircraft (e.g. on user selection). Optionally
+   * pass a `windowMsOverride` to fetch farther back than the feed's
+   * default — used by the selection-extension flow so a clicked aircraft
+   * gets a 24h backfill even on feeds where the default window is short.
+   */
+  refresh(hex: string, windowMsOverride?: number): void {
     if (!this.enabled) return;
     this.status.delete(hex);
     this.attempts.delete(hex);
-    void this.refreshOne(hex);
+    void this.refreshOne(hex, windowMsOverride);
   }
 
   private scan(snapshot: ReadonlyMap<string, Aircraft>): void {
@@ -217,7 +264,7 @@ export class HistoryBackfill {
         this.status.set(hex, 'inflight');
       }
 
-      const sinceMs = Date.now() - BACKFILL_WINDOW_MS;
+      const sinceMs = Date.now() - this.windowMs;
       const tracks = await fetchBulkHistory(this.apiBase, batch, sinceMs);
       // The instance may have been torn down while we were awaiting the
       // network round trip — drop the result rather than mutating a store
@@ -242,9 +289,10 @@ export class HistoryBackfill {
     }
   }
 
-  private async refreshOne(hex: string): Promise<void> {
+  private async refreshOne(hex: string, windowMsOverride?: number): Promise<void> {
     this.status.set(hex, 'inflight');
-    const points = await fetchHistory(this.apiBase, hex, Date.now() - BACKFILL_WINDOW_MS);
+    const windowMs = windowMsOverride ?? this.windowMs;
+    const points = await fetchHistory(this.apiBase, hex, Date.now() - windowMs);
     if (points.length === 0) {
       const attempts = (this.attempts.get(hex) ?? 0) + 1;
       this.attempts.set(hex, attempts);

@@ -316,6 +316,9 @@ export class HistoricalFeed {
       lat: chosen.lat,
       lon: chosen.lon,
       altFt: chosen.altFt,
+      // Historical playback's samples have already passed through parsePoints'
+      // forward-inheritance, so we know altitude here is a real value.
+      altFtKnown: true,
       onGround: chosen.altFt <= 0,
       groundSpeedKt: chosen.gsKt,
       trackDeg: chosen.trackDeg,

@@ -35,6 +35,20 @@ export interface Feed {
   supportsHistory: boolean;
   /** ACARS API base (e.g. `/acars-api`) when this feed has ACARS enabled, else null. */
   acarsApiBase: string | null;
+  /**
+   * Trail cap in points (≈ seconds @ 1Hz). The local feed defaults to
+   * `Number.POSITIVE_INFINITY` so survey aircraft and orbital patterns
+   * keep their full in-scope history. High-density feeds (Europe) keep
+   * the conservative 600 so per-aircraft GPU memory stays bounded.
+   */
+  trailMaxPoints: number;
+  /**
+   * How far back the history backfill asks the track-service for. Set
+   * proportional to `trailMaxPoints` (with a 30 min floor for cold-load
+   * goodness) so we never fetch data the trail would immediately trim.
+   * Unlimited cap → 24h.
+   */
+  backfillWindowMs: number;
 }
 
 interface RawFeedConfig {
@@ -68,6 +82,28 @@ const STORAGE_KEY = 'adsb3d_selected_feed';
 const URL_PARAM = 'feed';
 const LOCAL_API_BASE = '/api';
 
+// Default trail cap policy. The local feed is small enough to absorb
+// unlimited per-aircraft trails (~50 contacts on a typical receiver);
+// every other feed stays at the safe 600 because Europe-scale fleets
+// would blow up GPU memory with multi-MB per-aircraft buffers.
+const DEFAULT_BACKFILL_FLOOR_MS = 30 * 60 * 1000;
+// 4 hours covers the longest realistic loiter on the local feed (tankers,
+// survey patterns) without dragging in stale all-day history. At 15s
+// resolution × ~50 aircraft, the bulk cold-load response is a few MB
+// instead of the ~30 MB a 24h window would produce.
+const UNLIMITED_BACKFILL_MS = 4 * 60 * 60 * 1000;
+
+function defaultTrailMaxPoints(feedId: string): number {
+  return feedId === 'local' ? Number.POSITIVE_INFINITY : 600;
+}
+
+function defaultBackfillWindowMs(trailMaxPoints: number): number {
+  if (!Number.isFinite(trailMaxPoints)) return UNLIMITED_BACKFILL_MS;
+  // Trail samples land at ~1 Hz, so points ≈ seconds. Floor at 30 min so
+  // cold-load shows a comfortable trail even for very small caps.
+  return Math.max(trailMaxPoints * 1000, DEFAULT_BACKFILL_FLOOR_MS);
+}
+
 function fallbackFeed(): Feed {
   // Single-feed fallback synthesized from window.ENV_CONFIG (the same
   // shape core/config.ts uses for HOME). Keeps the redesign functional
@@ -76,6 +112,7 @@ function fallbackFeed(): Feed {
   // ACARS_CONFIG is emitted by entrypoint.sh from ENABLE_ACARS — when on,
   // /acars-api is served by the same nginx and points at acars-service.
   const acarsEnabled = Boolean((window as { ACARS_CONFIG?: { enabled?: boolean } }).ACARS_CONFIG?.enabled);
+  const trailMaxPoints = defaultTrailMaxPoints('local');
   return {
     id: 'local',
     name: env.locationName ?? 'Local',
@@ -91,6 +128,8 @@ function fallbackFeed(): Feed {
     supportsWs: true,
     supportsHistory: true,
     acarsApiBase: acarsEnabled ? '/acars-api' : null,
+    trailMaxPoints,
+    backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),
   };
 }
 
@@ -110,6 +149,7 @@ function normalizeFeed(raw: RawFeedConfig): Feed | null {
   if (raw.acars?.enabled) {
     acarsApiBase = raw.acars.apiBase || '/acars-api';
   }
+  const trailMaxPoints = defaultTrailMaxPoints(raw.id);
   return {
     id: raw.id,
     name: raw.name,
@@ -125,6 +165,8 @@ function normalizeFeed(raw: RawFeedConfig): Feed | null {
     supportsWs: true,
     supportsHistory: true,
     acarsApiBase,
+    trailMaxPoints,
+    backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),
   };
 }
 
