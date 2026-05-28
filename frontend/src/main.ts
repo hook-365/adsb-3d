@@ -4,13 +4,24 @@
 import { setTheme } from './core/theme';
 import { Vector3 } from 'three';
 import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
-import { AircraftStore } from './aircraft/store';
+import { AircraftStore, setDefaultTrailCap } from './aircraft/store';
+
+// On user selection, lift the per-hex trail cap and refetch a much larger
+// history window. Anchored at 24h since that comfortably covers any
+// realistic in-scope flight; the track-service returns what it actually
+// has so we never block on truly old data. The per-hex cap survives the
+// aircraft dropping out and re-entering scope within the session.
+const SELECTION_BACKFILL_MS = 24 * 60 * 60 * 1000;
 import { AircraftReconciler } from './aircraft/reconciler';
 import { LiveFeed } from './feed/live';
 import { AcarsFeed, type AcarsStatus } from './feed/acars';
 import { HistoryBackfill } from './feed/history';
-import { HistoricalFeed, buildTrailUpTo } from './feed/historical';
-import { HeatmapLayer } from './world/heatmap';
+// Historical-mode feed + heatmap layer are loaded dynamically on first
+// entry to historical mode — see enterHistoricalMode. Both modules are
+// only needed when the user actually switches to historical playback and
+// would otherwise inflate the cold-load bundle for everyone.
+import type { HistoricalFeed as HistoricalFeedType } from './feed/historical';
+import type { HeatmapLayer as HeatmapLayerType } from './world/heatmap';
 import { addAcarsMessage, clearAcars, resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings } from './core/settings';
 import { subscribeXr } from './core/xr';
@@ -39,13 +50,20 @@ import { attachPanelToggle } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
 import { mountAltitudeLegend } from './ui/altitude-legend';
-import { mountAcarsBrowser } from './ui/acars-browser';
+// ACARS browser modal is loaded dynamically on first open click — most
+// pageviews never open it, so the modal UI shouldn't bloat the cold-load
+// bundle. The HUD chip and aircraft-list ACARS badges live in the main
+// bundle (they're tiny and active whenever the active feed has ACARS).
+import type { AcarsBrowserHandle } from './ui/acars-browser';
 import { mountTimeControls } from './ui/time-controls';
-import { mountVoicePanel } from './ui/voice-panel';
+// Voice panel module is loaded dynamically inside syncVoicePanel when
+// the feature is enabled — it's a sizable chunk (audio decode + media
+// session UI) that deployments without ENABLE_VOICE never need to ship.
 import { showLoading, type LoadingHandle } from './ui/loading-overlay';
 import { attachPicking } from './interaction/picking';
 import { HOME, setHome } from './core/config';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
+import { setSearchQuery } from './core/filter';
 import {
   getTimeContext,
   setHistorical,
@@ -236,12 +254,27 @@ const voiceEnabled = Boolean(
 // a remote feed destroys it (chip gone, playback stopped) so it never implies
 // ATC coverage for a location we don't actually monitor.
 let voicePanelHandle: { destroy(): void } | null = null;
+// Pending dynamic-import promise so concurrent syncVoicePanel calls
+// (e.g. a rapid feed switch) coalesce to one chunk load and one mount.
+let voicePanelMountPromise: Promise<void> | null = null;
 function syncVoicePanel(): void {
   if (!voicePanelHost || !voiceEnabled) return;
   const showVoice = getActiveFeed().id === 'local';
-  if (showVoice && !voicePanelHandle) {
+  if (showVoice && !voicePanelHandle && !voicePanelMountPromise) {
     voicePanelHost.hidden = false;
-    voicePanelHandle = mountVoicePanel(voicePanelHost);
+    voicePanelMountPromise = (async () => {
+      const { mountVoicePanel } = await import('./ui/voice-panel');
+      // The active feed may have changed by the time the chunk finished
+      // loading (user clicked away while we were fetching). In that case
+      // do not mount — syncVoicePanel will be re-invoked on the next
+      // switch and re-evaluate the condition.
+      if (getActiveFeed().id === 'local' && voicePanelHost) {
+        voicePanelHandle = mountVoicePanel(voicePanelHost);
+      } else if (voicePanelHost) {
+        voicePanelHost.hidden = true;
+      }
+      voicePanelMountPromise = null;
+    })();
   } else if (!showVoice && voicePanelHandle) {
     voicePanelHandle.destroy();
     voicePanelHandle = null;
@@ -295,35 +328,56 @@ function applySelection(hex: string | null): void {
   returningHome = hex === null;
   writeSelectedHex(hex);
   autoCollapseListOnMobile(hex);
+  if (hex) extendTrailForSelection(hex);
+}
+
+// Lift the per-hex trail cap to unlimited and trigger a 24h history
+// backfill. Together these give the clicked aircraft full session-long
+// trail coverage regardless of the feed's default cap — so a single
+// survey orbiting an airfield on the Europe feed can be investigated
+// without bumping the cap for the other ~1500 contacts.
+function extendTrailForSelection(hex: string): void {
+  store.setTrailCap(hex, Number.POSITIVE_INFINITY);
+  session.history.refresh(hex, SELECTION_BACKFILL_MS);
 }
 
 aircraftList.onSelect(applySelection);
 
-// ACARS browser modal — clicking the HUD ACARS chip opens it. Row click
-// selects the aircraft (via the same path as list-row click) and closes
-// the modal. resolveHex lets the modal jump to a plane even when the
-// raw message had no `icao` of its own — we look up by callsign/reg
-// against the live store.
-const acarsBrowser = mountAcarsBrowser({
-  onSelectAircraft: (hex) => {
-    if (!hex) return;
-    aircraftList.setSelected(hex);
-    applySelection(hex);
-  },
-  resolveHex: (msg) => {
-    if (msg.icao) return msg.icao;
-    if (!msg.flight && !msg.reg) return null;
-    for (const a of store.snapshot.values()) {
-      if (msg.flight && a.callsign === msg.flight) return a.hex;
-      if (msg.reg && a.registration === msg.reg) return a.hex;
-    }
-    return null;
-  },
-});
+// ACARS browser modal — clicking the HUD ACARS chip opens it. Lazily
+// mounted on first open so deployments without ACARS-heavy use never pay
+// for the modal UI. The handle is cached after first mount; subsequent
+// opens just toggle().
+let acarsBrowser: AcarsBrowserHandle | null = null;
+let acarsBrowserMounting: Promise<AcarsBrowserHandle> | null = null;
+function ensureAcarsBrowser(): Promise<AcarsBrowserHandle> {
+  if (acarsBrowser) return Promise.resolve(acarsBrowser);
+  if (acarsBrowserMounting) return acarsBrowserMounting;
+  acarsBrowserMounting = (async () => {
+    const { mountAcarsBrowser } = await import('./ui/acars-browser');
+    acarsBrowser = mountAcarsBrowser({
+      onSelectAircraft: (hex) => {
+        if (!hex) return;
+        aircraftList.setSelected(hex);
+        applySelection(hex);
+      },
+      resolveHex: (msg) => {
+        if (msg.icao) return msg.icao;
+        if (!msg.flight && !msg.reg) return null;
+        for (const a of store.snapshot.values()) {
+          if (msg.flight && a.callsign === msg.flight) return a.hex;
+          if (msg.reg && a.registration === msg.reg) return a.hex;
+        }
+        return null;
+      },
+    });
+    return acarsBrowser;
+  })();
+  return acarsBrowserMounting;
+}
 
 hudAcars.addEventListener('click', () => {
   if (hudAcars.hidden) return;
-  acarsBrowser.toggle();
+  void ensureAcarsBrowser().then((h) => h.toggle());
 });
 hudAcars.style.cursor = 'pointer';
 hudAcars.setAttribute('role', 'button');
@@ -331,7 +385,7 @@ hudAcars.setAttribute('tabindex', '0');
 hudAcars.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
-    acarsBrowser.toggle();
+    void ensureAcarsBrowser().then((h) => h.toggle());
   }
 });
 
@@ -495,6 +549,10 @@ function applySubtitle(): void {
 
 function startSession(feed: Feed): FeedSession {
   configureRoutesApi(feed.apiBase);
+  // Per-feed trail policy: local gets unlimited, others stay at the safe
+  // 600 (see feeds.ts). Set this before LiveFeed starts pushing snapshots
+  // so the very first appendTrail uses the right cap.
+  setDefaultTrailCap(feed.trailMaxPoints);
   const liveFeed = new LiveFeed({
     liveUrl: feed.liveUrl,
     wsUrl: feed.supportsWs ? `${feed.apiBase}/ws/live` : null,
@@ -560,6 +618,7 @@ function startSession(feed: Feed): FeedSession {
   const history = new HistoryBackfill(store, {
     apiBase: feed.apiBase,
     enabled: feed.supportsHistory,
+    windowMs: feed.backfillWindowMs,
   });
 
   const detachRoutePrefetcher = attachRouteBatchPrefetcher(store);
@@ -642,11 +701,17 @@ updateAcarsHud(null);
 // live session is paused and a HistoricalFeed drives the store from
 // the playback cursor. Switching back to live resumes the live feed.
 
-let historicalFeed: HistoricalFeed | null = null;
-const heatmapLayer = new HeatmapLayer(world.scene);
+let historicalFeed: HistoricalFeedType | null = null;
+let heatmapLayer: HeatmapLayerType | null = null;
+// Bumped on every enter/exit; in-flight `enterHistoricalMode` calls check
+// their captured token against the current value and bail if the user
+// pivoted away during the chunk load.
+let historicalEnterToken = 0;
+let historicalEnterInFlight = false;
 
-function enterHistoricalMode(ctx: TimeContext): void {
+async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
   if (!ctx.window) return;
+  const myToken = ++historicalEnterToken;
   // Pause live transport. stopSession handles the connectLoader dismissal,
   // the acars null-out, and route prefetcher teardown — avoids a double-stop
   // when exitHistoricalMode later calls stopSession on the same session.
@@ -654,7 +719,8 @@ function enterHistoricalMode(ctx: TimeContext): void {
   hudAcars.hidden = true;
   // ACARS browser stays open across mode switches if we don't close it,
   // leaving stale live messages visible during historical playback.
-  acarsBrowser.close();
+  // Modal was lazily mounted; if it was never opened there's nothing to close.
+  acarsBrowser?.close();
 
   store.clear();
   feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · loading…`;
@@ -662,7 +728,32 @@ function enterHistoricalMode(ctx: TimeContext): void {
   hudLive.dataset.state = 'stale';
   hudLive.textContent = 'historical';
 
-  historicalFeed = new HistoricalFeed({ apiBase: activeFeed.apiBase });
+  // Surface the bulk fetch with the centered loading card. Cleared on
+  // load completion or error so the world becomes interactive again.
+  let histLoader: LoadingHandle | null = showLoading(
+    'Loading historical',
+    formatWindowLabel(ctx.window)
+  );
+
+  // Pull in the historical playback + heatmap chunks lazily. Both are
+  // sizable (volumetric rendering, bulk-tracks decoder) and only matter
+  // once the user toggles historical mode.
+  const [historicalMod, heatmapMod] = await Promise.all([
+    import('./feed/historical'),
+    import('./world/heatmap'),
+  ]);
+  // User flipped back to live while the chunks were loading — abandon
+  // this enter without touching shared state. exitHistoricalMode already
+  // bumped the token to invalidate us.
+  if (myToken !== historicalEnterToken) {
+    if (histLoader) { histLoader.done(); histLoader = null; }
+    return;
+  }
+  if (!heatmapLayer) heatmapLayer = new heatmapMod.HeatmapLayer(world.scene);
+  const buildTrailUpTo = historicalMod.buildTrailUpTo;
+  const localHeatmap = heatmapLayer;
+
+  historicalFeed = new historicalMod.HistoricalFeed({ apiBase: activeFeed.apiBase });
   historicalFeed.subscribe((records, status) => {
     store.syncFromFeed(records);
     // Replace each live aircraft's trail with the real samples that
@@ -687,12 +778,6 @@ function enterHistoricalMode(ctx: TimeContext): void {
   // playback starts, so without a cheap idempotent check we'd rebuild
   // a million-segment LineSegments mesh on every frame.
   let lastBuildSignature: string | null = null;
-  // Surface the bulk fetch with the centered loading card. Cleared on
-  // load completion or error so the world becomes interactive again.
-  let histLoader: LoadingHandle | null = showLoading(
-    'Loading historical',
-    formatWindowLabel(ctx.window)
-  );
   historicalFeed.subscribeStatus((status) => {
     if (status.errored) {
       feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · error`;
@@ -711,7 +796,7 @@ function enterHistoricalMode(ctx: TimeContext): void {
     if (status.loaded && historicalFeed) {
       const sig = `${status.aircraftCount}`;
       if (sig !== lastBuildSignature) {
-        heatmapLayer.rebuildFromTracks(historicalFeed.getTracks());
+        localHeatmap.rebuildFromTracks(historicalFeed.getTracks());
         heatmapBuiltWindowKey = lastWindowKey;
         lastBuildSignature = sig;
       }
@@ -731,11 +816,13 @@ function formatWindowLabel(window: { startMs: number; endMs: number } | null): s
 }
 
 function exitHistoricalMode(): void {
+  // Invalidate any in-flight enterHistoricalMode that hasn't resolved yet.
+  ++historicalEnterToken;
   if (historicalFeed) {
     historicalFeed.stop();
     historicalFeed = null;
   }
-  heatmapLayer.clear();
+  heatmapLayer?.clear();
   store.clear();
   // enterHistoricalMode already called stopSession() to tear down the live
   // feed. Spin up a fresh session against the current feed instead of
@@ -757,29 +844,31 @@ subscribeTime((ctx) => {
   const windowKey = ctx.window ? `${ctx.window.startMs}|${ctx.window.endMs}` : null;
 
   if (ctx.mode === 'historical') {
-    if (!historicalFeed) {
-      enterHistoricalMode(ctx);
+    if (!historicalFeed && !historicalEnterInFlight) {
+      historicalEnterInFlight = true;
+      void enterHistoricalMode(ctx).finally(() => { historicalEnterInFlight = false; });
       lastWindowKey = windowKey;
-    } else if (windowKey !== lastWindowKey && ctx.window) {
+    } else if (historicalFeed && windowKey !== lastWindowKey && ctx.window) {
       void historicalFeed.start(ctx.window, ctx.cursorMs ?? undefined);
       lastWindowKey = windowKey;
-    } else if (ctx.cursorMs !== null) {
+    } else if (historicalFeed && ctx.cursorMs !== null) {
       historicalFeed.setCursor(ctx.cursorMs);
     }
 
     // Heatmap: build from the playback feed's loaded tracks (no
     // separate fetch). When the window changes the feed re-loads and
     // its status subscriber triggers a rebuild. Toggling visibility
-    // here is cheap — the geometry stays cached.
-    if (ctx.heatmap && historicalFeed && heatmapBuiltWindowKey !== windowKey) {
+    // here is cheap — the geometry stays cached. The null guard catches
+    // the brief gap between enter trigger and chunk-load completion.
+    if (heatmapLayer && ctx.heatmap && historicalFeed && heatmapBuiltWindowKey !== windowKey) {
       const tracks = historicalFeed.getTracks();
       if (tracks.size > 0) {
         heatmapLayer.rebuildFromTracks(tracks);
         heatmapBuiltWindowKey = windowKey;
       }
     }
-    heatmapLayer.setVisible(ctx.heatmap);
-  } else if (historicalFeed) {
+    heatmapLayer?.setVisible(ctx.heatmap);
+  } else if (historicalFeed || historicalEnterInFlight) {
     exitHistoricalMode();
     lastWindowKey = null;
     heatmapBuiltWindowKey = null;
@@ -808,6 +897,21 @@ subscribeSettings((s) => {
 if (initialSelectedHex) {
   aircraftList.setSelected(initialSelectedHex);
   applySelection(initialSelectedHex);
+  // Shared link → solo view. Apply the hex as a search filter so the
+  // rest of the fleet drops out of both the scene and the list, the way
+  // it would if the recipient had typed the identifier into the search
+  // box manually. The selected aircraft is exempt from passesFilter in
+  // both the reconciler and the list (`isSelected || passesFilter(a)`),
+  // so it stays visible regardless of the query. The recipient can
+  // clear the search input at the top of the list panel to bring the
+  // rest of the traffic back. Setting the input's .value programmatically
+  // doesn't fire 'input', so we call setSearchQuery directly to push
+  // the change into the filter singleton + list/reconciler subscribers.
+  const searchInput = document.getElementById('panel-search') as HTMLInputElement | null;
+  if (searchInput) {
+    searchInput.value = initialSelectedHex;
+  }
+  setSearchQuery(initialSelectedHex);
 }
 
 onFeedSwitch((next) => {
@@ -853,7 +957,7 @@ onFeedSwitch((next) => {
   //    local feed, tear it down for remote feeds (no false ATC coverage).
   syncVoicePanel();
 
-  heatmapLayer.clear();
+  heatmapLayer?.clear();
   heatmapBuiltWindowKey = null;
 });
 
