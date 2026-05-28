@@ -8,7 +8,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-27
+
 ### Added
+
+- **WebXR (Phase 5 — passthrough AR)** — a second action button,
+  *Enter AR*, requests an `immersive-ar` session on devices that
+  support it (Quest 3, Vision Pro). In passthrough mode the basemap,
+  sky, and fog all disappear so the headset's camera feed shows
+  through — aircraft float in your living room. `WebGLRenderer` now
+  constructs with `alpha: true` so the framebuffer can carry per-pixel
+  transparency; `world.setPassthrough()` swaps the scene's clear
+  state on session entry / exit. `XrState` gains `arSupported` and
+  `presentingMode`; the button auto-disables on devices without AR
+  support or when a VR session is already running.
+
+- **WebXR (Phase 4 — comfort locomotion)** —
+
+  - **Left thumbstick Y** scales `xrRoot` up and down on an
+    exponential curve, persisted via a new `Settings.vrScale` (range
+    0.001 to 1.0 — continent-on-a-desk to room-scale walking through
+    the airspace).
+  - **Right thumbstick X** snap-turns the world 30° around a vertical
+    axis through the user's head. Edge-triggered: one snap per push,
+    re-arms when the stick returns to centre. Comfort-first; no smooth
+    rotation.
+  - **Right A/X button** recenters `xrRoot` 1.5 m in front of and
+    0.5 m below the headset, rotation reset to zero. Useful after
+    physically wandering or after a snap-turn run.
+
+  Input reads from `XRSession.inputSources[].gamepad` directly each
+  frame — Three.js's `WebXRManager` doesn't surface gamepad axes /
+  buttons on the controller `Group`s, so the new `world/xr-locomotion`
+  module walks the session itself.
+
+- **WebXR (Phase 3 — in-VR wrist menu)** — a canvas-backed plane
+  attached to the left controller, tilted toward the eye like
+  checking a watch. Five rows — *Theme*, *Basemap*, *Range rings*,
+  *Labels*, *Alt lines* — each cycling or toggling its setting
+  through the existing `updateSettings` / `setTheme` singletons.
+  Redraws on every settings or theme change so the displayed value
+  always matches reality.
+
+  The right controller's laser hovers menu rows and the trigger
+  activates them. `world/xr-controllers.ts` gained an optional
+  `onSelectIntercept` callback so a hit on the menu suppresses the
+  aircraft pick that would otherwise fire on the same press, plus a
+  `getControllerByHandedness('left' | 'right')` getter so the menu
+  can attach to whichever physical controller the XR runtime reports
+  as the left hand (the index passed to `getController()` is just
+  connect order; handedness arrives lazily on the `connected`
+  XRInputSource event).
 
 - **WebXR (Phase 2 — controllers + picking + world billboard)** —
   builds on Phase 1's session pipeline:
