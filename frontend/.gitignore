@@ -5,4 +5,5 @@ tsconfig.tsbuildinfo
 .vite
 playwright-report
 test-results
+tests-e2e/screenshots
 coverage
