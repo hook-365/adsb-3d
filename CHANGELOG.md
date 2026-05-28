@@ -8,11 +8,114 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-28
+
+A frontend + backend performance and UX push. The headline goal was
+to make the Europe / Hetzner feed (~1500 contacts) feel as snappy
+as the local feed in both initial load and steady state, and to
+let survey aircraft and loitering tankers keep their full in-scope
+trails instead of being cut off at 10 minutes.
+
+### Added
+
+- **Click to extend trail.** Selecting any aircraft now lifts its
+  per-hex trail cap and triggers a 24 h history backfill, so a
+  single survey orbiting an airfield gets its full pattern even on
+  a busy feed. The per-hex cap survives the aircraft dropping out
+  and reappearing within the session.
+- **URL deep-link isolation.** Loading a shared `#hex` link now
+  also applies that hex as the search query, so the recipient
+  lands on just that aircraft and its trail. Clearing the search
+  box brings the rest of the fleet back.
+- **Per-feed trail policy.** The local feed defaults to unlimited
+  trail length with a 4 h history backfill window, so survey
+  aircraft and loitering tankers keep their full in-scope history.
+  Higher-density feeds keep the conservative 600-point cap and
+  30 min backfill.
+- **Stationary sample dedup.** Aircraft that haven't moved past the
+  jitter threshold only sample once per minute instead of once per
+  second, so a parked aircraft over 12 hours accumulates ~720
+  trail points instead of ~43k.
+- **Altitude inheritance.** The Aircraft record carries an
+  `altFtKnown` flag and the store keeps a per-hex last-known
+  altitude cache; transient frames that lack `alt_baro` and
+  `alt_geom` substitute the prior good altitude instead of
+  snapping the cone to ground. Historical backfill does the same
+  forward-inheritance walk during `parsePoints`.
+
 ### Changed
 
-- **Browser tab title** now reads `ADS-B 3D · {feed location}` instead
-  of the leftover `ADS-B 3D — Redesign` placeholder, and updates on
-  feed switch.
+- **Aircraft list is now virtualized.** Only rows inside the
+  scroll viewport (plus a small overscan) get real DOM. Initial
+  load on Europe is dramatically faster and scroll feels native
+  at any fleet size. Filter / sort / search changes re-target
+  scroll to keep the selected row in view; snapshot-only updates
+  leave scrollTop alone.
+- **Search filters the map.** Typing in the panel search box
+  now hides non-matching aircraft from the scene as well as the
+  list, matching the behavior of the MIL / GROUND / AIR / EMERG
+  filter buttons. Selected aircraft are exempt.
+- **Lazy-loaded feature modules.** The voice panel, historical
+  playback, heatmap layer, and ACARS browser modal are dynamic
+  imports now. They no longer ship in the cold-load bundle for
+  deployments (or sessions) that don't use them.
+- **Browser tab title** reads `ADS-B 3D · {feed location}` and
+  updates on feed switch.
+- **Backend `track-service`.** `/tracks/{hex}` and
+  `/tracks/bulk/timelapse` auto-downsample when `resolution=full`
+  is requested over a window wider than 4 hours; targets ~7200
+  points across the window, so a 24 h selection-extension call
+  returns ~700 kB instead of ~8.6 MB. asyncpg pool `max_size`
+  raised from 20 to 40 so multi-tab and bursty backfill traffic
+  no longer pushes the acquire timeout.
+
+### Fixed
+
+- **Invisible-aircraft clicks.** Three.js's raycaster doesn't
+  honor `Group.visible = false`, so invisible pick proxies inside
+  filtered-out aircraft were still registering hits. Clicking on
+  empty sky in MIL-filter mode no longer surfaces civilian
+  aircraft hiding underneath.
+- **Trails dipping to ground.** Transient upstream frames with
+  no altitude data used to snap the cone and trail to zero
+  altitude. The new altitude inheritance keeps the cone at its
+  last known altitude through the gap, both live and on backfill.
+
+### Performance
+
+The reconciler is the biggest contributor; together these changes
+take the steady-state per-frame cost on Europe from "noticeably
+laggy" to "indistinguishable from local".
+
+- Reconciler `syncFrame` gates per-aircraft work on per-hex `rev`
+  counters from the store. Most frames find every aircraft at the
+  same rev as last frame and skip the full refresh block.
+- `altitudeColorCached` / `altitudeColorStyleCached` return shared
+  `Color` instances and interned CSS strings bucketed by 250 ft
+  altitude steps. `refreshTrail`, `refreshColor`, `refreshLabel`
+  switched over, saving ~450 k `Color` allocations per second on
+  a busy feed.
+- Yaw quaternion math is cached against `lastTrackDeg` and shared
+  between the cone and the ground icon.
+- `updateLabelLOD` skips its per-entry pass when the camera hasn't
+  moved past a small epsilon since the last call.
+- Settings subscriber only walks the entry map when one of the
+  three visibility-relevant keys actually flipped.
+- **Label frustum culling.** Labels whose anchor is outside the
+  camera view are flipped to `visible = false` so
+  `CSS2DRenderer` skips them; a panned-in view on Europe does
+  ~150 DOM transform writes per render instead of ~1500.
+- **Growable + incremental trail buffers.** Trail buffer
+  allocations grow by doubling as needed. A fast path appends
+  only the new tail segments to existing buffer slots when the
+  trail's first sample is unchanged. A selected aircraft with a
+  multi-hour trail goes from rewriting the entire buffer every
+  refresh to writing one new segment.
+
+### Tests
+
+127 → 145 unit tests across reconciler / store / filter / altitude
+color / `parsePoints` altitude inheritance.
 
 ## [0.3.0] — 2026-05-27
 
