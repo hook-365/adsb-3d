@@ -40,12 +40,12 @@ The defining pattern is **inverted dataflow + a reconciler**:
 
 State is shared via **subscribe-pattern singletons**: a module-level singleton
 exposing `getX()` / `updateX()` / `subscribeX()` backed by a listener `Set`.
-No reactivity library. Examples: `core/settings.ts`, `core/time-context.ts`,
-`core/filter.ts`, `feed/feeds.ts`, `feed/voice-calls.ts`,
-`aircraft/acars-store.ts`.
+No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
+`core/time-context.ts`, `core/filter.ts`, `feed/feeds.ts`,
+`feed/voice-calls.ts`, `aircraft/acars-store.ts`.
 
 `src/` directories:
-- `core/` — `settings`, `filter`, `time-context`, `units`, `coords`,
+- `core/` — `settings`, `theme`, `filter`, `time-context`, `units`, `coords`,
   `url-state`, `config`, `types`.
 - `feed/` — data sources: `live`, `historical`, `history`, `acars`, `routes`,
   `feeds` (multi-feed switching), `voice-calls`, `normalize`.
@@ -66,6 +66,24 @@ No reactivity library. Examples: `core/settings.ts`, `core/time-context.ts`,
 
 Settings persist to `localStorage` and are merged against `DEFAULTS` on load,
 so a payload from an older version never drops new keys.
+
+### Adding a theme
+
+Themes are `ThemeTokens` objects in `core/theme.ts`. Each defines ~25 base
+hex colors; CSS uses `color-mix(in srgb, var(--token) NN%, transparent)` at
+the use-site for all opacity variants, so a theme never has to enumerate
+every tint. Three.js materials live under `three.*` on the token object
+and are bridged in `world/scene.ts` + `aircraft/reconciler.ts` (sky,
+range rings, home marker, trail/selection/emergency/ACARS-ping materials)
+which subscribe and mutate `.color` in place — no scene rebuild on switch.
+The altitude color ramp (`core/altitude-color.ts`) is **not** themed —
+it's a data convention shared with the heatmap.
+
+1. Add a `ThemeTokens` entry to `THEMES` in `core/theme.ts` (every key,
+   including `three.*`). Copy `midnightGlassTokens` as a starting point.
+2. Add a `THEME_OPTIONS` entry so the settings picker shows it.
+3. The drift-guard test (`tests-unit/theme.test.ts`) will fail if any
+   token is missing or extra.
 
 ## Backend services
 
@@ -90,6 +108,12 @@ features get dummy upstreams so the generated nginx config is always valid.
   nginx proxy blocks. Slot 1 is always the local feed.
 - The voice scanner is **call-based** (one audio clip per radio transmission)
   and **local-feed-only** — see `docs/VOICE.md`.
+- **FAA chart tiles** (sectional, IFR, helicopter): `entrypoint.sh` scrapes
+  `vfrmap.com/js/map.js` at boot to discover the current 56-day chart cycle
+  date, exports it as `${VFRMAP_CYCLE}`, and envsubst bakes it into the
+  nginx tile-proxy URLs. A scrape failure is non-fatal — the chart proxies
+  fall through to 404 cleanly while everything else keeps working. The
+  container needs an occasional restart (~monthly) to pick up new cycles.
 
 ## Dev workflow
 

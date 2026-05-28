@@ -6,7 +6,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.2.0] — 2026-05-27
+
+### Added
+
+- **Color themes** — five palettes selectable from a new "Theme" section at
+  the top of the settings panel:
+  - **Midnight Glass** (default) — the original cyan-on-navy glass look.
+  - **Daylight** — high-contrast light mode with deep cyan accents; good
+    for projector / daytime use.
+  - **Sectional Chart** — FAA VFR aesthetic with parchment background,
+    Class B magenta and Class C/D blue. Pairs naturally with the new
+    sectional basemaps below.
+  - **Phosphor CRT** — green-on-black radar/scope look with amber warnings
+    and CSS-driven phosphor bloom on text.
+  - **High Contrast** — WCAG-AA palette, zero blur, opaque black panels,
+    pure-saturation accents.
+
+  `Auto` (the default) follows `prefers-color-scheme` and flips between
+  Midnight Glass and Daylight live as your system theme changes. Theme
+  choice persists per browser via the existing `Settings` store. Three.js
+  materials (range rings, selection ring, emergency halo, ACARS ping) update
+  in place — no scene rebuild — so switching is instant. The altitude color
+  ramp (`core/altitude-color.ts`) is deliberately **not** themed; it's a
+  data convention shared with the heatmap.
+
+- **FAA aeronautical chart basemaps** — five US chart layers served via
+  [vfrmap.com](https://vfrmap.com): Sectional, Sectional + OSM road overlay,
+  Helicopter, IFR Low enroute, IFR High enroute. Pick from
+  `Settings → Display → Basemap`. US coverage only.
+
+  The container discovers the current FAA 56-day chart cycle date at boot
+  by scraping vfrmap.com's frontend JS, exports it as `${VFRMAP_CYCLE}`,
+  and bakes it into the nginx tile-proxy URLs via envsubst. Scrape failure
+  is non-fatal (sectional tiles 404 cleanly while every other basemap keeps
+  working). Restarting the container monthly keeps charts current; without
+  a restart, tiles will start 404'ing after the upstream rotates (~8 weeks).
+
+### Changed
+
+- **`frontend/src/style.css` tokenized** — every color literal now reads
+  from a `--token` CSS custom property, with opacity tints produced at
+  use-site via `color-mix(in srgb, var(--token) NN%, transparent)`. Themes
+  define ~25 base hex colors and every shade, border, and glow re-derives
+  automatically. Zero visual change in Midnight Glass.
+
+- **Theme tokens live in `core/theme.ts`** — singleton with `getTheme()` /
+  `setTheme()` / `subscribeTheme()` matching the project's existing
+  subscribe-pattern (see `core/settings.ts`, `core/filter.ts`). The token
+  set is enforced across themes by a Vitest drift guard
+  (`tests-unit/theme.test.ts`).
+
+## [0.1.1] — 2026-05-22
 
 ### Fixed
 

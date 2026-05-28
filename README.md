@@ -44,6 +44,18 @@ message lands for an aircraft on scope.
 **Multi-feed** — point at several receivers and the status bar grows a
 feed picker. Switching is in-place — no page reload.
 
+**Themes** — five built-in palettes (Midnight Glass, Daylight, Sectional
+Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
+`Auto` follows your system light/dark preference. Switching is live; the
+3D scene re-tints in place. Plays especially well with the FAA chart
+basemaps below.
+
+**FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
+IFR High, and a sectional + roads hybrid, served through the same tile
+proxy as the regular basemaps. The container auto-discovers the current
+FAA 56-day chart cycle at start, so the upstream URL stays valid through
+each rotation as long as you restart the container occasionally.
+
 **Voice scanner** (needs a separate voice stack) — an optional VHF
 airband call feed, shown only on the local feed. See
 [docs/VOICE.md](docs/VOICE.md).
@@ -248,6 +260,9 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 - **planespotters.net** — aircraft photographs in the detail panel.
 - **adsb.im** — callsign → route resolution.
 - **OpenStreetMap, Carto, ESRI, OpenTopoMap** — basemap tile providers.
+- **[VFRMap](https://vfrmap.com)** — hosting for FAA Sectional / Helicopter
+  / IFR Low / IFR High chart tiles, kept in sync with the FAA 56-day cycle.
+  Free non-commercial service; please don't abuse it.
 
 ## License
 
