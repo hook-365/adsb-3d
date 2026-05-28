@@ -253,6 +253,11 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.4.0** (2026-05-28): Performance + UX push for high-density
+  feeds. Virtualized aircraft list, click-to-extend trails with 24 h
+  backfill, search filters the scene as well as the list, lazy-loaded
+  feature modules, and a long list of reconciler / trail / bundle
+  optimizations.
 - **v0.3.0** (2026-05-27): WebXR for real headsets (experimental), with
   controllers, an in-VR wrist menu, locomotion, and AR passthrough.
 - **v0.2.0** (2026-05-27): Five color themes (auto-follows system
