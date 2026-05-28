@@ -4,11 +4,13 @@ import {
   Color,
   ConeGeometry,
   DoubleSide,
+  Frustum,
   Group,
   Line,
   LineBasicMaterial,
   LineDashedMaterial,
   LineSegments,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -27,7 +29,7 @@ import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { passesFilter } from '../core/filter';
-import { altitudeColor } from '../core/altitude-color';
+import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -73,7 +75,13 @@ function staleness(ageMs: number): number {
 // across all aircraft because the per-aircraft / per-altitude color is
 // supplied via vertex attributes.
 const TRAIL_GAP_THRESHOLD_MS = 30_000;
-const TRAIL_SEG_VERT_CAPACITY = (TRAIL_CAPACITY - 1) * 2;
+// Initial per-side vertex capacity for each aircraft's trail buffer. Sized
+// to comfortably hold the default 600-point cap; aircraft whose feed
+// allows longer trails (e.g. the local feed at unlimited) grow past this
+// via growTrailBuffer when refreshTrail needs more room. Bounded-cap feeds
+// saturate at this size and never grow.
+const INITIAL_TRAIL_CAPACITY_VERTS = (TRAIL_CAPACITY - 1) * 2;
+const DYNAMIC_DRAW_USAGE = 35048;
 const TRAIL_MAT_SOLID = new LineBasicMaterial({
   vertexColors: true,
   transparent: true,
@@ -136,6 +144,39 @@ interface RenderEntry {
   lastLabelOpacity: number;
   isMilitary: boolean;
   isSelected: boolean;
+  // Per-frame skip gates. lastRev tracks the store's record rev for this
+  // hex; when it matches the current rev, refreshColor/applyTransform/
+  // refreshLabel and emergency/selection ring placement are all skipped
+  // because nothing visible has changed. lastTrailRev gates refreshTrail
+  // similarly. lastStaleness caches the most recently assigned opacity so
+  // we skip material mutations when the wall-clock fade hasn't drifted.
+  lastRev: number;
+  lastTrailRev: number;
+  lastStaleness: number;
+  // Yaw cache: skip rebuilding the cone + icon quaternions when trackDeg
+  // matches the last value applied. NaN sentinel forces a write on the
+  // first applyTransform (no real trackDeg ever equals NaN).
+  lastTrackDeg: number;
+  // Current per-side trail buffer capacity in vertices. growTrailBuffer
+  // bumps these when an unlimited-cap feed (or a per-aircraft extended
+  // selection) outgrows the initial allocation.
+  solidCapacityVerts: number;
+  dashedCapacityVerts: number;
+  // State for refreshTrail's incremental tail-append fast path. When the
+  // trail's first sample is unchanged since last refresh and only new
+  // points were added at the tail, we resume writing from these saved
+  // indices instead of rewalking all N points. NaN sentinels and 0
+  // indices force a full rebuild on first refresh / after mergeHistory.
+  lastTrailFirstMs: number;
+  lastTrailLastMs: number;
+  lastTrailLastX: number;
+  lastTrailLastY: number;
+  lastTrailLastZ: number;
+  lastTrailLastR: number;
+  lastTrailLastG: number;
+  lastTrailLastB: number;
+  lastSolidIdx: number;
+  lastDashedIdx: number;
 }
 
 // Ground-projected aircraft shape icon. Sized in scene units; per-aircraft
@@ -203,7 +244,6 @@ function aircraftLabelClass(a: Aircraft): string {
 const tmpPos = new Vector3();
 const tmpGround = new Vector3();
 const tmpTrail = new Vector3();
-const tmpColor = new Color();
 
 function buildTrailLine(material: LineBasicMaterial | LineDashedMaterial): {
   line: LineSegments;
@@ -211,24 +251,54 @@ function buildTrailLine(material: LineBasicMaterial | LineDashedMaterial): {
   col: BufferAttribute;
 } {
   const geom = new BufferGeometry();
-  const pos = new BufferAttribute(new Float32Array(TRAIL_SEG_VERT_CAPACITY * 3), 3);
-  pos.setUsage(35048 /* DynamicDrawUsage */);
-  const col = new BufferAttribute(new Float32Array(TRAIL_SEG_VERT_CAPACITY * 3), 3);
-  col.setUsage(35048 /* DynamicDrawUsage */);
+  const pos = new BufferAttribute(new Float32Array(INITIAL_TRAIL_CAPACITY_VERTS * 3), 3);
+  pos.setUsage(DYNAMIC_DRAW_USAGE);
+  const col = new BufferAttribute(new Float32Array(INITIAL_TRAIL_CAPACITY_VERTS * 3), 3);
+  col.setUsage(DYNAMIC_DRAW_USAGE);
   geom.setAttribute('position', pos);
   geom.setAttribute('color', col);
   geom.setDrawRange(0, 0);
   const line = new LineSegments(geom, material);
+  // frustumCulled=false skips three.js's per-frame frustum test against the
+  // bounding sphere — trails span large bounding volumes anyway and the
+  // alternative (computing the sphere over a growable buffer with unused
+  // tail) is both wrong and expensive.
   line.frustumCulled = false;
   return { line, pos, col };
+}
+
+// Replace one side's (pos, col) BufferAttributes on the trail geometry
+// with larger allocations when `requiredVerts` exceeds current capacity.
+// Doubles the buffer size to amortize the cost of subsequent growths.
+// Three.js doesn't have a native resize for BufferAttribute, so we
+// allocate fresh Float32Arrays and re-bind via setAttribute. refreshTrail
+// rewrites the entire trail after a grow, so we don't bother copying old
+// vertex data — it would only be partially valid anyway with the dashed/
+// solid side split potentially shifting.
+function growTrailBuffer(
+  line: LineSegments,
+  currentVerts: number,
+  requiredVerts: number,
+): { pos: BufferAttribute; col: BufferAttribute; verts: number } | null {
+  if (requiredVerts <= currentVerts) return null;
+  const newVerts = Math.max(currentVerts * 2, requiredVerts);
+  const pos = new BufferAttribute(new Float32Array(newVerts * 3), 3);
+  pos.setUsage(DYNAMIC_DRAW_USAGE);
+  const col = new BufferAttribute(new Float32Array(newVerts * 3), 3);
+  col.setUsage(DYNAMIC_DRAW_USAGE);
+  line.geometry.setAttribute('position', pos);
+  line.geometry.setAttribute('color', col);
+  return { pos, col, verts: newVerts };
 }
 
 function buildEntry(a: Aircraft): RenderEntry {
   // Cone, ground icon, and trail use the plain altitude palette regardless
   // of military status — military traffic now reads via the label color
   // (red) rather than recoloring the whole aircraft. Keeps altitude as the
-  // primary visual hue cue everywhere.
-  const headColor = altitudeColor(a.altFt, false, a.onGround);
+  // primary visual hue cue everywhere. The cached lookup returns a shared
+  // instance; the material constructors copy it into their own Color so
+  // there's no aliasing back into the cache.
+  const headColor = altitudeColorCached(a.altFt, false, a.onGround);
 
   const material = new MeshStandardMaterial({
     color: headColor,
@@ -365,7 +435,23 @@ function buildEntry(a: Aircraft): RenderEntry {
     lastLabelColor: '',
     lastLabelOpacity: -1,
     isMilitary: a.military,
-    isSelected: false
+    isSelected: false,
+    lastRev: 0,
+    lastTrailRev: 0,
+    lastStaleness: -1,
+    lastTrackDeg: Number.NaN,
+    solidCapacityVerts: INITIAL_TRAIL_CAPACITY_VERTS,
+    dashedCapacityVerts: INITIAL_TRAIL_CAPACITY_VERTS,
+    lastTrailFirstMs: Number.NaN,
+    lastTrailLastMs: 0,
+    lastTrailLastX: 0,
+    lastTrailLastY: 0,
+    lastTrailLastZ: 0,
+    lastTrailLastR: 0,
+    lastTrailLastG: 0,
+    lastTrailLastB: 0,
+    lastSolidIdx: 0,
+    lastDashedIdx: 0
   };
 }
 
@@ -381,9 +467,10 @@ function refreshLabel(entry: RenderEntry, a: Aircraft): void {
     entry.lastLabelClass = cls;
   }
   // Tint the label text with the same altitude palette the cone, ground
-  // icon, and trail use. Cached so we only touch the inline style when
-  // it actually changes (most labels read steady at cruise altitude).
-  const colorStr = altitudeColor(a.altFt, a.military, a.onGround).getStyle();
+  // icon, and trail use. The style cache returns interned CSS strings
+  // bucketed by altitude, so most labels at cruise hit a per-aircraft
+  // identity check rather than allocating a new string each refresh.
+  const colorStr = altitudeColorStyleCached(a.altFt, a.military, a.onGround);
   if (colorStr !== entry.lastLabelColor) {
     entry.labelEl.style.color = colorStr;
     entry.lastLabelColor = colorStr;
@@ -397,10 +484,18 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
 
   entry.cone.position.copy(tmpPos);
 
-  if (a.trackDeg !== null) {
+  // Compute yaw once, share between cone + ground icon. Skip the whole
+  // quaternion math when heading hasn't changed since the last refresh —
+  // a cruising aircraft holds a steady track for many position updates,
+  // and the previous quaternion is still correct in that case.
+  if (a.trackDeg !== null && a.trackDeg !== entry.lastTrackDeg) {
     const yaw = -((a.trackDeg * Math.PI) / 180);
     const half = yaw / 2;
-    entry.cone.quaternion.set(0, Math.sin(half), 0, Math.cos(half));
+    const sinH = Math.sin(half);
+    const cosH = Math.cos(half);
+    entry.cone.quaternion.set(0, sinH, 0, cosH);
+    if (entry.iconRotates) entry.iconMesh.quaternion.set(0, sinH, 0, cosH);
+    entry.lastTrackDeg = a.trackDeg;
   }
 
   const altPos = entry.altLine.geometry.getAttribute('position') as BufferAttribute;
@@ -411,21 +506,18 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
   entry.cone.scale.setScalar(s);
 
-  // Place the ground icon at the foot of the altitude line and yaw it to
-  // match the aircraft's heading. Non-rotating shapes (balloon, tower)
-  // stay axis-aligned regardless of track.
+  // Ground icon position follows the aircraft's lat/lon foot regardless of
+  // whether heading changed — its quaternion was either updated above or
+  // is already correct from a prior frame.
   entry.iconMesh.position.set(tmpGround.x, ICON_GROUND_Y, tmpGround.z);
-  if (entry.iconRotates && a.trackDeg !== null) {
-    const yaw = -((a.trackDeg * Math.PI) / 180);
-    const half = yaw / 2;
-    entry.iconMesh.quaternion.set(0, Math.sin(half), 0, Math.cos(half));
-  }
 }
 
 function refreshColor(entry: RenderEntry, a: Aircraft): void {
   // Cone + icon track altitude only; military distinction lives on the
-  // label color so altitude hue stays consistent across the fleet.
-  const c = altitudeColor(a.altFt, false, a.onGround);
+  // label color so altitude hue stays consistent across the fleet. The
+  // cached lookup returns a shared Color instance — copy from it, never
+  // mutate it.
+  const c = altitudeColorCached(a.altFt, false, a.onGround);
   entry.material.color.copy(c);
   entry.material.emissive.copy(c).multiplyScalar(0.35);
   entry.iconMaterial.color.copy(c);
@@ -437,13 +529,146 @@ function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): vo
     entry.trailSolid.geometry.setDrawRange(0, 0);
     entry.trailDashed.geometry.setDrawRange(0, 0);
     entry.lastTrailLength = 0;
+    entry.lastSolidIdx = 0;
+    entry.lastDashedIdx = 0;
+    entry.lastTrailFirstMs = Number.NaN;
     return;
+  }
+
+  const n = points.length;
+  const firstMs = points[0]!.ms;
+
+  // Fast path: trail grew only at the tail (firstMs unchanged, length up).
+  // Skips the per-point walk over the old portion of the trail, writing
+  // only the newly-arrived segments to the existing buffer slots. This is
+  // the common case post-Phase-1 since refreshTrail only fires when the
+  // store's trailRev advances and the typical mutation is appendTrail.
+  if (
+    entry.lastTrailLength >= 2 &&
+    n > entry.lastTrailLength &&
+    firstMs === entry.lastTrailFirstMs &&
+    tryAppendTrailTail(entry, points, n)
+  ) {
+    return;
+  }
+
+  // Slow path: first refresh, mergeHistory prepended, setTrail replaced,
+  // head was trimmed by a bounded cap, or the fast path bailed because
+  // a buffer grow would lose the existing data.
+  rebuildTrailFull(entry, points, n, firstMs);
+}
+
+// Returns true on a successful tail-append; false if the new segments
+// would overflow the current buffer capacity (caller falls through to
+// rebuildTrailFull which handles buffer growth + full rewrite).
+function tryAppendTrailTail(entry: RenderEntry, points: readonly { lat: number; lon: number; altFt: number; ms: number }[], n: number): boolean {
+  // Incremental pre-pass over only the new tail to size capacity needs.
+  let extraSolid = 0;
+  let extraDashed = 0;
+  {
+    let prevMs = entry.lastTrailLastMs;
+    for (let i = entry.lastTrailLength; i < n; i++) {
+      const curMs = points[i]!.ms;
+      if (curMs - prevMs >= TRAIL_GAP_THRESHOLD_MS) extraDashed += 2;
+      else extraSolid += 2;
+      prevMs = curMs;
+    }
+  }
+  // BufferAttribute swap-out doesn't copy old contents (the slow path
+  // rewrites everything afterward, so it doesn't need to). For the fast
+  // path, that means a grow event has to bail to the slow path or we'd
+  // lose the existing portion of the trail.
+  if (
+    entry.lastSolidIdx + extraSolid > entry.solidCapacityVerts ||
+    entry.lastDashedIdx + extraDashed > entry.dashedCapacityVerts
+  ) {
+    return false;
+  }
+
+  let solidIdx = entry.lastSolidIdx;
+  let dashedIdx = entry.lastDashedIdx;
+  let prevX = entry.lastTrailLastX;
+  let prevY = entry.lastTrailLastY;
+  let prevZ = entry.lastTrailLastZ;
+  let prevR = entry.lastTrailLastR;
+  let prevG = entry.lastTrailLastG;
+  let prevB = entry.lastTrailLastB;
+  let prevMs = entry.lastTrailLastMs;
+
+  for (let i = entry.lastTrailLength; i < n; i++) {
+    const p = points[i]!;
+    toScene(p.lat, p.lon, p.altFt, tmpTrail);
+    const cur = altitudeColorCached(p.altFt, false);
+    const dt = p.ms - prevMs;
+    const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
+    const pos = dashed ? entry.dashedPos : entry.solidPos;
+    const col = dashed ? entry.dashedCol : entry.solidCol;
+    const idx = dashed ? dashedIdx : solidIdx;
+    pos.setXYZ(idx, prevX, prevY, prevZ);
+    col.setXYZ(idx, prevR, prevG, prevB);
+    pos.setXYZ(idx + 1, tmpTrail.x, tmpTrail.y, tmpTrail.z);
+    col.setXYZ(idx + 1, cur.r, cur.g, cur.b);
+    if (dashed) dashedIdx += 2; else solidIdx += 2;
+    prevX = tmpTrail.x; prevY = tmpTrail.y; prevZ = tmpTrail.z;
+    prevR = cur.r; prevG = cur.g; prevB = cur.b;
+    prevMs = p.ms;
+  }
+
+  entry.lastTrailLength = n;
+  entry.lastSolidIdx = solidIdx;
+  entry.lastDashedIdx = dashedIdx;
+  entry.lastTrailLastX = prevX;
+  entry.lastTrailLastY = prevY;
+  entry.lastTrailLastZ = prevZ;
+  entry.lastTrailLastR = prevR;
+  entry.lastTrailLastG = prevG;
+  entry.lastTrailLastB = prevB;
+  entry.lastTrailLastMs = prevMs;
+
+  entry.solidPos.needsUpdate = true;
+  entry.solidCol.needsUpdate = true;
+  entry.dashedPos.needsUpdate = true;
+  entry.dashedCol.needsUpdate = true;
+  entry.trailSolid.geometry.setDrawRange(0, solidIdx);
+  entry.trailDashed.geometry.setDrawRange(0, dashedIdx);
+  if (dashedIdx > 0) entry.trailDashed.computeLineDistances();
+  return true;
+}
+
+function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lon: number; altFt: number; ms: number }[], n: number, firstMs: number): void {
+  // Pre-pass: count how many vertices each side actually needs. The
+  // solid/dashed split depends on the time gap between consecutive samples,
+  // so we have to classify before writing. The pass is cheap (one
+  // subtraction + compare per segment) and lets growTrailBuffer allocate
+  // each side only as much as required — saves memory vs. the worst-case
+  // "every segment could be either side" sizing.
+  let neededSolidVerts = 0;
+  let neededDashedVerts = 0;
+  {
+    let prevMs = points[0]!.ms;
+    for (let i = 1; i < n; i++) {
+      const curMs = points[i]!.ms;
+      if (curMs - prevMs >= TRAIL_GAP_THRESHOLD_MS) neededDashedVerts += 2;
+      else neededSolidVerts += 2;
+      prevMs = curMs;
+    }
+  }
+  const grownSolid = growTrailBuffer(entry.trailSolid, entry.solidCapacityVerts, neededSolidVerts);
+  if (grownSolid) {
+    entry.solidPos = grownSolid.pos;
+    entry.solidCol = grownSolid.col;
+    entry.solidCapacityVerts = grownSolid.verts;
+  }
+  const grownDashed = growTrailBuffer(entry.trailDashed, entry.dashedCapacityVerts, neededDashedVerts);
+  if (grownDashed) {
+    entry.dashedPos = grownDashed.pos;
+    entry.dashedCol = grownDashed.col;
+    entry.dashedCapacityVerts = grownDashed.verts;
   }
 
   // Walk consecutive pairs; classify each as a solid or dashed line segment
   // based on the time gap between samples. Each vertex is colored by the
   // tar1090 altitude palette for that point's own altitude (no fade).
-  const n = points.length;
   let solidIdx = 0;
   let dashedIdx = 0;
 
@@ -451,16 +676,19 @@ function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): vo
   {
     const p0 = points[0]!;
     toScene(p0.lat, p0.lon, p0.altFt, tmpTrail);
-    tmpColor.copy(altitudeColor(p0.altFt, false));
+    // altitudeColorCached returns a shared Color instance bucketed by
+    // altitude — read .r/.g/.b directly into locals so we never have to
+    // copy through a tmp Color.
+    const c0 = altitudeColorCached(p0.altFt, false);
     prevX = tmpTrail.x; prevY = tmpTrail.y; prevZ = tmpTrail.z;
-    prevR = tmpColor.r; prevG = tmpColor.g; prevB = tmpColor.b;
+    prevR = c0.r; prevG = c0.g; prevB = c0.b;
     prevMs = p0.ms;
   }
 
   for (let i = 1; i < n; i++) {
     const p = points[i]!;
     toScene(p.lat, p.lon, p.altFt, tmpTrail);
-    tmpColor.copy(altitudeColor(p.altFt, false));
+    const cur = altitudeColorCached(p.altFt, false);
     const dt = p.ms - prevMs;
     const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
 
@@ -470,23 +698,29 @@ function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): vo
     pos.setXYZ(idx, prevX, prevY, prevZ);
     col.setXYZ(idx, prevR, prevG, prevB);
     pos.setXYZ(idx + 1, tmpTrail.x, tmpTrail.y, tmpTrail.z);
-    col.setXYZ(idx + 1, tmpColor.r, tmpColor.g, tmpColor.b);
+    col.setXYZ(idx + 1, cur.r, cur.g, cur.b);
     if (dashed) dashedIdx += 2; else solidIdx += 2;
 
     prevX = tmpTrail.x; prevY = tmpTrail.y; prevZ = tmpTrail.z;
-    prevR = tmpColor.r; prevG = tmpColor.g; prevB = tmpColor.b;
+    prevR = cur.r; prevG = cur.g; prevB = cur.b;
     prevMs = p.ms;
   }
 
-  // Only recompute bounding spheres when the trail point count changed;
-  // they are otherwise unchanged each frame and the recompute is O(n).
-  const trailDirty = n !== entry.lastTrailLength;
   entry.lastTrailLength = n;
+  entry.lastTrailFirstMs = firstMs;
+  entry.lastSolidIdx = solidIdx;
+  entry.lastDashedIdx = dashedIdx;
+  entry.lastTrailLastX = prevX;
+  entry.lastTrailLastY = prevY;
+  entry.lastTrailLastZ = prevZ;
+  entry.lastTrailLastR = prevR;
+  entry.lastTrailLastG = prevG;
+  entry.lastTrailLastB = prevB;
+  entry.lastTrailLastMs = prevMs;
 
   entry.solidPos.needsUpdate = true;
   entry.solidCol.needsUpdate = true;
   entry.trailSolid.geometry.setDrawRange(0, solidIdx);
-  if (trailDirty) entry.trailSolid.geometry.computeBoundingSphere();
 
   entry.dashedPos.needsUpdate = true;
   entry.dashedCol.needsUpdate = true;
@@ -494,31 +728,82 @@ function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): vo
   if (dashedIdx > 0) {
     entry.trailDashed.computeLineDistances();
   }
-  if (trailDirty) entry.trailDashed.geometry.computeBoundingSphere();
+  // No computeBoundingSphere here: line.frustumCulled is false so the
+  // sphere is never read, and our growable buffer has zeroed tail bytes
+  // that would corrupt it anyway. setDrawRange is the only thing the
+  // renderer needs to know about what to draw.
 }
+
+// Squared epsilon (scene units) — below this the camera is treated as
+// stationary for the purposes of label LOD recompute. The label LOD pass
+// reads aircraft positions, but with positions only changing at trailRev
+// advance (~1Hz per aircraft) a stationary camera + stationary aircraft
+// means the previous opacity values are still correct.
+const CAMERA_IDLE_EPS_SQ = 0.05;
 
 export class AircraftReconciler {
   private readonly entries = new Map<string, RenderEntry>();
   private readonly camPos = new Vector3();
   private selectedHex: string | null = null;
+  // Last camera position seen by updateLabelLOD. NaN sentinel forces the
+  // first call to run the full pass.
+  private lastCamX = Number.NaN;
+  private lastCamY = Number.NaN;
+  private lastCamZ = Number.NaN;
+  // Set by syncFrame whenever an entry is added or removed, so the next
+  // updateLabelLOD bypasses the camera-idle skip and assigns opacities
+  // for the new entry / drops them for the dropped one.
+  private lodDirty = false;
+  // Previous settings values; the subscriber below only touches per-entry
+  // visibility for keys that actually changed, so a theme toggle doesn't
+  // walk 1500 entries to apply the same groundSprites value as last frame.
+  private prevGroundSprites: boolean;
+  private prevAltitudeLines: boolean;
+  private prevAircraftLabels: boolean;
+
+  // Frustum + matrix scratch space for updateLabelLOD. Allocating once at
+  // construction (not per-frame) keeps the LOD pass allocation-free.
+  private readonly frustum = new Frustum();
+  private readonly projScreenMatrix = new Matrix4();
 
   constructor(
     private readonly store: AircraftStore,
     private readonly root: Object3D,
-    private readonly camera: { position: Vector3 }
+    // Camera widened from `{ position }` to the matrices we need for
+    // frustum culling in updateLabelLOD. PerspectiveCamera (the actual
+    // type passed by main.ts) supplies all of these.
+    private readonly camera: {
+      position: Vector3;
+      projectionMatrix: Matrix4;
+      matrixWorld: Matrix4;
+      matrixWorldInverse: Matrix4;
+      updateMatrixWorld(): void;
+    }
   ) {
-    // Ground icon visibility + aircraft label visibility are both
-    // session-global settings; re-apply across all entries on change.
-    // updateLabelLOD reads the labels flag live (via getSettings()) so
-    // distance-based fading still runs when labels are on.
+    const s0 = getSettings();
+    this.prevGroundSprites = s0.groundSprites;
+    this.prevAltitudeLines = s0.altitudeLines;
+    this.prevAircraftLabels = s0.aircraftLabels;
+    // Settings can change for many reasons (theme, range rings, units...);
+    // most of those are irrelevant to per-entry visibility. Walk the entry
+    // map only when one of the three keys this loop actually cares about
+    // has flipped since last time. Saves an N-entry sweep on every
+    // unrelated settings toggle.
     // Unsubscribe handle intentionally discarded — the reconciler is a
     // page-lifetime singleton so there is no teardown path that calls it.
     subscribeSettings((s) => {
+      const gsChanged = s.groundSprites !== this.prevGroundSprites;
+      const alChanged = s.altitudeLines !== this.prevAltitudeLines;
+      const labChanged = s.aircraftLabels !== this.prevAircraftLabels;
+      if (!gsChanged && !alChanged && !labChanged) return;
       for (const entry of this.entries.values()) {
-        entry.iconMesh.visible = s.groundSprites;
-        entry.altLine.visible = s.altitudeLines;
-        if (!s.aircraftLabels) entry.label.visible = false;
+        if (gsChanged) entry.iconMesh.visible = s.groundSprites;
+        if (alChanged) entry.altLine.visible = s.altitudeLines;
+        if (labChanged && !s.aircraftLabels) entry.label.visible = false;
       }
+      this.prevGroundSprites = s.groundSprites;
+      this.prevAltitudeLines = s.altitudeLines;
+      this.prevAircraftLabels = s.aircraftLabels;
     });
   }
 
@@ -564,7 +849,15 @@ export class AircraftReconciler {
     for (const hit of hits) {
       const ud = hit.object.userData as { kind?: string; hex?: string } | undefined;
       if (!ud?.hex) continue;
-      if (ud.kind === 'aircraft-pick' || ud.kind === 'aircraft-icon') return ud.hex;
+      if (ud.kind !== 'aircraft-pick' && ud.kind !== 'aircraft-icon') continue;
+      // three.js's raycaster does not skip subtrees whose parent Group has
+      // `visible = false`, so the invisible pick proxies inside filtered-out
+      // aircraft still register hits. Verify the entry is actually rendered
+      // before returning it; otherwise clicking on empty sky in MIL-filter
+      // mode would still surface civilian aircraft hiding underneath.
+      const entry = this.entries.get(ud.hex);
+      if (!entry || !entry.group.visible) continue;
+      return ud.hex;
     }
     return null;
   }
@@ -579,12 +872,23 @@ export class AircraftReconciler {
     // Render selected trail on top so it doesn't z-fight with neighbors.
     entry.trailSolid.renderOrder = selected ? 4 : 0;
     entry.trailDashed.renderOrder = selected ? 4 : 0;
+    // Position the selection ring at the cone's current ground projection.
+    // syncFrame only updates ring position when the per-aircraft rev
+    // advances, so selecting a static aircraft (rev unchanged for many
+    // frames) needs this seed here or the ring would render at (0,0,0).
+    if (selected) {
+      entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
+    }
   }
 
   /**
-   * Distance-based label LOD. Threshold scales with how far the camera is
-   * from the origin (a stand-in for zoom level), and labels fade out over
-   * the last 20% of that range. Military aircraft always show.
+   * Label LOD pass: combines camera-frustum culling with distance-based
+   * fade. Runs in one loop so each entry pays one in/out check before any
+   * style writes. The frustum cull is the load-bearing optimization on
+   * busy feeds — CSS2DRenderer would otherwise project + style-write
+   * every visible CSS2DObject every frame regardless of whether it lands
+   * on-screen, which adds up to tens of thousands of DOM mutations per
+   * second at Europe-scale aircraft counts.
    */
   updateLabelLOD(): void {
     const settings = getSettings();
@@ -593,43 +897,69 @@ export class AircraftReconciler {
       // Per-entry .visible was already cleared by the settings subscriber.
       return;
     }
-    // labelDensity = 0 means "show everyone" — bypass distance culling
-    // entirely. This is the default and matches what the app did before
-    // we introduced LOD; users who want a quieter close-zoom dial it up.
-    const density = settings.labelDensity;
-    if (density <= 0) {
-      for (const entry of this.entries.values()) {
-        // Filtered-out entries already have group + label .visible=false
-        // from syncFrame; don't fight that here.
-        if (!entry.group.visible) continue;
-        if (!entry.label.visible) entry.label.visible = true;
-        if (entry.lastLabelOpacity !== 1) {
-          entry.labelEl.style.opacity = '';
-          entry.lastLabelOpacity = 1;
-        }
-      }
-      return;
-    }
     this.camPos.copy(this.camera.position);
+    // Camera-idle early-exit: if the camera hasn't moved meaningfully since
+    // the last LOD pass, the per-entry opacity values we wrote last time
+    // are still valid (the frustum hasn't moved, aircraft positions update
+    // at ~1Hz so a 1-frame opacity lag on a just-moved aircraft is
+    // invisible). Saves the full N-entry pass on every idle frame.
+    const dx = this.camPos.x - this.lastCamX;
+    const dy = this.camPos.y - this.lastCamY;
+    const dz = this.camPos.z - this.lastCamZ;
+    if (!this.lodDirty && dx * dx + dy * dy + dz * dz < CAMERA_IDLE_EPS_SQ) return;
+    this.lastCamX = this.camPos.x;
+    this.lastCamY = this.camPos.y;
+    this.lastCamZ = this.camPos.z;
+    this.lodDirty = false;
+
+    // Compute the current camera frustum. We refresh the camera's
+    // matrixWorld (in case OrbitControls just mutated position/quaternion
+    // and the renderer hasn't reconciled yet) and invert it locally
+    // rather than rely on the renderer's cached value.
+    this.camera.updateMatrixWorld();
+    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
+    this.projScreenMatrix.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse,
+    );
+    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+
+    // Density-based fade (only when the user has dialed it up). At
+    // labelDensity=0 (default), the cull pass is the only gate.
+    const density = settings.labelDensity;
     const camDist = this.camPos.length();
-    // Cutoff radius shrinks as density rises. At density=1 the radius is
-    // ~1.49 × camDist (almost the same as the default-on behavior we used
-    // to ship). At density=100 it's 0.5 × camDist — labels only show for
-    // the visible cone in front of the camera. The 60 unit floor avoids
-    // cutoff collapsing to nothing at the closest zooms.
     const factor = 1.5 - density / 100;
     const cutoff = Math.max(60, camDist * factor);
     const fadeStart = cutoff * 0.55;
 
     for (const entry of this.entries.values()) {
       // Filtered-out entries already have label.visible=false from
-      // syncFrame; LOD's distance check shouldn't bring them back.
+      // syncFrame; LOD shouldn't bring them back.
       if (!entry.group.visible) continue;
-      const d = entry.cone.position.distanceTo(this.camPos);
+
+      // Frustum cull. CSS2DRenderer.render() checks each CSS2DObject's
+      // .visible flag and skips invisible ones, so hiding off-screen
+      // labels here removes them from the per-frame style-write loop.
+      // Anchor point is the cone position (the label sits on a small
+      // local offset above it — the frustum margin absorbs that error).
+      if (!this.frustum.containsPoint(entry.cone.position)) {
+        if (entry.label.visible) entry.label.visible = false;
+        continue;
+      }
+
+      // In-frustum: density-based opacity. At density=0 every in-frustum
+      // label is fully opaque (matches the legacy "show everyone" behavior
+      // before LOD existed); higher density tightens a fade cone in front
+      // of the camera.
       let opacity: number;
-      if (d <= fadeStart) opacity = 1;
-      else if (d >= cutoff) opacity = 0;
-      else opacity = 1 - (d - fadeStart) / (cutoff - fadeStart);
+      if (density <= 0) {
+        opacity = 1;
+      } else {
+        const d = entry.cone.position.distanceTo(this.camPos);
+        if (d <= fadeStart) opacity = 1;
+        else if (d >= cutoff) opacity = 0;
+        else opacity = 1 - (d - fadeStart) / (cutoff - fadeStart);
+      }
 
       const wantVisible = opacity > 0.02;
       if (entry.label.visible !== wantVisible) entry.label.visible = wantVisible;
@@ -645,6 +975,8 @@ export class AircraftReconciler {
     // Cache the labels-enabled flag so we don't override the global toggle
     // each frame from inside the per-entry filter visibility logic.
     const labelsAllowed = getSettings().aircraftLabels;
+    const now = Date.now();
+    const perfNow = performance.now();
 
     for (const a of snapshot.values()) {
       let entry = this.entries.get(a.hex);
@@ -653,6 +985,7 @@ export class AircraftReconciler {
         this.entries.set(a.hex, entry);
         this.root.add(entry.group);
         if (a.hex === this.selectedHex) this.applySelection(entry, true);
+        this.lodDirty = true;
       }
       // Filter visibility: aircraft that fail the active list filter
       // disappear from the scene entirely (cone, icon, trail, alt-line,
@@ -670,33 +1003,60 @@ export class AircraftReconciler {
       if (entry.label.visible !== labelVisible) entry.label.visible = labelVisible;
       if (!visible) continue;
 
-      refreshColor(entry, a);
-      applyTransform(entry, a);
-      refreshTrail(entry, this.store, a);
-      refreshLabel(entry, a);
+      // Gated work: only run the expensive material/geometry/label
+      // refreshes when the store says the aircraft has actually changed
+      // since we last drew it. At 60fps with a 1Hz feed and a 500-aircraft
+      // fleet, this is the difference between 30k pointless setXYZ calls
+      // per second and ~500 — the bulk of frames find every aircraft at
+      // the same rev as last frame and skip the entire block.
+      const rev = this.store.getRev(a.hex);
+      if (rev !== entry.lastRev) {
+        refreshColor(entry, a);
+        applyTransform(entry, a);
+        refreshLabel(entry, a);
+        // Emergency ring follows the aircraft's ground projection. Visibility
+        // tracks the per-tick emergency state so a 7700-then-cleared sequence
+        // surfaces and dismisses without lingering. emergency is in the rev
+        // comparison set, so a state transition arrives via a rev advance.
+        const inEmergency = a.emergency !== null;
+        entry.emergencyRing.visible = inEmergency;
+        if (inEmergency) {
+          entry.emergencyRing.position.set(entry.cone.position.x, 0.12, entry.cone.position.z);
+        }
+        // Keep the selection ring pegged to the cone's current ground
+        // projection while the aircraft moves. Selecting a previously-static
+        // aircraft seeds the ring position via applySelection; this keeps
+        // it in sync once the aircraft starts reporting new positions.
+        if (entry.isSelected) {
+          entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
+        }
+        entry.lastRev = rev;
+      }
+      const trailRev = this.store.getTrailRev(a.hex);
+      if (trailRev !== entry.lastTrailRev) {
+        refreshTrail(entry, this.store, a);
+        entry.lastTrailRev = trailRev;
+      }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY
       // as lastSeenMs grows. The selected aircraft stays at full opacity
       // so the user can keep inspecting it even when the feed is choppy.
-      const opacity = entry.isSelected ? 1 : staleness(Date.now() - a.lastSeenMs);
-      entry.material.opacity = opacity;
-      entry.iconMaterial.opacity = opacity;
-      // Keep the selection ring's altitude pegged to the aircraft's ground projection.
-      if (entry.isSelected) {
-        entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
-      }
-      // Emergency ring follows the aircraft's ground projection too. Visibility
-      // tracks the per-tick emergency state so a 7700-then-cleared sequence
-      // surfaces and dismisses without lingering.
-      const inEmergency = a.emergency !== null;
-      entry.emergencyRing.visible = inEmergency;
-      if (inEmergency) {
-        entry.emergencyRing.position.set(entry.cone.position.x, 0.12, entry.cone.position.z);
+      // Recomputed every frame because it's a wall-clock function, but the
+      // material mutation is gated on a meaningful delta to avoid
+      // mass-touching opacity each frame for the (common) case where every
+      // aircraft is either fully fresh (1.0) or fully stale.
+      const opacity = entry.isSelected ? 1 : staleness(now - a.lastSeenMs);
+      if (Math.abs(opacity - entry.lastStaleness) > 0.01) {
+        entry.material.opacity = opacity;
+        entry.iconMaterial.opacity = opacity;
+        entry.lastStaleness = opacity;
       }
 
       // ACARS ping animation: ring expands from cone-radius outward and
-      // fades over PING_DURATION_MS. pingStartMs is set by triggerAcarsPing.
+      // fades over PING_DURATION_MS. pingStartMs is set by triggerAcarsPing
+      // and is null on the common path, so the per-frame cost when no
+      // aircraft are pinging is a single null check per entry.
       if (entry.pingStartMs !== null) {
-        const elapsed = performance.now() - entry.pingStartMs;
+        const elapsed = perfNow - entry.pingStartMs;
         if (elapsed >= PING_DURATION_MS) {
           entry.pingStartMs = null;
           entry.pingRing.visible = false;
@@ -704,10 +1064,10 @@ export class AircraftReconciler {
         } else {
           const t = elapsed / PING_DURATION_MS;
           const scale = 1 + (PING_MAX_SCALE - 1) * t;
-          const opacity = (1 - t) * 0.85;
+          const pingOpacity = (1 - t) * 0.85;
           entry.pingRing.position.set(entry.cone.position.x, 0.18, entry.cone.position.z);
           entry.pingRing.scale.setScalar(scale);
-          entry.pingMaterial.opacity = opacity;
+          entry.pingMaterial.opacity = pingOpacity;
           entry.pingRing.visible = true;
         }
       }
@@ -736,6 +1096,7 @@ export class AircraftReconciler {
       entry.label.removeFromParent();
       entry.labelEl.remove();
       this.entries.delete(hex);
+      this.lodDirty = true;
     }
   }
 

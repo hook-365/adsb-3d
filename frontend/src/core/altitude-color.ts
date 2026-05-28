@@ -44,3 +44,54 @@ export function altitudeColor(altFt: number, military: boolean, onGround = false
   }
   return new Color().setHSL(altitudeHue(altFt) / 360, ALT_AIR_S, ALT_AIR_L);
 }
+
+// Allocation-free color lookup for the reconciler's hot paths. The trail
+// refresh in particular calls this once per trail point per aircraft per
+// refresh; pre-bucketing avoids ~hundreds of thousands of Color allocations
+// per second on busy feeds. Callers MUST treat the returned Color as
+// read-only — mutating it would corrupt every other aircraft sharing the
+// bucket. The standard pattern is `target.copy(altitudeColorCached(...))`.
+const CACHE_BUCKET_FT = 250;
+const CACHE_MIN_FT = -1000;
+const CACHE_MAX_FT = 80000;
+const CACHE_SIZE = Math.ceil((CACHE_MAX_FT - CACHE_MIN_FT) / CACHE_BUCKET_FT) + 1;
+const AIR_COLOR_CACHE: Color[] = new Array(CACHE_SIZE);
+for (let i = 0; i < CACHE_SIZE; i++) {
+  const altFt = CACHE_MIN_FT + i * CACHE_BUCKET_FT;
+  AIR_COLOR_CACHE[i] = new Color().setHSL(altitudeHue(altFt) / 360, ALT_AIR_S, ALT_AIR_L);
+}
+const GROUND_COLOR = new Color().setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l);
+const MILITARY_COLOR = new Color(ALT_MILITARY_HEX);
+
+function airBucketIndex(altFt: number): number {
+  const raw = Math.floor((altFt - CACHE_MIN_FT) / CACHE_BUCKET_FT);
+  if (raw < 0) return 0;
+  if (raw >= CACHE_SIZE) return CACHE_SIZE - 1;
+  return raw;
+}
+
+/**
+ * Allocation-free shared Color for an aircraft's altitude. Returns the same
+ * instance for any altitude that quantizes to the same 250 ft bucket. Do
+ * NOT mutate the returned Color — copy from it instead.
+ */
+export function altitudeColorCached(altFt: number, military: boolean, onGround = false): Color {
+  if (military) return MILITARY_COLOR;
+  if (onGround) return GROUND_COLOR;
+  return AIR_COLOR_CACHE[airBucketIndex(altFt)]!;
+}
+
+// Lazy-populated CSS color strings keyed by the same buckets. Labels read
+// these on rev-gated refreshes (so once per aircraft per ~1Hz) — small but
+// free win, and avoids per-refresh string allocations.
+const AIR_STYLE_CACHE: (string | undefined)[] = new Array(CACHE_SIZE);
+let GROUND_STYLE: string | null = null;
+let MILITARY_STYLE: string | null = null;
+
+/** Allocation-free CSS color string matching altitudeColorCached. */
+export function altitudeColorStyleCached(altFt: number, military: boolean, onGround = false): string {
+  if (military) return (MILITARY_STYLE ??= MILITARY_COLOR.getStyle());
+  if (onGround) return (GROUND_STYLE ??= GROUND_COLOR.getStyle());
+  const idx = airBucketIndex(altFt);
+  return (AIR_STYLE_CACHE[idx] ??= AIR_COLOR_CACHE[idx]!.getStyle());
+}
