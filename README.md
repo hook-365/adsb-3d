@@ -50,6 +50,13 @@ Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
 3D scene re-tints in place. Plays especially well with the FAA chart
 basemaps below.
 
+**VR (experimental)** — an "Enter VR" button in the settings panel opens
+an immersive WebXR session for any connected headset (Meta Quest, Vision
+Pro, Index, …). Phase 1 is **viewing-only**: head tracking works, you can
+look around the airspace, but there's no controller input or in-VR UI
+yet. The existing side-by-side stereo mode (for phone-in-Cardboard) is
+still there for users without a real headset.
+
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
 proxy as the regular basemaps. The container auto-discovers the current

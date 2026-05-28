@@ -17,12 +17,21 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { RANGE_NM } from '../core/config';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
+import { setRenderer as registerXrRenderer } from '../core/xr';
 import { createTileLayer } from './tiles';
 
 export interface World {
   scene: Scene;
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
+  /**
+   * Group enclosing every scene element that should grow/shrink as one
+   * in immersive XR (range rings, tile layer, aircraft root, home
+   * marker, cardinals). Phase 1 leaves this at identity scale; Phase 4
+   * will tween its scale on user input so the whole airspace fits the
+   * room. Lights and the camera stay outside so lighting is unaffected.
+   */
+  xrRoot: Group;
   aircraftRoot: Mesh; // a Group would be fine; using Mesh-friendly Object3D anyway
   /**
    * Rebuild the basemap tile layer around the current HOME. Range rings
@@ -39,6 +48,10 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
+  // Register with the XR session manager so `enterVR()` can drive
+  // renderer.xr.setSession(). Also flips renderer.xr.enabled = true.
+  registerXrRenderer(renderer);
+
   const scene = new Scene();
   // Sky bg + fog read from the active theme so a daylight/light theme can
   // wash out the void. Both colors are mutated in place by the theme
@@ -52,12 +65,20 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   key.position.set(120, 220, 80);
   scene.add(key);
 
+  // Everything the player should perceive as "the world" lives under
+  // xrRoot so Phase 4's scale slider can shrink the whole airspace
+  // onto a tabletop without touching individual children. Lights and
+  // camera stay on `scene` so lighting is independent of scale.
+  const xrRoot = new Group();
+  xrRoot.name = 'xr-root';
+  scene.add(xrRoot);
+
   // Slippy-map basemap underneath everything. The tile layer attaches its
   // meshes at y = -0.4 with renderOrder = -10 so the range rings and
   // trails draw cleanly on top. Stored so recenter() can swap it on
   // feed switch or when the user picks a different basemap provider.
   let tileLayer: Group = createTileLayer({ provider: getSettings().basemap });
-  scene.add(tileLayer);
+  xrRoot.add(tileLayer);
 
   function disposeTileLayer(layer: Group): void {
     for (const child of layer.children) {
@@ -72,10 +93,10 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   }
 
   function recenter(): void {
-    scene.remove(tileLayer);
+    xrRoot.remove(tileLayer);
     disposeTileLayer(tileLayer);
     tileLayer = createTileLayer({ provider: getSettings().basemap });
-    scene.add(tileLayer);
+    xrRoot.add(tileLayer);
   }
 
   // Range rings every 50 NM as a quick distance reference on top of the basemap.
@@ -113,7 +134,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     ringsGroup.add(label);
   }
   ringsGroup.visible = getSettings().rangeRings;
-  scene.add(ringsGroup);
+  xrRoot.add(ringsGroup);
 
   // Cardinal direction labels at the outer ring. Always visible —
   // they remain a useful orientation cue even with rings off.
@@ -133,7 +154,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     label.position.set(x, 0.05, z);
     cardinalsGroup.add(label);
   }
-  scene.add(cardinalsGroup);
+  xrRoot.add(cardinalsGroup);
 
   // Home antenna marker — a small dot on the ground at the receiver's
   // location, like tar1090. Suppressed when HIDE_TOWER is set so the exact
@@ -155,7 +176,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     home.position.y = 0.07;
     home.renderOrder = 2; // draw above range rings + tile layer
     home.name = 'home-marker';
-    scene.add(home);
+    xrRoot.add(home);
   }
 
   // Live theme updates — mutate the same materials/colors in place so the
@@ -189,11 +210,11 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // import surface small.
   const aircraftRoot = new Mesh();
   aircraftRoot.name = 'aircraft-root';
-  scene.add(aircraftRoot);
+  xrRoot.add(aircraftRoot);
 
   const camera = new PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 4000);
   camera.position.set(0, 220, 280);
   camera.lookAt(0, 0, 0);
 
-  return { scene, camera, renderer, aircraftRoot, recenter };
+  return { scene, camera, renderer, xrRoot, aircraftRoot, recenter };
 }

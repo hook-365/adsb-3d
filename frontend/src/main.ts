@@ -13,6 +13,7 @@ import { HistoricalFeed, buildTrailUpTo } from './feed/historical';
 import { HeatmapLayer } from './world/heatmap';
 import { addAcarsMessage, clearAcars, resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings } from './core/settings';
+import { subscribeXr } from './core/xr';
 import {
   attachRouteBatchPrefetcher,
   configureRoutesApi,
@@ -110,6 +111,16 @@ applyStereoMode();
 // Apply once on boot to honor a stored preference, then re-apply on change.
 setTheme(getSettings().theme);
 subscribeSettings((s) => setTheme(s.theme));
+
+// XR session class — hides DOM chrome while immersive, hides the CSS2D
+// label layer (Three.js owns the WebGL canvas during a session and the
+// DOM doesn't composite over the headset output anyway). Style rules
+// keyed to `body.xr-on` live in style.css alongside the stereo-on ones.
+subscribeXr((s) => {
+  document.body.classList.toggle('xr-on', s.presenting);
+  if (s.presenting) labelRenderer.domElement.style.display = 'none';
+  else if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
+});
 
 const initialSelectedHex = readSelectedHex();
 
@@ -792,7 +803,13 @@ function tick(t: number): void {
   reconciler.syncFrame();
   reconciler.updateLabelLOD();
   aircraftCount.textContent = `aircraft: ${reconciler.count}`;
-  if (getSettings().stereo) {
+  if (world.renderer.xr.isPresenting) {
+    // WebXR session active — the runtime owns camera transforms (from the
+    // headset IMU), so OrbitControls + stereo are bypassed. CSS2D labels
+    // can't paint over the XR-managed WebGL canvas so we skip the label
+    // renderer too; Phase 2 will spawn world-space sprite labels instead.
+    world.renderer.render(world.scene, world.camera);
+  } else if (getSettings().stereo) {
     // Put the zero-parallax plane on the orbit target and scale eye
     // separation with viewing distance, so the depth stays comfortable
     // whether zoomed out to the whole airspace or in on one aircraft.
@@ -804,7 +821,10 @@ function tick(t: number): void {
     world.renderer.render(world.scene, world.camera);
     labelRenderer.render(world.scene, world.camera);
   }
-  requestAnimationFrame(tick);
 }
 
-requestAnimationFrame(tick);
+// setAnimationLoop is required for WebXR: it lets the headset's frame
+// scheduler drive the loop instead of the page's rAF, which would
+// otherwise pump at 60 Hz while the headset wants 72/90/120. Falls
+// through to standard rAF when no XR session is active.
+world.renderer.setAnimationLoop(tick);

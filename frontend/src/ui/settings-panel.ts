@@ -1,5 +1,6 @@
 import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
 import { THEME_OPTIONS } from '../core/theme';
+import { enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
 
 // Gear button + popover panel. Mounted into a slot the host page provides
 // in the header (#settings-slot) and a panel container appended to <body>
@@ -32,7 +33,24 @@ interface RangeRow {
   /** Render the numeric value beside the slider. Defaults to a plain integer. */
   format?: (value: number) => string;
 }
-type SettingsRow = ToggleRow | ChoiceRow | RangeRow;
+/**
+ * Action row. Renders the button on the right with the same row chrome as
+ * the other inputs. `subscribe` is optional — supply it if the button's
+ * label/description/disabled state needs to change with external state
+ * (e.g. Enter VR reacts to whether a session is presenting).
+ */
+interface ButtonRow {
+  kind: 'button';
+  /** Stable id, used as a React-style key-ish hint. Not a Settings key. */
+  id: string;
+  label: string;
+  description?: string;
+  onClick: () => void | Promise<void>;
+  subscribe?: (
+    update: (s: { label?: string; description?: string; disabled?: boolean }) => void,
+  ) => () => void;
+}
+type SettingsRow = ToggleRow | ChoiceRow | RangeRow | ButtonRow;
 
 interface SettingsSection {
   heading: string;
@@ -122,10 +140,39 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     heading: 'Stereo / VR',
     rows: [
       {
+        kind: 'button',
+        id: 'enter-vr',
+        label: 'Enter VR',
+        description: 'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
+        onClick: async () => {
+          const s = getXrState();
+          if (s.presenting) await exitVR();
+          else await enterVR();
+        },
+        subscribe: (update) =>
+          subscribeXr((s) => {
+            if (s.presenting) {
+              update({ label: 'Exit VR', description: 'End the active immersive session.', disabled: false });
+            } else if (s.vrSupported) {
+              update({
+                label: 'Enter VR',
+                description: 'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
+                disabled: false,
+              });
+            } else {
+              update({
+                label: 'VR unavailable',
+                description: s.unavailableReason ?? 'WebXR is not available in this browser.',
+                disabled: true,
+              });
+            }
+          }),
+      },
+      {
         kind: 'toggle',
         key: 'stereo',
         label: 'Side-by-side stereo',
-        description: 'Split the view into left/right eye halves for Google Cardboard or a phone VR headset.',
+        description: 'Split the view into left/right eye halves for Google Cardboard or a phone VR headset. Ignored while an immersive WebXR session is active.',
       },
       {
         kind: 'range',
@@ -269,6 +316,33 @@ export function mountSettingsPanel(): void {
           updateSettings({ [row.key]: select.value } as Partial<Settings>);
         });
         rowEl.appendChild(select);
+      } else if (row.kind === 'button') {
+        // Action row — a button on the right, sized like the other inputs.
+        // Initial state from the row config; subscribe() (if provided) can
+        // mutate label/description/disabled live in response to outside
+        // state. Used by Enter VR to react to WebXR availability + session
+        // presenting state without re-rendering the panel.
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'settings-action';
+        btn.textContent = row.label;
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          void row.onClick();
+        });
+        if (row.subscribe) {
+          const labelEl = lab;
+          const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
+          row.subscribe((s) => {
+            if (s.label !== undefined) {
+              btn.textContent = s.label;
+              labelEl.textContent = s.label;
+            }
+            if (s.description !== undefined && descEl) descEl.textContent = s.description;
+            if (s.disabled !== undefined) btn.disabled = s.disabled;
+          });
+        }
+        rowEl.appendChild(btn);
       } else {
         // Range slider with a live-updating numeric label beside it.
         const wrap = document.createElement('span');

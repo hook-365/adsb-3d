@@ -881,6 +881,50 @@ body.stereo-on #status {
   display: none;
 }
 
+/* While an immersive WebXR session is presenting, the headset output is
+   the show — the page only renders a mirror canvas. Hide every DOM
+   overlay so that mirror reads as the unobstructed scene; the user
+   never interacts with the page during a session. */
+body.xr-on #hud,
+body.xr-on #status,
+body.xr-on #aircraft-panel,
+body.xr-on #panel-detail,
+body.xr-on #panel-toggle,
+body.xr-on .settings-slot,
+body.xr-on .settings-panel,
+body.xr-on .voice-panel,
+body.xr-on .acars-browser {
+  display: none !important;
+}
+
+/* Settings panel action button — used by the Enter VR row, reusable by
+   any future kind:'button' rows. Sized + colored to sit alongside the
+   existing form controls without feeling bolted-on. */
+.settings-action {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.settings-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.settings-action:disabled {
+  color: var(--muted);
+  border-color: color-mix(in srgb, var(--fg) 15%, transparent);
+  background: transparent;
+  cursor: not-allowed;
+}
+
 /* ─── Altitude legend (footer) ────────────────────────────────────── */
 
 /* Forced onto its own row at the bottom of the footer: flex-basis 100%

@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **WebXR (Phase 1 — viewing only)** — an "Enter VR" button in the
+  Stereo / VR section of the settings panel opens an immersive WebXR
+  session (`immersive-vr`, `local-floor` reference space) for any
+  connected headset (Meta Quest, Vision Pro, Index, …). Phase 1
+  delivers head-tracked viewing only — no controller input, no in-VR
+  UI. The button auto-disables with an explanation when WebXR isn't
+  supported. Subsequent phases will add controllers + picking
+  (Phase 2), wrist-mounted menu (Phase 3), comfort + locomotion
+  (Phase 4), and AR passthrough on Quest 3 (Phase 5).
+
+  Implementation notes:
+
+  - `core/xr.ts` — subscribe-singleton (matching `core/settings.ts` /
+    `core/theme.ts`) that probes `navigator.xr.isSessionSupported`
+    once at boot and owns the session lifecycle. Renderer is injected
+    so `core/` stays free of Three.js imports.
+  - `main.ts` render loop converted from `requestAnimationFrame` to
+    `renderer.setAnimationLoop`, required for WebXR (the headset
+    runtime drives frame timing at 72/90/120 Hz instead of the page's
+    fixed 60 Hz). Branches on `renderer.xr.isPresenting` to bypass
+    OrbitControls + StereoEffect during a session.
+  - `world/scene.ts` adds an `xrRoot` group that wraps tile layer,
+    range rings, cardinals, home marker, and aircraft root. Phase 4
+    will tween its scale so the entire airspace fits the user's room.
+    Lights stay outside the group so lighting is scale-independent.
+  - Settings panel gains a reusable `kind: 'button'` row type with an
+    optional `subscribe()` for live label / disabled-state updates.
+  - `body.xr-on` CSS class hides every DOM overlay while presenting so
+    the mirror canvas reads as the unobstructed scene.
+
 ## [0.2.0] — 2026-05-27
 
 ### Added
