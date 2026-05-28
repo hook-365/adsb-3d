@@ -606,11 +606,19 @@ async def startup():
     }
 
     try:
-        # Create shared database pool
+        # Create shared database pool.
+        #
+        # Sizing: steady-state load is ~3 connections (WS broadcast loop,
+        # collector, occasional REST). max_size=40 leaves headroom for
+        # bursty backfill requests when the frontend boots — a fresh
+        # page on the Europe feed batches up to 200 hex backfills, plus
+        # a per-aircraft selection-extension can fire while the bulk is
+        # still in flight. 20 was tight; 40 keeps us well under the
+        # default 30s acquire timeout even under multi-tab load.
         db_pool = await asyncpg.create_pool(
             **DB_CONFIG,
             min_size=2,
-            max_size=20,
+            max_size=40,
             command_timeout=60
         )
         logger.info(f"Database pool created: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
@@ -914,6 +922,41 @@ def _resolve_resolution(resolution: str):
     return "bucket", seconds
 
 
+# Maximum window (seconds) for which we honor an explicit `resolution=full`
+# request. Beyond this, we transparently downsample to keep the response
+# bounded — at 1 Hz sampling, 4 hours of raw points is ~14k records (a
+# comfortable cold-load JSON for the frontend). The selection-extension
+# path on the frontend asks for 24h windows; without this guard it would
+# pull ~86k points per click on a busy aircraft.
+RAW_FULL_MAX_WINDOW_SECONDS = 4 * 3600
+# When auto-downsampling kicks in we aim for this many points across the
+# window. 7200 = ~2h of 1 Hz data, which is plenty of detail for any
+# trail-rendering use case and stays well under the multi-MB JSON
+# parse-stall threshold on the client.
+AUTO_DOWNSAMPLE_TARGET_POINTS = 7200
+
+
+def _autodownsample_if_window_too_wide(
+    mode: str,
+    bucket_seconds: Optional[int],
+    window_seconds: float,
+) -> tuple[str, Optional[int], Optional[str]]:
+    """
+    If the caller asked for raw (`resolution=full`) but the window is too
+    large, transparently switch to a `time_bucket` aggregate sized to land
+    near AUTO_DOWNSAMPLE_TARGET_POINTS. Returns (mode, bucket_seconds,
+    effective_resolution) where `effective_resolution` is a human-readable
+    note ("`Ns (auto)`") to echo back in the response, or None when the
+    original resolution was honored as-is.
+    """
+    if mode != "raw" or window_seconds <= RAW_FULL_MAX_WINDOW_SECONDS:
+        return mode, bucket_seconds, None
+    bucket = max(2, int(window_seconds // AUTO_DOWNSAMPLE_TARGET_POINTS))
+    # Clamp to the SQL-side validation range used by _resolve_resolution.
+    bucket = min(bucket, 3600)
+    return "bucket", bucket, f"{bucket}s (auto)"
+
+
 _ICAO_RE = re.compile(r'^[0-9a-fA-F]{1,7}$')
 
 
@@ -943,6 +986,14 @@ async def get_aircraft_track(
         start = ensure_utc(start)
 
     mode, bucket_seconds = _resolve_resolution(resolution)
+    # If the caller asked for full raw points over a multi-hour window we
+    # downsample server-side rather than ship a multi-MB JSON payload that
+    # would stall the client's JSON.parse on the main thread. The frontend
+    # selection-extension path takes this branch for 24h windows.
+    window_seconds = (end - start).total_seconds()
+    mode, bucket_seconds, auto_note = _autodownsample_if_window_too_wide(
+        mode, bucket_seconds, window_seconds
+    )
 
     if mode == "bucket":
         # bucket_seconds is a validated int; passed as $4::interval — no user
@@ -989,6 +1040,7 @@ async def get_aircraft_track(
             "start": start.isoformat(),
             "end": end.isoformat(),
             "resolution": resolution,
+            "effective_resolution": auto_note or resolution,
             "positions": positions
         }
 
@@ -1032,6 +1084,15 @@ async def get_bulk_tracks_timelapse(
         hex_list = list(dict.fromkeys(hex_list))[:500]
 
     mode, bucket_seconds = _resolve_resolution(resolution)
+    # Same auto-downsample guard as the single-hex endpoint: bulk callers
+    # asking for raw points over a long window get a server-side aggregate
+    # to keep the response from ballooning. The frontend's bulk backfill
+    # passes explicit `15s` resolution today so this branch typically
+    # passes through unchanged; the guard catches direct API users only.
+    window_seconds = (end - start).total_seconds()
+    mode, bucket_seconds, auto_note = _autodownsample_if_window_too_wide(
+        mode, bucket_seconds, window_seconds
+    )
 
     try:
         async with db_pool.acquire() as conn:
@@ -1151,7 +1212,8 @@ async def get_bulk_tracks_timelapse(
             'time_range': {
                 'start': start.isoformat(),
                 'end': end.isoformat(),
-                'resolution': resolution
+                'resolution': resolution,
+                'effective_resolution': auto_note or resolution
             },
             'stats': {
                 'unique_aircraft': len(tracks_by_aircraft),
