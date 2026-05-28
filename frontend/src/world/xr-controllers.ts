@@ -29,6 +29,8 @@ import { getTheme, subscribeTheme } from '../core/theme';
 // Pressing the trigger in empty space deselects (passes null to onPick).
 // This matches the existing 2D click-to-deselect behaviour in main.ts.
 
+export type Handedness = 'left' | 'right' | 'none';
+
 export interface XrControllersOptions {
   renderer: WebGLRenderer;
   /** Where to attach the controller groups (typically the Scene). */
@@ -37,11 +39,31 @@ export interface XrControllersOptions {
   pickRoot: Object3D;
   /** Called with the picked aircraft's hex, or null on empty-space click. */
   onPick: (hex: string | null) => void;
+  /**
+   * Optional first-pass select intercept. Called with the pressing
+   * controller before the aircraft raycast; if it returns true the
+   * press is considered handled and aircraft picking is skipped.
+   * Phase 3's wrist menu uses this so right-hand trigger-on-menu
+   * doesn't also deselect the current aircraft.
+   */
+  onSelectIntercept?: (controller: Group) => boolean;
+  /**
+   * Called when a controller's handedness is reported by the runtime.
+   * Phase 3 uses it to attach the wrist menu to whichever physical
+   * controller turns out to be the user's left hand. Fires once per
+   * controller connect (and again if a controller reconnects with
+   * different handedness).
+   */
+  onHandednessKnown?: (controller: Group, handedness: Handedness) => void;
 }
 
 export interface XrControllersHandle {
   /** Tear everything down (for HMR; not used in prod). */
   dispose(): void;
+  /** Return the controller for a given handedness, or null if not yet connected. */
+  getControllerByHandedness(handedness: Handedness): Group | null;
+  /** Return all controllers (connection order, may be empty if no session). */
+  getControllers(): Group[];
 }
 
 // Laser length in *world* (post-xrRoot-scale) space: the controllers
@@ -56,7 +78,8 @@ const CONE_HEIGHT = 0.08;
 const CONE_RADIUS = 0.012;
 
 export function setupXrControllers(opts: XrControllersOptions): XrControllersHandle {
-  const { renderer, scene, pickRoot, onPick } = opts;
+  const { renderer, scene, pickRoot, onPick, onSelectIntercept, onHandednessKnown } = opts;
+  const handedness = new Map<Group, Handedness>();
 
   // Shared geometry/materials across both controllers — colors track
   // the theme via the subscribe handler below so a daylight/phosphor
@@ -91,6 +114,11 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
   const groups: Group[] = [];
 
   const handleSelectStart = (controller: Group): void => {
+    // Give the UI layer first refusal — a press on the wrist menu must
+    // not also deselect the current aircraft. The intercept is expected
+    // to run its own raycast against the menu mesh.
+    if (onSelectIntercept && onSelectIntercept(controller)) return;
+
     // Pose is up-to-date at event time; build the ray from its world matrix.
     tmpOrigin.setFromMatrixPosition(controller.matrixWorld);
     tmpDir.set(0, 0, -1).transformDirection(controller.matrixWorld);
@@ -120,6 +148,20 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
 
     controller.addEventListener('selectstart', () => handleSelectStart(controller));
 
+    // 'connected' fires once the runtime hands us an XRInputSource. Its
+    // .handedness ('left' | 'right' | 'none') is the only way to tell
+    // which physical hand a controller belongs to — the index passed to
+    // getController() is just the order WebXR reports them in.
+    controller.addEventListener('connected', (event) => {
+      const src = (event as { data?: { handedness?: Handedness } }).data;
+      const h: Handedness = src?.handedness ?? 'none';
+      handedness.set(controller, h);
+      onHandednessKnown?.(controller, h);
+    });
+    controller.addEventListener('disconnected', () => {
+      handedness.delete(controller);
+    });
+
     scene.add(controller);
     groups.push(controller);
   }
@@ -148,6 +190,15 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
       lineGeometry.dispose();
       coneMaterial.dispose();
       lineMaterial.dispose();
+    },
+    getControllerByHandedness(want: Handedness): Group | null {
+      for (const [g, h] of handedness) {
+        if (h === want) return g;
+      }
+      return null;
+    },
+    getControllers(): Group[] {
+      return groups.slice();
     },
   };
 }

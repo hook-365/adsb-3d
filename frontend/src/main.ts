@@ -16,6 +16,7 @@ import { getSettings, subscribeSettings } from './core/settings';
 import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
+import { XrWristMenu } from './world/xr-wrist-menu';
 import {
   attachRouteBatchPrefetcher,
   configureRoutesApi,
@@ -121,13 +122,31 @@ subscribeSettings((s) => setTheme(s.theme));
 // Controllers are inert until a session is presenting, so registering
 // them eagerly at boot is fine.
 const xrBillboard = new XrBillboard(world.xrRoot);
-setupXrControllers({
+const xrWristMenu = new XrWristMenu();
+const xrControllers = setupXrControllers({
   renderer: world.renderer,
   scene: world.scene,
   // Pick proxies are attached under aircraftRoot by reconciler.ts; the
   // raycast walks descendants so historical entries are pickable too.
   pickRoot: world.aircraftRoot,
   onPick: applySelection,
+  // Right-hand trigger on the wrist menu must NOT also deselect — let
+  // the menu absorb the press before aircraft picking runs. We only
+  // arm the intercept for the non-left controller so the user can't
+  // accidentally activate menu rows with the hand the menu is on.
+  // (Handedness is unknown until 'connected' fires; before that we
+  // let both controllers try — better to risk a stray menu hit than
+  // to drop the very first press on a slow-reporting runtime.)
+  onSelectIntercept: (controller) => {
+    if (xrControllers.getControllerByHandedness('left') === controller) return false;
+    return xrWristMenu.trySelect(controller);
+  },
+  // Attach the menu to whichever physical controller turns out to be
+  // the left hand. If handedness is 'none' (some 3DOF controllers
+  // never report) the menu just won't attach — acceptable for v1.
+  onHandednessKnown: (controller, h) => {
+    if (h === 'left') xrWristMenu.attachTo(controller);
+  },
 });
 
 // XR session class — hides DOM chrome while immersive, hides the CSS2D
@@ -152,6 +171,11 @@ subscribeXr((s) => {
     if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
     world.xrRoot.scale.setScalar(1);
     world.xrRoot.position.set(0, 0, 0);
+    // The wrist menu lives under the left controller; the controller
+    // Group itself is recycled when the next session starts, but the
+    // menu Mesh holds a stale parent ref. Detach explicitly so the
+    // next 'connected' / onHandednessKnown re-attaches cleanly.
+    xrWristMenu.detach();
   }
 });
 
@@ -853,6 +877,14 @@ function tick(t: number): void {
     xrBillboard.update(a ?? null, pos);
   } else if (world.renderer.xr.isPresenting) {
     xrBillboard.hide();
+  }
+
+  // Wrist-menu hover: each frame in XR, raycast the right controller's
+  // forward axis against the menu and update its highlighted row. Cheap
+  // (one intersectObject call against a single Plane).
+  if (world.renderer.xr.isPresenting) {
+    const right = xrControllers.getControllerByHandedness('right');
+    xrWristMenu.updateHover(right);
   }
 
   if (world.renderer.xr.isPresenting) {
