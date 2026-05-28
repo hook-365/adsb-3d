@@ -14,6 +14,8 @@ import { HeatmapLayer } from './world/heatmap';
 import { addAcarsMessage, clearAcars, resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings } from './core/settings';
 import { subscribeXr } from './core/xr';
+import { setupXrControllers } from './world/xr-controllers';
+import { XrBillboard } from './aircraft/xr-billboard';
 import {
   attachRouteBatchPrefetcher,
   configureRoutesApi,
@@ -112,14 +114,45 @@ applyStereoMode();
 setTheme(getSettings().theme);
 subscribeSettings((s) => setTheme(s.theme));
 
+// XR controllers + billboard for Phase 2. Controllers attach to the
+// scene (meter-space, outside xrRoot — they track the user's hands at
+// real-world scale); the billboard lives inside xrRoot so it shrinks
+// with the airspace and stays the right size relative to the cones.
+// Controllers are inert until a session is presenting, so registering
+// them eagerly at boot is fine.
+const xrBillboard = new XrBillboard(world.xrRoot);
+setupXrControllers({
+  renderer: world.renderer,
+  scene: world.scene,
+  // Pick proxies are attached under aircraftRoot by reconciler.ts; the
+  // raycast walks descendants so historical entries are pickable too.
+  pickRoot: world.aircraftRoot,
+  onPick: applySelection,
+});
+
 // XR session class — hides DOM chrome while immersive, hides the CSS2D
 // label layer (Three.js owns the WebGL canvas during a session and the
 // DOM doesn't composite over the headset output anyway). Style rules
 // keyed to `body.xr-on` live in style.css alongside the stereo-on ones.
+//
+// Also pins the xrRoot to a tabletop scale + chest-height position so
+// the 500 NM airspace fits in front of the user as a small disc instead
+// of swallowing the room. Phase 4 will swap this fixed scale for an
+// interactive slider; today it's a one-line default.
+const VR_SCALE = 0.01;          // 1 NM = 1 cm  → 250 NM ring is 2.5 m
+const VR_OFFSET_Y = 0.8;        // chest height
+const VR_OFFSET_Z = -1.5;       // 1.5 m in front
 subscribeXr((s) => {
   document.body.classList.toggle('xr-on', s.presenting);
-  if (s.presenting) labelRenderer.domElement.style.display = 'none';
-  else if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
+  if (s.presenting) {
+    labelRenderer.domElement.style.display = 'none';
+    world.xrRoot.scale.setScalar(VR_SCALE);
+    world.xrRoot.position.set(0, VR_OFFSET_Y, VR_OFFSET_Z);
+  } else {
+    if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
+    world.xrRoot.scale.setScalar(1);
+    world.xrRoot.position.set(0, 0, 0);
+  }
 });
 
 const initialSelectedHex = readSelectedHex();
@@ -201,7 +234,13 @@ function autoCollapseListOnMobile(hex: string | null): void {
   }
 }
 
+// Tracks the current selection so the per-frame XR billboard update can
+// look the aircraft up without piggybacking on aircraftDetail's internal
+// state. Kept in sync inside applySelection().
+let xrSelectedHex: string | null = null;
+
 function applySelection(hex: string | null): void {
+  xrSelectedHex = hex;
   reconciler.setSelected(hex);
   aircraftDetail.setSelected(hex);
   followHex = hex;
@@ -803,11 +842,25 @@ function tick(t: number): void {
   reconciler.syncFrame();
   reconciler.updateLabelLOD();
   aircraftCount.textContent = `aircraft: ${reconciler.count}`;
+
+  // Update the XR billboard only while an immersive session is active.
+  // Outside of XR the CSS2D label + #panel-detail already cover the same
+  // information, and creating Canvas updates per frame would be wasted
+  // work. Skip when nothing is selected too.
+  if (world.renderer.xr.isPresenting && xrSelectedHex) {
+    const a = store.snapshot.get(xrSelectedHex);
+    const pos = reconciler.positionOf(xrSelectedHex);
+    xrBillboard.update(a ?? null, pos);
+  } else if (world.renderer.xr.isPresenting) {
+    xrBillboard.hide();
+  }
+
   if (world.renderer.xr.isPresenting) {
     // WebXR session active — the runtime owns camera transforms (from the
     // headset IMU), so OrbitControls + stereo are bypassed. CSS2D labels
     // can't paint over the XR-managed WebGL canvas so we skip the label
-    // renderer too; Phase 2 will spawn world-space sprite labels instead.
+    // renderer too; world-space sprite labels (xrBillboard above) carry
+    // the per-aircraft text.
     world.renderer.render(world.scene, world.camera);
   } else if (getSettings().stereo) {
     // Put the zero-parallax plane on the orbit target and scale eye

@@ -10,15 +10,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **WebXR (Phase 2 — controllers + picking + world billboard)** —
+  builds on Phase 1's session pipeline:
+
+  - **Controllers** appear as small accent-tinted cones with a laser
+    pointer line extending forward. Materials retint with the active
+    theme. Both hands work identically. No `XRControllerModelFactory`
+    dependency (would have pulled a runtime CDN profile fetch) — the
+    cones convey "you're holding something" without it.
+  - **Aircraft picking** — squeezing the trigger raycasts from the
+    controller against the same `aircraft-pick` proxies the mouse
+    raycaster already uses. First aircraft hit becomes selected;
+    triggering in empty space deselects. Routes through the existing
+    `applySelection()` so the reconciler, follow-camera, URL state,
+    and detail-panel state all stay in sync.
+  - **World-space billboard** — Sprite + canvas hovering above the
+    selected aircraft. Shows callsign / registration / type / altitude
+    / speed / heading / emergency badge. Theme-aware (retints on
+    theme change); only redraws when the underlying data actually
+    changes, not per frame.
+  - **Tabletop scale** — `xrRoot` is now scaled to 0.01 (1 NM = 1 cm)
+    and positioned 1.5 m in front of the user at chest height when a
+    session starts; restored to identity on exit. Without this Phase 2
+    would have been unusable — controllers report poses in real
+    metres while the scene is in NM. Phase 4 will turn this into an
+    interactive slider with comfort options.
+
 - **WebXR (Phase 1 — viewing only)** — an "Enter VR" button in the
   Stereo / VR section of the settings panel opens an immersive WebXR
   session (`immersive-vr`, `local-floor` reference space) for any
   connected headset (Meta Quest, Vision Pro, Index, …). Phase 1
   delivers head-tracked viewing only — no controller input, no in-VR
   UI. The button auto-disables with an explanation when WebXR isn't
-  supported. Subsequent phases will add controllers + picking
-  (Phase 2), wrist-mounted menu (Phase 3), comfort + locomotion
-  (Phase 4), and AR passthrough on Quest 3 (Phase 5).
+  supported.
 
   Implementation notes:
 
@@ -32,9 +56,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     fixed 60 Hz). Branches on `renderer.xr.isPresenting` to bypass
     OrbitControls + StereoEffect during a session.
   - `world/scene.ts` adds an `xrRoot` group that wraps tile layer,
-    range rings, cardinals, home marker, and aircraft root. Phase 4
-    will tween its scale so the entire airspace fits the user's room.
-    Lights stay outside the group so lighting is scale-independent.
+    range rings, cardinals, home marker, and aircraft root. Lights
+    stay outside the group so lighting is scale-independent.
   - Settings panel gains a reusable `kind: 'button'` row type with an
     optional `subscribe()` for live label / disabled-state updates.
   - `body.xr-on` CSS class hides every DOM overlay while presenting so
