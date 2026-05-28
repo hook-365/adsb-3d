@@ -476,6 +476,11 @@ function feedNamePrefix(feed: Feed): string {
 
 function applySubtitle(): void {
   hudLocName.textContent = HOME.name;
+  // Browser tab title tracks the active feed's location. Static across
+  // the session (no live count or selected aircraft) so the tab doesn't
+  // flicker every render; updates when the feed switches because
+  // applySubtitle() is called again from the feed-switch handler.
+  document.title = HOME.name ? `ADS-B 3D · ${HOME.name}` : 'ADS-B 3D';
   if (hideCoords) {
     hudLocCoords.hidden = true;
     return;
