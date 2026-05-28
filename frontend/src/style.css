@@ -1712,7 +1712,23 @@ body.xr-on .acars-browser {
   align-items: center;
 }
 
-#panel-list li:hover {
+/* Virtual-scroll spacers: pure height fillers above + below the rendered
+   window so the scrollbar reflects the total filtered list size. No grid,
+   no padding, no pointer affordances — the user should never see them. */
+#panel-list li.spacer {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+#panel-list li.spacer:hover {
+  background: transparent;
+}
+
+#panel-list li:not(.spacer):hover {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 

@@ -2,13 +2,16 @@ import type { Aircraft } from '../core/types';
 import type { AircraftStore } from '../aircraft/store';
 import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact } from '../core/units';
-import { getFilter, setFilter, subscribeFilter, passesFilter, type FilterKey } from '../core/filter';
+import { getFilter, setFilter, subscribeFilter, passesFilter, setSearchQuery, subscribeSearchQuery, type FilterKey } from '../core/filter';
 import { hasAcars, subscribeAcars } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
 
-// tar1090-style aircraft list panel. Subscribes to the store and rebuilds
-// rows whenever the snapshot changes (~1 Hz). Search + column sorting are
-// local UI state; the only outward signal is which hex is "selected".
+// tar1090-style aircraft list panel. Subscribes to the store and re-renders
+// at ~1Hz. To stay flat on big feeds (Europe regularly hits 1500+ contacts),
+// the list is *virtualized*: only rows inside the scroll viewport (+overscan)
+// have real DOM, with two spacer <li>s padding the top/bottom of the list to
+// preserve scrollable height. Per-row mutation is gated on the store's per-
+// hex rev counter so steady-state ticks touch only the cells that changed.
 
 type SortKey = 'flight' | 'alt' | 'spd' | 'dist';
 
@@ -20,6 +23,27 @@ interface SortState {
 export interface AircraftListHandle {
   setSelected(hex: string | null): void;
   onSelect(fn: (hex: string | null) => void): void;
+}
+
+// Compact bitmask for the per-row status chips (emergency/military/special/
+// acars/privacy/ladd). Skipping renderRowTags when the mask is unchanged
+// avoids re-emitting innerHTML across hundreds of rows.
+const TAG_EMERGENCY = 1 << 0;
+const TAG_MILITARY = 1 << 1;
+const TAG_SPECIAL = 1 << 2;
+const TAG_ACARS = 1 << 3;
+const TAG_PRIVACY = 1 << 4;
+const TAG_LADD = 1 << 5;
+
+function tagMask(a: Aircraft): number {
+  let m = 0;
+  if (a.emergency) m |= TAG_EMERGENCY;
+  if (a.military) m |= TAG_MILITARY;
+  if (a.specialInterest) m |= TAG_SPECIAL;
+  if (getSettings().acarsMessages && hasAcars(a.hex)) m |= TAG_ACARS;
+  if (a.privacyIcao) m |= TAG_PRIVACY;
+  if (a.ladd) m |= TAG_LADD;
+  return m;
 }
 
 function rowText(a: Aircraft): { primary: string; secondary: string } {
@@ -36,20 +60,18 @@ function rowText(a: Aircraft): { primary: string; secondary: string } {
 // Single-character row badges for special-status aircraft. The detail
 // panel spells these out; here in the list we just need a visible glyph
 // so users can spot them at a glance without widening the row.
-function renderRowTags(el: HTMLElement, a: Aircraft): void {
-  const tags: Array<{ glyph: string; cls: string; title: string }> = [];
-  if (a.emergency) tags.push({ glyph: '!', cls: 'emergency', title: a.emergency });
-  if (a.military) tags.push({ glyph: 'M', cls: 'military', title: 'Military' });
-  if (a.specialInterest) tags.push({ glyph: '★', cls: 'special', title: 'Special interest' });
-  if (getSettings().acarsMessages && hasAcars(a.hex)) {
-    tags.push({ glyph: 'A', cls: 'acars', title: 'Recent ACARS messages' });
-  }
-  if (a.privacyIcao) tags.push({ glyph: 'P', cls: '', title: 'Privacy ICAO' });
-  if (a.ladd) tags.push({ glyph: 'L', cls: '', title: 'LADD' });
-  if (tags.length === 0) {
+function renderRowTags(el: HTMLElement, mask: number, emergencyTitle: string | null): void {
+  if (mask === 0) {
     el.textContent = '';
     return;
   }
+  const tags: Array<{ glyph: string; cls: string; title: string }> = [];
+  if (mask & TAG_EMERGENCY) tags.push({ glyph: '!', cls: 'emergency', title: emergencyTitle ?? 'Emergency' });
+  if (mask & TAG_MILITARY) tags.push({ glyph: 'M', cls: 'military', title: 'Military' });
+  if (mask & TAG_SPECIAL) tags.push({ glyph: '★', cls: 'special', title: 'Special interest' });
+  if (mask & TAG_ACARS) tags.push({ glyph: 'A', cls: 'acars', title: 'Recent ACARS messages' });
+  if (mask & TAG_PRIVACY) tags.push({ glyph: 'P', cls: '', title: 'Privacy ICAO' });
+  if (mask & TAG_LADD) tags.push({ glyph: 'L', cls: '', title: 'LADD' });
   el.innerHTML = tags
     .map((t) => `<span class="tag${t.cls ? ` ${t.cls}` : ''}" title="${t.title}">${t.glyph}</span>`)
     .join('');
@@ -69,6 +91,33 @@ function vrArrow(a: Aircraft): string {
   return '';
 }
 
+interface RowRefs {
+  callsign: HTMLElement;
+  tags: HTMLElement;
+  reg: HTMLElement;
+  alt: HTMLElement;
+  spd: HTMLElement;
+  dist: HTMLElement;
+  // Skip-gates. lastRev matches store.getRev(hex) when we last drew this row;
+  // lastTagMask is the bitmask we last emitted into .tags. lastSelected /
+  // lastClass let us avoid touching className when nothing visible changed.
+  lastRev: number;
+  lastTagMask: number;
+  lastSelected: boolean;
+  lastClass: string;
+}
+
+interface RowEl extends HTMLLIElement {
+  __refs?: RowRefs;
+}
+
+// Initial guess so the first paint is in the right ballpark; the renderer
+// remeasures from a real row on the next frame and adjusts.
+const DEFAULT_ROW_HEIGHT = 34;
+// Render this many rows beyond the viewport in each direction so a fast
+// scroll doesn't reveal blank space before the next frame paints.
+const OVERSCAN_ROWS = 6;
+
 export function createAircraftList(store: AircraftStore): AircraftListHandle {
   const list = document.getElementById('panel-list') as HTMLUListElement;
   const count = document.getElementById('panel-count') as HTMLElement;
@@ -80,9 +129,27 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   );
 
   let sort: SortState = { key: 'dist', asc: true };
-  let query = '';
   let selectedHex: string | null = null;
   const selectListeners = new Set<(hex: string | null) => void>();
+
+  // The active sorted+filtered hex list, recomputed on each render().
+  let sortedHexes: string[] = [];
+  // Live <li>s currently mounted in the DOM, keyed by hex. Rows that scroll
+  // out of the visible window are detached and dropped from this map.
+  const liByHex = new Map<string, RowEl>();
+  let rowHeight = DEFAULT_ROW_HEIGHT;
+  let rowHeightMeasured = false;
+
+  // Spacer <li>s pad the scroll height above + below the rendered window so
+  // the scrollbar reflects total list size. CSS rule for `.spacer` suppresses
+  // grid, padding, and pointer affordances so they're pure height fillers.
+  const topSpacer = document.createElement('li');
+  topSpacer.className = 'spacer';
+  topSpacer.setAttribute('aria-hidden', 'true');
+  const bottomSpacer = document.createElement('li');
+  bottomSpacer.className = 'spacer';
+  bottomSpacer.setAttribute('aria-hidden', 'true');
+  list.replaceChildren(topSpacer, bottomSpacer);
 
   function applyColumnIndicator(): void {
     for (const btn of colButtons) {
@@ -111,19 +178,20 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
     }
   }
 
-  function matches(a: Aircraft): boolean {
-    if (!passesFilter(a)) return false;
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (
-      (a.callsign?.toLowerCase().includes(q) ?? false) ||
-      (a.registration?.toLowerCase().includes(q) ?? false) ||
-      a.hex.includes(q)
-    );
+  function recomputeSorted(snapshot: ReadonlyMap<string, Aircraft>): Aircraft[] {
+    // passesFilter folds in both the status filter (filter buttons) and the
+    // free-text search query, so the panel and the 3D scene stay in lockstep.
+    const arr: Aircraft[] = [];
+    for (const a of snapshot.values()) {
+      if (passesFilter(a)) arr.push(a);
+    }
+    arr.sort(compare);
+    sortedHexes = new Array<string>(arr.length);
+    for (let i = 0; i < arr.length; i++) sortedHexes[i] = arr[i]!.hex;
+    return arr;
   }
 
-  function render(snapshot: ReadonlyMap<string, Aircraft>): void {
-    const rows = Array.from(snapshot.values()).filter(matches).sort(compare);
+  function updateCount(rows: Aircraft[]): void {
     // Headline count + a compact breakdown of in-air / on-ground / emergency.
     // Computed across the *visible* row set, so toggling a filter shows the
     // breakdown for what's actually rendered (a sanity check for the user).
@@ -142,76 +210,232 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
     count.innerHTML = breakdown.length > 0
       ? `<span class="total">${rows.length}</span> <span class="breakdown">${breakdown.join(' · ')}</span>`
       : `${rows.length}`;
+  }
 
-    const existing = new Map<string, HTMLLIElement>();
-    for (const li of list.children) {
-      const hex = (li as HTMLLIElement).dataset.hex;
-      if (hex) existing.set(hex, li as HTMLLIElement);
+  function createRow(): RowEl {
+    const li = document.createElement('li') as RowEl;
+    li.innerHTML =
+      '<div class="flight">' +
+        '<div class="line"><span class="callsign"></span><span class="tags"></span></div>' +
+        '<span class="reg"></span>' +
+      '</div>' +
+      '<span class="num alt"></span>' +
+      '<span class="num spd"></span>' +
+      '<span class="num dist"></span>';
+    const refs: RowRefs = {
+      callsign: li.querySelector<HTMLElement>('.callsign')!,
+      tags: li.querySelector<HTMLElement>('.tags')!,
+      reg: li.querySelector<HTMLElement>('.reg')!,
+      alt: li.querySelector<HTMLElement>('.alt')!,
+      spd: li.querySelector<HTMLElement>('.spd')!,
+      dist: li.querySelector<HTMLElement>('.dist')!,
+      lastRev: -1,
+      lastTagMask: -1,
+      lastSelected: false,
+      lastClass: ''
+    };
+    li.__refs = refs;
+    return li;
+  }
+
+  function updateRowContents(a: Aircraft, refs: RowRefs): void {
+    const text = rowText(a);
+    refs.callsign.textContent = text.primary;
+    refs.reg.textContent = text.secondary;
+    const mask = tagMask(a);
+    if (mask !== refs.lastTagMask) {
+      renderRowTags(refs.tags, mask, a.emergency);
+      refs.lastTagMask = mask;
+    }
+    refs.alt.innerHTML = `${vrArrow(a)}${fmtAlt(a)}`;
+    refs.alt.classList.toggle('dim', a.onGround);
+    refs.spd.textContent = fmtSpeedCompact(a.groundSpeedKt);
+    refs.spd.classList.toggle('dim', a.groundSpeedKt === null);
+    refs.dist.textContent = fmtDistanceCompact(distanceFromHomeNm(a.lat, a.lon));
+  }
+
+  function updateRowClass(li: RowEl, a: Aircraft, refs: RowRefs, isSelected: boolean): void {
+    let cls = '';
+    if (a.emergency) cls += ' emergency';
+    if (a.military) cls += ' military';
+    if (a.onGround) cls += ' ground';
+    if (isSelected) cls += ' selected';
+    const trimmed = cls.trim();
+    if (trimmed !== refs.lastClass) {
+      li.className = trimmed;
+      refs.lastClass = trimmed;
+    }
+    refs.lastSelected = isSelected;
+  }
+
+  // Compute [first, last) row range visible in the scroll viewport, expanded
+  // by OVERSCAN_ROWS in each direction. Clamped to [0, sortedHexes.length].
+  function computeVisibleRange(): { first: number; last: number } {
+    const total = sortedHexes.length;
+    if (total === 0) return { first: 0, last: 0 };
+    const scrollTop = list.scrollTop;
+    const viewport = list.clientHeight;
+    const first = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
+    const last = Math.min(total, Math.ceil((scrollTop + viewport) / rowHeight) + OVERSCAN_ROWS);
+    return { first, last };
+  }
+
+  function renderVisible(snapshot: ReadonlyMap<string, Aircraft>): void {
+    const range = computeVisibleRange();
+    const total = sortedHexes.length;
+    topSpacer.style.height = `${range.first * rowHeight}px`;
+    bottomSpacer.style.height = `${Math.max(0, total - range.last) * rowHeight}px`;
+
+    // Detach rows that are no longer in the visible window. Map deletion is
+    // safe inside the loop because we collect victims first.
+    const wanted = new Set<string>();
+    for (let i = range.first; i < range.last; i++) wanted.add(sortedHexes[i]!);
+    const drop: string[] = [];
+    for (const hex of liByHex.keys()) {
+      if (!wanted.has(hex)) drop.push(hex);
+    }
+    for (const hex of drop) {
+      const li = liByHex.get(hex)!;
+      li.remove();
+      liByHex.delete(hex);
     }
 
-    const fragment = document.createDocumentFragment();
-    for (const a of rows) {
-      const dist = distanceFromHomeNm(a.lat, a.lon);
-      let li = existing.get(a.hex);
+    // Walk the visible window in order, attaching missing rows and ensuring
+    // existing rows sit at the right DOM position. The cursor advances row by
+    // row from topSpacer; insertBefore(li, cursor.nextSibling) places each
+    // row in the correct sorted slot and is a no-op when it's already there.
+    let cursor: Node = topSpacer;
+    for (let i = range.first; i < range.last; i++) {
+      const hex = sortedHexes[i]!;
+      const a = snapshot.get(hex);
+      if (!a) continue;
+      let li = liByHex.get(hex);
+      let isNew = false;
       if (!li) {
-        li = document.createElement('li');
-        li.dataset.hex = a.hex;
-        li.innerHTML =
-          '<div class="flight">' +
-            '<div class="line"><span class="callsign"></span><span class="tags"></span></div>' +
-            '<span class="reg"></span>' +
-          '</div>' +
-          '<span class="num alt"></span>' +
-          '<span class="num spd"></span>' +
-          '<span class="num dist"></span>';
-        li.addEventListener('click', () => {
-          selectedHex = selectedHex === a.hex ? null : a.hex;
-          notifySelection();
-          render(store.snapshot);
-        });
+        li = createRow();
+        li.dataset.hex = hex;
+        liByHex.set(hex, li);
+        isNew = true;
       }
-      existing.delete(a.hex);
-
-      const text = rowText(a);
-      const callsignEl = li.querySelector<HTMLElement>('.callsign')!;
-      const tagsEl = li.querySelector<HTMLElement>('.tags')!;
-      const regEl = li.querySelector<HTMLElement>('.reg')!;
-      renderRowTags(tagsEl, a);
-      const altEl = li.querySelector<HTMLElement>('.alt')!;
-      const spdEl = li.querySelector<HTMLElement>('.spd')!;
-      const distEl = li.querySelector<HTMLElement>('.dist')!;
-      callsignEl.textContent = text.primary;
-      regEl.textContent = text.secondary;
-      altEl.innerHTML = `${vrArrow(a)}${fmtAlt(a)}`;
-      altEl.classList.toggle('dim', a.onGround);
-      spdEl.textContent = fmtSpeedCompact(a.groundSpeedKt);
-      spdEl.classList.toggle('dim', a.groundSpeedKt === null);
-      distEl.textContent = fmtDistanceCompact(dist);
-
-      let cls = '';
-      if (a.emergency) cls += ' emergency';
-      if (a.military) cls += ' military';
-      if (a.onGround) cls += ' ground';
-      if (a.hex === selectedHex) cls += ' selected';
-      li.className = cls.trim();
-
-      fragment.appendChild(li);
+      if (cursor.nextSibling !== li) {
+        list.insertBefore(li, cursor.nextSibling);
+      }
+      const refs = li.__refs!;
+      const rev = store.getRev(hex);
+      const contentsChanged = isNew || rev !== refs.lastRev;
+      if (contentsChanged) {
+        updateRowContents(a, refs);
+        refs.lastRev = rev;
+      }
+      // Selection toggles outside the rev path (the click handler doesn't
+      // mutate the snapshot), so check it independently every render. Also
+      // re-apply the class when row contents changed, since military /
+      // emergency / ground state are reflected in className.
+      const isSel = hex === selectedHex;
+      if (contentsChanged || isSel !== refs.lastSelected) {
+        updateRowClass(li, a, refs, isSel);
+      }
+      cursor = li;
     }
 
-    // Anything still in `existing` was filtered out / dropped — drop the DOM node.
-    for (const stale of existing.values()) stale.remove();
-    list.replaceChildren(fragment);
+    // First-paint row-height calibration. Measure offsetHeight of any real
+    // row once we have one, swap rowHeight, and re-render so the spacers
+    // and visible window agree with reality. Cap to a single recalc per
+    // session by setting rowHeightMeasured = true.
+    if (!rowHeightMeasured && liByHex.size > 0) {
+      const sample = liByHex.values().next().value as RowEl;
+      const h = sample.offsetHeight;
+      if (h > 0) {
+        rowHeightMeasured = true;
+        if (Math.abs(h - rowHeight) > 0.5) {
+          rowHeight = h;
+          renderVisible(snapshot);
+        }
+      }
+    }
+  }
+
+  // Full pipeline: recompute the sorted hex list from current filter+sort+
+  // query, refresh the count badge, then reconcile the visible DOM window.
+  function render(snapshot: ReadonlyMap<string, Aircraft>): void {
+    const rows = recomputeSorted(snapshot);
+    updateCount(rows);
+    renderVisible(snapshot);
+  }
+
+  // After filter/sort/query changes, the indices in sortedHexes are entirely
+  // different. Center the selected hex in the viewport if it still passes;
+  // otherwise scroll to the top.
+  function reindexAndPreserveScroll(): void {
+    const snapshot = store.snapshot;
+    const rows = recomputeSorted(snapshot);
+    updateCount(rows);
+    let target = 0;
+    if (selectedHex) {
+      const idx = sortedHexes.indexOf(selectedHex);
+      if (idx >= 0) {
+        target = Math.max(0, idx * rowHeight - list.clientHeight / 2 + rowHeight / 2);
+      }
+    }
+    list.scrollTop = target;
+    renderVisible(snapshot);
   }
 
   function notifySelection(): void {
     for (const fn of selectListeners) fn(selectedHex);
   }
 
+  // Event delegation: a single click listener on the <ul> derives the row
+  // from event.target. Cheaper than wiring per-row listeners and survives
+  // virtualization (rows are recycled across hexes).
+  list.addEventListener('click', (e) => {
+    const li = (e.target as HTMLElement | null)?.closest('li');
+    if (!li || li.classList.contains('spacer')) return;
+    const hex = (li as HTMLLIElement).dataset.hex;
+    if (!hex) return;
+    selectedHex = selectedHex === hex ? null : hex;
+    notifySelection();
+    // Flip .selected class on whichever currently-mounted rows are affected.
+    // The store hasn't changed so we don't trigger a full re-render.
+    const snap = store.snapshot;
+    for (const [h, row] of liByHex) {
+      const refs = row.__refs!;
+      const isSel = h === selectedHex;
+      if (isSel !== refs.lastSelected) {
+        const a = snap.get(h);
+        if (a) updateRowClass(row, a, refs, isSel);
+      }
+    }
+  });
+
+  // Recompute the visible window on scroll, coalesced to one update per
+  // animation frame so a single fling doesn't queue hundreds of renders.
+  let scrollPending = false;
+  list.addEventListener('scroll', () => {
+    if (scrollPending) return;
+    scrollPending = true;
+    requestAnimationFrame(() => {
+      scrollPending = false;
+      renderVisible(store.snapshot);
+    });
+  }, { passive: true });
+
+  // Window resize changes viewport height → visible row count changes.
+  window.addEventListener('resize', () => {
+    renderVisible(store.snapshot);
+  });
+
   store.subscribe(render);
 
   search.addEventListener('input', () => {
-    query = search.value.trim();
-    render(store.snapshot);
+    setSearchQuery(search.value);
+  });
+
+  // setSearchQuery fans out to all listeners — the reconciler picks up the
+  // new query on its next frame (it just reads passesFilter), and we
+  // reindex+rescroll the list panel here.
+  subscribeSearchQuery(() => {
+    reindexAndPreserveScroll();
   });
 
   for (const btn of colButtons) {
@@ -221,7 +445,7 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
       if (sort.key === key) sort = { key, asc: !sort.asc };
       else sort = { key, asc: key !== 'alt' && key !== 'spd' }; // numeric defaults: descending
       applyColumnIndicator();
-      render(store.snapshot);
+      reindexAndPreserveScroll();
     });
   }
 
@@ -244,14 +468,21 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   // Unsubscribe handles intentionally discarded — page-lifetime singleton.
   subscribeFilter((f) => {
     applyFilterIndicator(f);
-    render(store.snapshot);
+    reindexAndPreserveScroll();
   });
   applyFilterIndicator(getFilter());
 
   // Re-render when an ACARS message arrives so the new "A" chip on the
-  // affected aircraft appears immediately. Cheap: render() is the same
-  // 1Hz path the store subscriber uses.
-  subscribeAcars(() => render(store.snapshot));
+  // affected aircraft appears immediately. We can't piggyback on the
+  // store's rev (ACARS state lives in a separate store), so invalidate
+  // the tag-mask cache for the affected row directly when it's mounted.
+  subscribeAcars((hex) => {
+    const li = liByHex.get(hex.toLowerCase());
+    if (li) {
+      li.__refs!.lastTagMask = -1; // force renderRowTags next visible-pass
+    }
+    render(store.snapshot);
+  });
 
   applyColumnIndicator();
   render(store.snapshot);
@@ -259,7 +490,30 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   return {
     setSelected(hex) {
       selectedHex = hex;
-      render(store.snapshot);
+      // Mirror the click-path logic: flip classes on mounted rows without
+      // forcing a full re-render. If the newly-selected row is outside the
+      // visible window, scroll it into view so the user can see what they
+      // just selected.
+      const snap = store.snapshot;
+      for (const [h, row] of liByHex) {
+        const refs = row.__refs!;
+        const isSel = h === selectedHex;
+        if (isSel !== refs.lastSelected) {
+          const a = snap.get(h);
+          if (a) updateRowClass(row, a, refs, isSel);
+        }
+      }
+      if (selectedHex) {
+        const idx = sortedHexes.indexOf(selectedHex);
+        if (idx >= 0) {
+          const top = idx * rowHeight;
+          const bot = top + rowHeight;
+          if (top < list.scrollTop || bot > list.scrollTop + list.clientHeight) {
+            list.scrollTop = Math.max(0, top - list.clientHeight / 2 + rowHeight / 2);
+            renderVisible(snap);
+          }
+        }
+      }
     },
     onSelect(fn) {
       selectListeners.add(fn);
