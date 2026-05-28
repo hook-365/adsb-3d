@@ -53,6 +53,14 @@ export interface Aircraft {
   lat: number;
   lon: number;
   altFt: number;
+  /**
+   * True when the upstream frame actually reported altitude (either a
+   * numeric `alt_baro`/`alt_geom`, or the explicit `'ground'` sentinel).
+   * False when neither field was present — readsb occasionally emits
+   * frames without altitude, and the store's last-known-altitude cache
+   * substitutes a prior value to keep the cone from snapping to zero.
+   */
+  altFtKnown: boolean;
   onGround: boolean;
   groundSpeedKt: number | null;
   trackDeg: number | null;
