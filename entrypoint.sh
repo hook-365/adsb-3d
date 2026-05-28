@@ -580,9 +580,23 @@ else
     echo "[feeds] No FEEDS_CONFIG provided - single feed mode"
 fi
 
+# Discover the current FAA chart cycle date from vfrmap.com so the sectional/
+# IFR tile proxies stay valid through the next 56-day refresh. The cycle is
+# embedded in vfrmap.com's frontend JS as `f='YYYYMMDD'`. Best-effort: if the
+# scrape fails (no network at boot, vfrmap down), fall back to an empty value
+# so sectional tiles 404 cleanly while every other basemap keeps working.
+VFRMAP_CYCLE="$(curl -fsS --max-time 5 https://vfrmap.com/js/map.js?7 2>/dev/null \
+    | grep -oE "f='[0-9]{8}'" | head -1 | grep -oE '[0-9]{8}' || true)"
+if [ -n "$VFRMAP_CYCLE" ]; then
+    echo "[vfrmap] FAA chart cycle: $VFRMAP_CYCLE"
+else
+    echo "[vfrmap] WARN: could not fetch chart cycle from vfrmap.com — sectional tiles will be unavailable until next restart"
+fi
+export VFRMAP_CYCLE
+
 # Replace placeholders in nginx config with generated blocks
 # First, replace basic environment variables
-envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
+envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
 mv /etc/nginx/conf.d/default.conf.tmp /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders

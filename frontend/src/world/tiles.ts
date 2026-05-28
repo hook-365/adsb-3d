@@ -22,7 +22,38 @@ import { toScene } from '../core/coords';
 // same ENU helper the aircraft use, which gives a tile mesh that matches
 // the rest of the scene's coordinate frame exactly.
 
-export type TileProvider = 'dark' | 'carto_voyager' | 'hillshade' | 'topo' | 'satellite' | 'osm';
+export type TileProvider =
+  | 'dark'
+  | 'carto_voyager'
+  | 'hillshade'
+  | 'topo'
+  | 'satellite'
+  | 'osm'
+  // US aeronautical charts via VFRMap (FAA-published, 56-day cycle).
+  // The nginx upstream re-renders the URL at container start once it
+  // discovers the current cycle date. US-only coverage.
+  | 'sectional'         // pure VFR sectional
+  | 'sectional_hybrid'  // VFR sectional overlaid with OSM roads
+  | 'helicopter'        // helicopter route chart
+  | 'ifr_low'           // IFR low-altitude enroute
+  | 'ifr_high';         // IFR high-altitude enroute
+
+// Per-provider metadata. `tms: true` means the upstream uses the TMS
+// y-axis convention (origin at south) instead of standard XYZ — the
+// URL builder flips y for those before going to nginx.
+const PROVIDER_META: Record<TileProvider, { tms: boolean }> = {
+  dark: { tms: false },
+  carto_voyager: { tms: false },
+  hillshade: { tms: false },
+  topo: { tms: false },
+  satellite: { tms: false },
+  osm: { tms: false },
+  sectional: { tms: true },
+  sectional_hybrid: { tms: true },
+  helicopter: { tms: true },
+  ifr_low: { tms: true },
+  ifr_high: { tms: true },
+};
 
 const DEFAULT_ZOOM = 8;
 
@@ -136,7 +167,11 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       if (x < 0 || y < 0 || x >= nMax || y >= nMax) continue;
 
       queued++;
-      const url = `${basePath}/tiles/${provider}/${zoom}/${y}/${x}`;
+      // TMS providers number y from the south, XYZ from the north. nginx
+      // proxies what we send straight through to the upstream, so flip
+      // here before constructing the URL.
+      const yForUrl = PROVIDER_META[provider].tms ? nMax - 1 - y : y;
+      const url = `${basePath}/tiles/${provider}/${zoom}/${yForUrl}/${x}`;
       loader.load(
         url,
         (texture) => {

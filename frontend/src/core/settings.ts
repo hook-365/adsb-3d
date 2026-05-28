@@ -14,7 +14,19 @@ import type { ThemeSelection } from './theme';
 export type DistanceUnit = 'nm' | 'km';
 export type SpeedUnit = 'kt' | 'mph' | 'kmh';
 export type AltitudeUnit = 'ft' | 'm';
-export type Basemap = 'dark' | 'carto_voyager' | 'hillshade' | 'topo' | 'satellite' | 'osm';
+export type Basemap =
+  | 'dark'
+  | 'carto_voyager'
+  | 'hillshade'
+  | 'topo'
+  | 'satellite'
+  | 'osm'
+  // US-only aeronautical charts (FAA, served via VFRMap).
+  | 'sectional'
+  | 'sectional_hybrid'
+  | 'helicopter'
+  | 'ifr_low'
+  | 'ifr_high';
 
 export interface Settings {
   /** Render the per-aircraft tar1090 ground icon at the foot of the altitude line. */

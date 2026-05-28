@@ -107,6 +107,13 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           { value: 'topo', label: 'OpenTopoMap' },
           { value: 'hillshade', label: 'ESRI Hillshade' },
           { value: 'satellite', label: 'ESRI Satellite' },
+          // US-only aeronautical charts (FAA, via vfrmap.com). Coverage
+          // outside CONUS/AK/HI will be blank.
+          { value: 'sectional', label: 'FAA Sectional (US)' },
+          { value: 'sectional_hybrid', label: 'FAA Sectional + Roads (US)' },
+          { value: 'helicopter', label: 'FAA Helicopter (US)' },
+          { value: 'ifr_low', label: 'FAA IFR Low (US)' },
+          { value: 'ifr_high', label: 'FAA IFR High (US)' },
         ],
       },
     ],
