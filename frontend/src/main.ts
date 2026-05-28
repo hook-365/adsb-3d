@@ -17,6 +17,7 @@ import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
 import { XrWristMenu } from './world/xr-wrist-menu';
+import { setupXrLocomotion } from './world/xr-locomotion';
 import {
   attachRouteBatchPrefetcher,
   configureRoutesApi,
@@ -154,29 +155,47 @@ const xrControllers = setupXrControllers({
 // DOM doesn't composite over the headset output anyway). Style rules
 // keyed to `body.xr-on` live in style.css alongside the stereo-on ones.
 //
-// Also pins the xrRoot to a tabletop scale + chest-height position so
-// the 500 NM airspace fits in front of the user as a small disc instead
-// of swallowing the room. Phase 4 will swap this fixed scale for an
-// interactive slider; today it's a one-line default.
-const VR_SCALE = 0.01;          // 1 NM = 1 cm  → 250 NM ring is 2.5 m
+// On session start the world is positioned chest-high in front of the
+// user and scaled by Settings.vrScale (Phase 4 turned the fixed Phase
+// 2 tabletop scale into a persisted setting; the left thumbstick
+// drives it live via xr-locomotion). On end, transform is reset so
+// the desktop view goes back to identity.
 const VR_OFFSET_Y = 0.8;        // chest height
 const VR_OFFSET_Z = -1.5;       // 1.5 m in front
 subscribeXr((s) => {
   document.body.classList.toggle('xr-on', s.presenting);
   if (s.presenting) {
     labelRenderer.domElement.style.display = 'none';
-    world.xrRoot.scale.setScalar(VR_SCALE);
+    world.xrRoot.scale.setScalar(getSettings().vrScale);
     world.xrRoot.position.set(0, VR_OFFSET_Y, VR_OFFSET_Z);
+    world.xrRoot.rotation.set(0, 0, 0);
   } else {
     if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
     world.xrRoot.scale.setScalar(1);
     world.xrRoot.position.set(0, 0, 0);
+    world.xrRoot.rotation.set(0, 0, 0);
     // The wrist menu lives under the left controller; the controller
     // Group itself is recycled when the next session starts, but the
     // menu Mesh holds a stale parent ref. Detach explicitly so the
     // next 'connected' / onHandednessKnown re-attaches cleanly.
     xrWristMenu.detach();
   }
+});
+
+// Live-apply vrScale changes while a session is active. The
+// xr-locomotion module drives this via updateSettings on every frame
+// the user is pushing the thumbstick; subscribing here keeps the
+// wrist-menu display + persistence as the single source of truth.
+subscribeSettings((s) => {
+  if (world.renderer.xr.isPresenting) {
+    world.xrRoot.scale.setScalar(s.vrScale);
+  }
+});
+
+const xrLocomotion = setupXrLocomotion({
+  renderer: world.renderer,
+  camera: world.camera,
+  xrRoot: world.xrRoot,
 });
 
 const initialSelectedHex = readSelectedHex();
@@ -885,6 +904,8 @@ function tick(t: number): void {
   if (world.renderer.xr.isPresenting) {
     const right = xrControllers.getControllerByHandedness('right');
     xrWristMenu.updateHover(right);
+    // Thumbstick + button input (scale / snap-turn / recenter).
+    xrLocomotion.tick(dt);
   }
 
   if (world.renderer.xr.isPresenting) {

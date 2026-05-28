@@ -58,6 +58,15 @@ export interface Settings {
    * strain. Only applies while `stereo` is on.
    */
   stereoStrength: number;
+  /**
+   * Immersive-VR world scale. 1.0 = 1 scene unit (= 1 NM) per real
+   * metre — the user stands inside the radar volume at 1:1. 0.01 =
+   * tabletop scale (250 NM scope fits as a 5 m disc). Persists across
+   * sessions so a user who likes "room scale" doesn't have to thumb
+   * back up to it every time they put the headset on. Modified by the
+   * left thumbstick in VR (Phase 4) and applied to xrRoot.scale.
+   */
+  vrScale: number;
   /** Slippy-map basemap provider proxied by nginx /tiles/{provider}/... */
   basemap: Basemap;
   distanceUnit: DistanceUnit;
@@ -80,6 +89,7 @@ const DEFAULTS: Settings = {
   acarsMessages: true,
   stereo: false,
   stereoStrength: 50,
+  vrScale: 0.01,
   basemap: 'dark',
   distanceUnit: 'nm',
   speedUnit: 'kt',
