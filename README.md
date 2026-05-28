@@ -264,6 +264,24 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
   / IFR Low / IFR High chart tiles, kept in sync with the FAA 56-day cycle.
   Free non-commercial service; please don't abuse it.
 
+## Recent changes
+
+The full history lives in [CHANGELOG.md](CHANGELOG.md). Highlights:
+
+- **v0.2.0** (2026-05-27) — **Color themes**: five built-in palettes
+  (Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast)
+  with an `Auto` option that follows `prefers-color-scheme`; live switching
+  with no scene rebuild. **FAA aeronautical chart basemaps** (US only):
+  Sectional, Sectional + Roads, Helicopter, IFR Low, IFR High, served via
+  VFRMap with auto-discovery of the 56-day chart cycle at container start.
+- **v0.1.1** (2026-05-22) — `HIDE_TOWER=true` now also hides the home
+  marker dot on the map, not just the HUD coordinate readout.
+- **v0.1.0** (2026-05-21) — First public release of the rewrite. Replaces
+  the ~14k-line vanilla-JS monolith with a TypeScript / Three.js
+  reconciler-driven architecture; introduces historical playback, the 3D
+  airway-density heatmap, ACARS, multi-feed, and the optional voice
+  scanner. See the [Upgrading](#upgrading) section for breaking changes.
+
 ## License
 
 Source code is MIT (see `LICENSE`). Vendored tar1090 data
