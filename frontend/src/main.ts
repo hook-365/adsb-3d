@@ -169,11 +169,16 @@ subscribeXr((s) => {
     world.xrRoot.scale.setScalar(getSettings().vrScale);
     world.xrRoot.position.set(0, VR_OFFSET_Y, VR_OFFSET_Z);
     world.xrRoot.rotation.set(0, 0, 0);
+    // AR (passthrough) hides the basemap + sky + fog so the room
+    // shows through. VR keeps the opaque sky as today. Passthrough
+    // is also off for the desktop view that follows session end.
+    world.setPassthrough(s.presentingMode === 'ar');
   } else {
     if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
     world.xrRoot.scale.setScalar(1);
     world.xrRoot.position.set(0, 0, 0);
     world.xrRoot.rotation.set(0, 0, 0);
+    world.setPassthrough(false);
     // The wrist menu lives under the left controller; the controller
     // Group itself is recycled when the next session starts, but the
     // menu Mesh holds a stale parent ref. Detach explicitly so the

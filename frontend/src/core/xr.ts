@@ -21,8 +21,16 @@ export interface XrState {
    * If the user plugs in a headset mid-session a page reload is needed.
    */
   vrSupported: boolean;
+  /**
+   * True if the device additionally supports immersive-ar (passthrough).
+   * Quest 3 / Vision Pro yes; Quest 2 / Index / Cardboard no. Probed in
+   * parallel with vrSupported at boot.
+   */
+  arSupported: boolean;
   /** True between session start and session end. */
   presenting: boolean;
+  /** Which mode the active session is in. null when not presenting. */
+  presentingMode: 'vr' | 'ar' | null;
   /**
    * Short reason string explaining why VR isn't available, suitable for a
    * settings-panel tooltip. null when supported.
@@ -46,7 +54,9 @@ interface XrRenderer {
 let renderer: XrRenderer | null = null;
 let state: XrState = {
   vrSupported: false,
+  arSupported: false,
   presenting: false,
+  presentingMode: null,
   unavailableReason: 'Checking WebXR support…',
 };
 const listeners = new Set<XrListener>();
@@ -80,12 +90,19 @@ async function probeSupport(): Promise<void> {
       setState({ vrSupported: false, unavailableReason: 'WebXR is unavailable.' });
       return;
     }
-    const supported = await xr.isSessionSupported('immersive-vr');
-    if (supported) {
-      setState({ vrSupported: true, unavailableReason: null });
+    // Probe both modes in parallel — Quest 3 / Vision Pro return true
+    // for both; Quest 2 returns true only for vr; a Cardboard browser
+    // typically returns false for both (no headset attached yet).
+    const [vrOk, arOk] = await Promise.all([
+      xr.isSessionSupported('immersive-vr').catch(() => false),
+      xr.isSessionSupported('immersive-ar').catch(() => false),
+    ]);
+    if (vrOk) {
+      setState({ vrSupported: true, arSupported: arOk, unavailableReason: null });
     } else {
       setState({
         vrSupported: false,
+        arSupported: arOk,
         unavailableReason:
           'This device does not support immersive VR. Connect a headset (Quest, Index, etc.) or use a phone with a Cardboard-style viewer in Chrome.',
       });
@@ -93,6 +110,7 @@ async function probeSupport(): Promise<void> {
   } catch (err) {
     setState({
       vrSupported: false,
+      arSupported: false,
       unavailableReason: `WebXR probe failed: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
@@ -127,26 +145,44 @@ export function subscribeXr(fn: XrListener): () => void {
  * stored reason).
  */
 export async function enterVR(): Promise<void> {
+  return enterSession('vr');
+}
+
+/**
+ * Request an immersive-ar (passthrough) session. Only meaningful on
+ * Quest 3 / Vision Pro and similar — see arSupported. The world will
+ * render with a transparent background so the headset's camera feed
+ * shows through; main.ts wires world.setPassthrough() to this mode.
+ */
+export async function enterAR(): Promise<void> {
+  return enterSession('ar');
+}
+
+async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
   if (state.presenting) return;
   if (!renderer) throw new Error('XR renderer not set — call setRenderer first');
-  if (!state.vrSupported) {
+  if (mode === 'vr' && !state.vrSupported) {
     throw new Error(state.unavailableReason ?? 'WebXR is not available');
+  }
+  if (mode === 'ar' && !state.arSupported) {
+    throw new Error('Immersive AR is not available on this device');
   }
   const xr = (navigator as Navigator & { xr?: XRSystem }).xr!;
   // local-floor: scene origin sits at the player's floor at headset
   // boot. The player's height is reported by the runtime; aircraft
   // appear above their head as expected. local (no -floor) would put
   // the camera at scene origin which is wrong for an air-traffic scope.
-  const session = await xr.requestSession('immersive-vr', {
+  const sessionMode = mode === 'vr' ? 'immersive-vr' : 'immersive-ar';
+  const session = await xr.requestSession(sessionMode, {
     requiredFeatures: ['local-floor'],
   });
   currentSession = session;
   session.addEventListener('end', () => {
     currentSession = null;
-    setState({ presenting: false });
+    setState({ presenting: false, presentingMode: null });
   });
   await renderer.xr.setSession(session);
-  setState({ presenting: true });
+  setState({ presenting: true, presentingMode: mode });
 }
 
 /**

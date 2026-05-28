@@ -27,9 +27,9 @@ export interface World {
   /**
    * Group enclosing every scene element that should grow/shrink as one
    * in immersive XR (range rings, tile layer, aircraft root, home
-   * marker, cardinals). Phase 1 leaves this at identity scale; Phase 4
-   * will tween its scale on user input so the whole airspace fits the
-   * room. Lights and the camera stay outside so lighting is unaffected.
+   * marker, cardinals). Phase 4 drives its scale + rotation + position
+   * from gamepad input. Lights and the camera stay outside so lighting
+   * is unaffected.
    */
   xrRoot: Group;
   aircraftRoot: Mesh; // a Group would be fine; using Mesh-friendly Object3D anyway
@@ -41,10 +41,23 @@ export interface World {
    * toScene(), gets disposed and recreated.
    */
   recenter(): void;
+  /**
+   * Toggle "passthrough" mode (Phase 5). In an immersive-ar session the
+   * basemap + sky + fog all need to disappear so the real world shows
+   * through the headset's camera feed — aircraft float in the living
+   * room. This is a runtime mode flip, not a destructive change:
+   * setPassthrough(false) restores everything for VR / desktop.
+   */
+  setPassthrough(on: boolean): void;
 }
 
 export function createWorld(canvas: HTMLCanvasElement): World {
-  const renderer = new WebGLRenderer({ canvas, antialias: true });
+  // `alpha: true` lets the WebGL framebuffer hold per-pixel transparency,
+  // which is required for immersive-ar passthrough — the runtime
+  // composites the headset's camera feed behind any zero-alpha pixels
+  // we render. For VR / desktop the scene.background Color still fills
+  // the frame opaquely, so this doesn't change those modes.
+  const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
@@ -216,5 +229,34 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   camera.position.set(0, 220, 280);
   camera.lookAt(0, 0, 0);
 
-  return { scene, camera, renderer, xrRoot, aircraftRoot, recenter };
+  // Passthrough state. We stash the opaque sky + fog so AR mode can
+  // null them out and VR / desktop can restore identically. Tile layer
+  // is hidden via .visible (toggled in place — disposeTileLayer would
+  // throw away the textures we paid for on the way in).
+  let savedBackground: Color | null = scene.background instanceof Color ? scene.background : null;
+  let savedFog: FogExp2 | null = scene.fog instanceof FogExp2 ? scene.fog : null;
+  // The active theme-subscriber above mutates these same instances on
+  // theme change. We hold the references not the values, so re-reading
+  // .color when restoring picks up any theme switch that happened
+  // mid-session.
+  function setPassthrough(on: boolean): void {
+    if (on) {
+      // Cache live refs (they may have been swapped by the theme
+      // subscriber). Setting scene.background = null + clearAlpha 0 on
+      // the renderer is what makes the framebuffer transparent.
+      savedBackground = scene.background instanceof Color ? scene.background : savedBackground;
+      savedFog = scene.fog instanceof FogExp2 ? scene.fog : savedFog;
+      scene.background = null;
+      scene.fog = null;
+      renderer.setClearAlpha(0);
+      tileLayer.visible = false;
+    } else {
+      scene.background = savedBackground;
+      scene.fog = savedFog;
+      renderer.setClearAlpha(1);
+      tileLayer.visible = true;
+    }
+  }
+
+  return { scene, camera, renderer, xrRoot, aircraftRoot, recenter, setPassthrough };
 }

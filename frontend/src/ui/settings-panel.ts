@@ -1,6 +1,6 @@
 import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
 import { THEME_OPTIONS } from '../core/theme';
-import { enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
+import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
 
 // Gear button + popover panel. Mounted into a slot the host page provides
 // in the header (#settings-slot) and a panel container appended to <body>
@@ -151,8 +151,15 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         },
         subscribe: (update) =>
           subscribeXr((s) => {
-            if (s.presenting) {
+            if (s.presenting && s.presentingMode === 'vr') {
               update({ label: 'Exit VR', description: 'End the active immersive session.', disabled: false });
+            } else if (s.presenting) {
+              // An AR session is active — VR button is disabled until it ends.
+              update({
+                label: 'Enter VR',
+                description: 'Exit the AR session first.',
+                disabled: true,
+              });
             } else if (s.vrSupported) {
               update({
                 label: 'Enter VR',
@@ -163,6 +170,41 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
               update({
                 label: 'VR unavailable',
                 description: s.unavailableReason ?? 'WebXR is not available in this browser.',
+                disabled: true,
+              });
+            }
+          }),
+      },
+      {
+        kind: 'button',
+        id: 'enter-ar',
+        label: 'Enter AR',
+        description: 'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
+        onClick: async () => {
+          const s = getXrState();
+          if (s.presenting) await exitVR();
+          else await enterAR();
+        },
+        subscribe: (update) =>
+          subscribeXr((s) => {
+            if (s.presenting && s.presentingMode === 'ar') {
+              update({ label: 'Exit AR', description: 'End the active passthrough session.', disabled: false });
+            } else if (s.presenting) {
+              update({
+                label: 'Enter AR',
+                description: 'Exit the VR session first.',
+                disabled: true,
+              });
+            } else if (s.arSupported) {
+              update({
+                label: 'Enter AR',
+                description: 'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
+                disabled: false,
+              });
+            } else {
+              update({
+                label: 'AR unavailable',
+                description: 'This device does not support immersive-ar passthrough.',
                 disabled: true,
               });
             }
