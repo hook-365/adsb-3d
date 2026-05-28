@@ -25,6 +25,7 @@ import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
 import { getSettings, subscribeSettings } from '../core/settings';
+import { getTheme, subscribeTheme } from '../core/theme';
 import { passesFilter } from '../core/filter';
 import { altitudeColor } from '../core/altitude-color';
 
@@ -41,7 +42,15 @@ CONE_GEOMETRY.rotateX(-Math.PI / 2);
 const CONE_GEOMETRY_GROUND = new ConeGeometry(0.4, 1.4, 6);
 CONE_GEOMETRY_GROUND.rotateX(-Math.PI / 2);
 
-const LINE_MAT_DEFAULT = new LineBasicMaterial({ color: 0x4cc8ff, transparent: true, opacity: 0.35 });
+// Trail / ring colors come from the active theme. The shared materials
+// below are mutated in place by the module-level theme subscriber further
+// down so a theme change recolors every aircraft on the next paint.
+const themeThree = () => getTheme().tokens.three;
+const LINE_MAT_DEFAULT = new LineBasicMaterial({
+  color: new Color(themeThree().trailDefault),
+  transparent: true,
+  opacity: 0.35,
+});
 
 // Stale-data dimming: aircraft we haven't heard from recently fade toward
 // transparent so it's obvious which contacts are still actively reporting.
@@ -144,16 +153,30 @@ const PING_RING_GEOMETRY = new RingGeometry(1.0, 1.2, 48);
 PING_RING_GEOMETRY.rotateX(-Math.PI / 2);
 const PING_DURATION_MS = 1800;
 const PING_MAX_SCALE = 4.5;
-const PING_COLOR = 0xb284ff; // matches ACARS purple in the panel
 // Slightly larger so it haloes around the cyan selection ring when both apply.
 const EMERGENCY_RING_GEOMETRY = new RingGeometry(2.9, 3.6, 64);
 EMERGENCY_RING_GEOMETRY.rotateX(-Math.PI / 2);
 const EMERGENCY_RING_MATERIAL = new MeshBasicMaterial({
-  color: 0xff3344,
+  color: new Color(themeThree().emergencyRing),
   transparent: true,
   opacity: 0.85,
   depthWrite: false,
   side: DoubleSide,
+});
+
+// Per-entry materials (selection ring + ping ring) — tracked in Sets so the
+// theme subscriber can recolor every live aircraft when the user switches
+// themes. Sets are kept tight by removing entries on aircraft cleanup
+// (see `entries.delete` below).
+const SELECTION_MATERIALS = new Set<MeshBasicMaterial>();
+const PING_MATERIALS = new Set<MeshBasicMaterial>();
+
+subscribeTheme((tokens) => {
+  const t = tokens.three;
+  LINE_MAT_DEFAULT.color.set(t.trailDefault);
+  EMERGENCY_RING_MATERIAL.color.set(t.emergencyRing);
+  for (const m of SELECTION_MATERIALS) m.color.set(t.selectionRing);
+  for (const m of PING_MATERIALS) m.color.set(t.acarsPing);
 });
 
 // Invisible bounding sphere centered on each cone, used as a forgiving
@@ -267,16 +290,15 @@ function buildEntry(a: Aircraft): RenderEntry {
   pickProxy.userData = { kind: 'aircraft-pick', hex: a.hex };
   cone.add(pickProxy);
 
-  const selectionRing = new Mesh(
-    SELECTION_RING_GEOMETRY,
-    new MeshBasicMaterial({
-      color: 0x4cc8ff,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      side: DoubleSide
-    })
-  );
+  const selectionMaterial = new MeshBasicMaterial({
+    color: new Color(themeThree().selectionRing),
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  SELECTION_MATERIALS.add(selectionMaterial);
+  const selectionRing = new Mesh(SELECTION_RING_GEOMETRY, selectionMaterial);
   selectionRing.visible = false;
   selectionRing.renderOrder = 5;
   selectionRing.userData = { kind: 'selection-ring', hex: a.hex };
@@ -292,12 +314,13 @@ function buildEntry(a: Aircraft): RenderEntry {
   // Per-entry ping material so its opacity can be animated independently.
   // Geometry is shared via PING_RING_GEOMETRY.
   const pingMaterial = new MeshBasicMaterial({
-    color: PING_COLOR,
+    color: new Color(themeThree().acarsPing),
     transparent: true,
     opacity: 0,
     depthWrite: false,
     side: DoubleSide,
   });
+  PING_MATERIALS.add(pingMaterial);
   const pingRing = new Mesh(PING_RING_GEOMETRY, pingMaterial);
   pingRing.visible = false;
   pingRing.renderOrder = 6;
@@ -700,7 +723,10 @@ export class AircraftReconciler {
       entry.trailDashed.geometry.dispose();
       // Trail materials (TRAIL_MAT_SOLID / TRAIL_MAT_DASHED) are shared
       // across all aircraft — do not dispose them here.
-      (entry.selectionRing.material as MeshBasicMaterial).dispose();
+      const selMat = entry.selectionRing.material as MeshBasicMaterial;
+      SELECTION_MATERIALS.delete(selMat);
+      selMat.dispose();
+      PING_MATERIALS.delete(entry.pingMaterial);
       entry.pingMaterial.dispose();
       entry.pickMaterial.dispose();
       entry.iconMesh.geometry.dispose();

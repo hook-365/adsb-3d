@@ -1,3 +1,7 @@
+// Theme runs side-effects on import (applies tokens to :root). Keep this
+// at the top so the first paint already carries the active palette and we
+// don't flash the fallback values that live in :root in style.css.
+import { setTheme } from './core/theme';
 import { Vector3 } from 'three';
 import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
 import { AircraftStore } from './aircraft/store';
@@ -101,6 +105,11 @@ function applyStereoMode(): void {
 }
 subscribeSettings(applyStereoMode);
 applyStereoMode();
+
+// Theme bridge: Settings owns persistence, theme module owns application.
+// Apply once on boot to honor a stored preference, then re-apply on change.
+setTheme(getSettings().theme);
+subscribeSettings((s) => setTheme(s.theme));
 
 const initialSelectedHex = readSelectedHex();
 

@@ -9,6 +9,8 @@
 //
 // All settings are global to the session; nothing here is feed-specific.
 
+import type { ThemeSelection } from './theme';
+
 export type DistanceUnit = 'nm' | 'km';
 export type SpeedUnit = 'kt' | 'mph' | 'kmh';
 export type AltitudeUnit = 'ft' | 'm';
@@ -49,6 +51,12 @@ export interface Settings {
   distanceUnit: DistanceUnit;
   speedUnit: SpeedUnit;
   altitudeUnit: AltitudeUnit;
+  /**
+   * Color theme. 'auto' follows the system prefers-color-scheme; named
+   * themes (e.g. 'midnight-glass', 'daylight') pin the palette regardless.
+   * See core/theme.ts for the registry and authoring guide.
+   */
+  theme: ThemeSelection;
 }
 
 const DEFAULTS: Settings = {
@@ -64,6 +72,7 @@ const DEFAULTS: Settings = {
   distanceUnit: 'nm',
   speedUnit: 'kt',
   altitudeUnit: 'ft',
+  theme: 'auto',
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';

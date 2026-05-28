@@ -1,4 +1,5 @@
 import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
+import { THEME_OPTIONS } from '../core/theme';
 
 // Gear button + popover panel. Mounted into a slot the host page provides
 // in the header (#settings-slot) and a panel container appended to <body>
@@ -39,6 +40,18 @@ interface SettingsSection {
 }
 
 const SETTINGS_SCHEMA: SettingsSection[] = [
+  {
+    heading: 'Theme',
+    rows: [
+      {
+        kind: 'choice',
+        key: 'theme',
+        label: 'Color theme',
+        description: 'Palette for panels, accents, and the scene background. Auto follows your system light/dark preference.',
+        options: THEME_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+      },
+    ],
+  },
   {
     heading: 'Display',
     rows: [

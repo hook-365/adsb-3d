@@ -6,13 +6,39 @@
 
 :root {
   color-scheme: dark;
+  /* Theme tokens. Defaults mirror the Midnight Glass theme; core/theme.ts
+     overwrites them on import. Translucent variants are produced at use-site
+     via color-mix(in srgb, var(--token) NN%, transparent) so themes only
+     have to define base hues, not every opacity tier. */
   --bg: #050810;
   --fg: #d6e4ff;
+  --fg-bright: #e8f3ff;
+  --fg-soft: #cfe5ff;
   --muted: #6f7a90;
+  --panel-base: #080e1a;
+  --panel-base-alt: #050810;
+  --panel-base-hi: #0a1222;
+  --option-bg: #0b1424;
+  --thumb-border: #0a0f1a;
+  --badge-text-on-accent: #050810;
+  --panel-blur: 10px;
+  --panel-blur-sm: 6px;
   --accent: #4cc8ff;
   --good: #5fe39a;
   --warn: #ffb86c;
   --bad: #ff6b81;
+  --military: #ff6b81;
+  --special: #ffd166;
+  --emergency: #ff3344;
+  --emergency-text: #ffffff;
+  --acars: #d4b8ff;
+  --coffee: #ffb84c;
+  --phase-taxi-out: #f5c451;
+  --phase-airborne: #6fd97a;
+  --axis-label: rgba(180, 210, 240, 0.55);
+  --axis-cardinal: rgba(200, 230, 255, 0.75);
+  --text-shadow-strong: rgba(0, 0, 0, 0.8);
+  --scrim: rgba(4, 8, 16, 0.65);
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 }
 
@@ -39,8 +65,8 @@ html, body {
   left: 16px;
   z-index: 10;
   padding: 12px 16px 13px;
-  background: linear-gradient(180deg, rgba(10, 18, 34, 0.82) 0%, rgba(8, 14, 26, 0.7) 100%);
-  border: 1px solid rgba(76, 200, 255, 0.22);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-base-hi) 82%, transparent) 0%, color-mix(in srgb, var(--panel-base) 70%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
   border-radius: 8px;
   backdrop-filter: blur(10px);
   max-width: 320px;
@@ -58,7 +84,7 @@ html, body {
   width: 18px;
   height: 18px;
   color: var(--accent);
-  filter: drop-shadow(0 0 6px rgba(76, 200, 255, 0.6));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
   transform: rotate(-8deg);
 }
 
@@ -67,7 +93,7 @@ html, body {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #e8f3ff;
+  color: var(--fg-bright);
 }
 
 #hud .hud-live {
@@ -138,7 +164,7 @@ html, body {
 #hud .hud-acars:hover,
 #hud .hud-acars:focus-visible {
   border-color: currentColor;
-  background: rgba(76, 200, 255, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   outline: none;
 }
 
@@ -197,8 +223,8 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(76, 200, 255, 0.25);
-  background: rgba(5, 8, 16, 0.7);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 70%, transparent);
   backdrop-filter: blur(6px);
   color: var(--fg);
   font: inherit;
@@ -213,7 +239,7 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
 .voice-toggle:focus-visible {
   border-color: var(--accent);
   outline: none;
-  background: rgba(76, 200, 255, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 /* "Connected & streaming" — WS link live and audio streaming. Placed after
    the :hover rule so the green wins even while hovered. */
@@ -242,8 +268,8 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   width: 220px;
   padding: 10px 12px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(76, 200, 255, 0.18);
-  background: rgba(5, 8, 16, 0.92);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 92%, transparent);
   backdrop-filter: blur(8px);
   box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.8);
 }
@@ -262,14 +288,14 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   justify-content: center;
   border-radius: 50%;
   border: 1px solid var(--accent);
-  background: rgba(76, 200, 255, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.12s;
 }
 .voice-play:hover {
-  background: rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .voice-play[aria-pressed="true"] {
   background: var(--accent);
@@ -301,7 +327,7 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   align-items: center;
   justify-content: space-between;
   padding: 5px 2px 6px;
-  border-bottom: 1px solid rgba(76, 200, 255, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
@@ -342,12 +368,12 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   list-style: none;
   margin: 0;
   padding: 4px 0;
-  border-top: 1px solid rgba(76, 200, 255, 0.1);
-  border-bottom: 1px solid rgba(76, 200, 255, 0.1);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
   max-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(76, 200, 255, 0.25) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent) 25%, transparent) transparent;
 }
 .voice-call-list li {
   display: grid;
@@ -363,10 +389,10 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   font-variant-numeric: tabular-nums;
 }
 .voice-call-list li:hover {
-  background: rgba(76, 200, 255, 0.07);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .voice-call-list li.playing {
-  background: rgba(76, 200, 255, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-left-color: var(--accent);
 }
 /* .vc-time */
@@ -408,8 +434,8 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   margin: 4px 0;
   padding: 3px 8px;
   border-radius: 3px;
-  background: rgba(76, 200, 255, 0.1);
-  border: 1px solid rgba(76, 200, 255, 0.3);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--accent);
   font-size: 9px;
   font-weight: 700;
@@ -420,7 +446,7 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   transition: background 0.12s;
 }
 .voice-jump-live:hover {
-  background: rgba(76, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* ── Voice: channel dot — color override from JS ────────────────────────── */
@@ -461,14 +487,14 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
 #hud .hud-loc {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(76, 200, 255, 0.12);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 #hud .hud-loc-name {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #cfe5ff;
+  color: var(--fg-soft);
 }
 
 #hud .hud-loc-coords {
@@ -496,8 +522,8 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   width: 40px;
   height: 40px;
   padding: 0;
-  background: rgba(8, 14, 26, 0.85);
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  background: color-mix(in srgb, var(--panel-base) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 6px;
   color: var(--fg);
   cursor: pointer;
@@ -508,7 +534,7 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
 .settings-button:hover,
 .settings-button.open {
   border-color: var(--accent);
-  background: rgba(76, 200, 255, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .settings-panel {
@@ -524,8 +550,8 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
   max-height: calc(100vh - 80px);
   overflow-y: auto;
   padding: 0 16px 16px;
-  background: rgba(8, 14, 26, 0.94);
-  border: 1px solid rgba(76, 200, 255, 0.32);
+  background: color-mix(in srgb, var(--panel-base) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
   border-radius: 8px;
   backdrop-filter: blur(10px);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
@@ -553,8 +579,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   gap: 12px;
   padding: 12px 0 10px;
   margin-bottom: 4px;
-  background: rgba(8, 14, 26, 0.98);
-  border-bottom: 1px solid rgba(76, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--panel-base) 98%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .settings-title {
@@ -573,8 +599,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(76, 200, 255, 0.3);
-  background: rgba(76, 200, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--fg);
   border-radius: 4px;
   font-size: 20px;
@@ -584,8 +610,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 }
 
 .settings-close:hover {
-  background: rgba(76, 200, 255, 0.2);
-  border-color: rgba(76, 200, 255, 0.5);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .settings-panel section {
@@ -610,7 +636,7 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
   cursor: pointer;
 }
 
@@ -654,8 +680,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 .settings-switch-slider {
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
   border-radius: 999px;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -673,8 +699,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 }
 
 .settings-switch input:checked + .settings-switch-slider {
-  background: rgba(76, 200, 255, 0.55);
-  border-color: rgba(76, 200, 255, 0.8);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 80%, transparent);
 }
 
 .settings-switch input:checked + .settings-switch-slider::after {
@@ -684,11 +710,11 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 .settings-select {
   appearance: none;
   -webkit-appearance: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
   font: inherit;
   font-size: 11px;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   padding: 3px 22px 3px 8px;
   cursor: pointer;
@@ -702,12 +728,12 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 
 .settings-select:hover,
 .settings-select:focus {
-  border-color: rgba(76, 200, 255, 0.6);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   outline: none;
 }
 
 .settings-select option {
-  background: #0b1424;
+  background: var(--option-bg);
   color: var(--fg);
 }
 
@@ -723,7 +749,7 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   -webkit-appearance: none;
   width: 110px;
   height: 4px;
-  background: rgba(76, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 2px;
   outline: none;
   margin: 0;
@@ -737,7 +763,7 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   height: 14px;
   border-radius: 50%;
   background: var(--accent);
-  border: 1px solid rgba(8, 14, 26, 0.6);
+  border: 1px solid color-mix(in srgb, var(--panel-base) 60%, transparent);
   cursor: pointer;
   transition: transform 0.1s;
 }
@@ -751,7 +777,7 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   height: 14px;
   border-radius: 50%;
   background: var(--accent);
-  border: 1px solid rgba(8, 14, 26, 0.6);
+  border: 1px solid color-mix(in srgb, var(--panel-base) 60%, transparent);
   cursor: pointer;
 }
 
@@ -775,8 +801,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   font-size: 12px;
   line-height: 1;
   color: var(--accent);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
@@ -784,7 +810,7 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 }
 
 .settings-range-reset:hover:not(:disabled) {
-  border-color: rgba(76, 200, 255, 0.6);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   transform: rotate(-45deg);
 }
 
@@ -818,8 +844,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   flex-wrap: wrap;
   gap: 8px 14px;
   padding: 8px 14px;
-  background: rgba(8, 14, 26, 0.72);
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--panel-base) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 6px;
   font-size: 11px;
   color: var(--muted);
@@ -868,7 +894,7 @@ body.stereo-on #status {
   gap: 8px;
   margin-top: 2px;
   padding-top: 7px;
-  border-top: 1px solid rgba(76, 200, 255, 0.12);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .altitude-legend .al-cap {
@@ -889,7 +915,7 @@ body.stereo-on #status {
 .altitude-legend .al-bar {
   height: 9px;
   border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
 }
 
 .altitude-legend .al-ticks {
@@ -930,8 +956,8 @@ body.stereo-on #status {
   align-items: center;
   gap: 10px;
   padding: 18px 28px;
-  background: rgba(8, 14, 26, 0.88);
-  border: 1px solid rgba(76, 200, 255, 0.32);
+  background: color-mix(in srgb, var(--panel-base) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
@@ -950,7 +976,7 @@ body.stereo-on #status {
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid rgba(76, 200, 255, 0.18);
+  border: 3px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: loading-spin 0.9s linear infinite;
@@ -987,8 +1013,8 @@ body.stereo-on #status {
   align-items: center;
   gap: 10px;
   padding: 2px 6px;
-  background: rgba(76, 200, 255, 0.05);
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 4px;
   color: var(--muted);
   flex: 0 1 auto;
@@ -1004,7 +1030,7 @@ body.stereo-on #status {
 
 .time-controls .tc-mode {
   display: inline-flex;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
@@ -1023,7 +1049,7 @@ body.stereo-on #status {
 }
 
 .time-controls .tc-mode button.active {
-  background: rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
 
@@ -1045,7 +1071,7 @@ body.stereo-on #status {
 }
 
 .tc-presets .tc-preset {
-  border: 1px solid rgba(76, 200, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   background: transparent;
   color: var(--muted);
   padding: 3px 8px;
@@ -1057,7 +1083,7 @@ body.stereo-on #status {
 
 .tc-presets .tc-preset:hover {
   color: var(--fg);
-  border-color: rgba(76, 200, 255, 0.45);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .tc-scrub {
@@ -1072,8 +1098,8 @@ body.stereo-on #status {
 }
 
 .tc-play {
-  border: 1px solid rgba(76, 200, 255, 0.3);
-  background: rgba(76, 200, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
   width: 26px;
   height: 22px;
@@ -1088,7 +1114,7 @@ body.stereo-on #status {
 }
 
 .tc-play:hover {
-  background: rgba(76, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .tc-scrubber {
@@ -1097,7 +1123,7 @@ body.stereo-on #status {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  background: rgba(76, 200, 255, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   border-radius: 2px;
   outline: none;
 }
@@ -1109,7 +1135,7 @@ body.stereo-on #status {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  border: 2px solid #0a0f1a;
+  border: 2px solid var(--thumb-border);
 }
 
 .tc-scrubber::-moz-range-thumb {
@@ -1118,7 +1144,7 @@ body.stereo-on #status {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  border: 2px solid #0a0f1a;
+  border: 2px solid var(--thumb-border);
 }
 
 .tc-cursor {
@@ -1147,7 +1173,7 @@ body.stereo-on #status {
 }
 
 .tc-rate {
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   background: transparent;
   color: var(--muted);
   padding: 2px 6px;
@@ -1159,9 +1185,9 @@ body.stereo-on #status {
 }
 
 .tc-rate.active {
-  background: rgba(76, 200, 255, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
-  border-color: rgba(76, 200, 255, 0.5);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .tc-heatmap {
@@ -1221,22 +1247,22 @@ body.stereo-on #status {
 
 .footer-link:hover {
   color: var(--fg);
-  background: rgba(76, 200, 255, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .footer-link-coffee {
   font-size: 16px;
   padding: 1px 7px;
   line-height: 1;
-  border: 1px solid rgba(255, 184, 76, 0.4);
+  border: 1px solid color-mix(in srgb, var(--coffee) 40%, transparent);
   border-radius: 4px;
-  background: rgba(255, 184, 76, 0.1);
+  background: color-mix(in srgb, var(--coffee) 10%, transparent);
 }
 
 .footer-link-coffee:hover {
-  color: #ffb84c;
-  background: rgba(255, 184, 76, 0.22);
-  border-color: rgba(255, 184, 76, 0.7);
+  color: var(--coffee);
+  background: color-mix(in srgb, var(--coffee) 22%, transparent);
+  border-color: color-mix(in srgb, var(--coffee) 70%, transparent);
 }
 
 @media (max-width: 600px) {
@@ -1252,11 +1278,11 @@ body.stereo-on #status {
 }
 
 #status .status-btn {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   color: var(--muted);
   font: inherit;
   font-size: 11px;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   padding: 2px 8px;
   cursor: pointer;
@@ -1265,14 +1291,14 @@ body.stereo-on #status {
 
 #status .status-btn:hover {
   color: var(--fg);
-  border-color: rgba(76, 200, 255, 0.6);
-  background: rgba(76, 200, 255, 0.12);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 #status .status-btn.copied {
   color: var(--good);
-  border-color: rgba(76, 220, 135, 0.65);
-  background: rgba(76, 220, 135, 0.18);
+  border-color: color-mix(in srgb, var(--good) 65%, transparent);
+  background: color-mix(in srgb, var(--good) 18%, transparent);
 }
 
 #status .feed-selector {
@@ -1293,11 +1319,11 @@ body.stereo-on #status {
 #status .feed-selector .feed-select {
   appearance: none;
   -webkit-appearance: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
   font: inherit;
   font-size: 11px;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   padding: 2px 18px 2px 6px;
   cursor: pointer;
@@ -1310,19 +1336,19 @@ body.stereo-on #status {
 
 #status .feed-selector .feed-select:hover,
 #status .feed-selector .feed-select:focus {
-  border-color: rgba(76, 200, 255, 0.6);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   outline: none;
 }
 
 #status .feed-selector .feed-select option {
-  background: #0b1424;
+  background: var(--option-bg);
   color: var(--fg);
 }
 
 .axis-label {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   letter-spacing: 0.08em;
-  color: rgba(180, 210, 240, 0.55);
+  color: var(--axis-label);
   text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
   user-select: none;
   pointer-events: none;
@@ -1339,7 +1365,7 @@ body.stereo-on #status {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.2em;
-  color: rgba(200, 230, 255, 0.75);
+  color: var(--axis-cardinal);
 }
 
 .aircraft-label {
@@ -1347,11 +1373,11 @@ body.stereo-on #status {
   font-size: 10px;
   letter-spacing: 0.06em;
   font-weight: 600;
-  color: #cfe5ff;
-  background: rgba(6, 12, 22, 0.78);
+  color: var(--fg-soft);
+  background: color-mix(in srgb, var(--panel-base-alt) 78%, transparent);
   padding: 1px 6px;
   border-radius: 3px;
-  border: 1px solid rgba(76, 200, 255, 0.3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   white-space: nowrap;
   user-select: none;
   pointer-events: none;
@@ -1366,13 +1392,13 @@ body.stereo-on #status {
    The class modifiers below only adjust opacity + selection chrome. */
 
 .aircraft-label.ground {
-  border-color: rgba(110, 130, 160, 0.35);
+  border-color: color-mix(in srgb, var(--muted) 35%, transparent);
   opacity: 0.7;
 }
 
 .aircraft-label.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(76, 200, 255, 0.6);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 #panel-toggle {
@@ -1385,8 +1411,8 @@ body.stereo-on #status {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(8, 14, 26, 0.85);
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  background: color-mix(in srgb, var(--panel-base) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 6px;
   color: var(--fg);
   cursor: pointer;
@@ -1455,7 +1481,7 @@ body.stereo-on #status {
   padding: 0 5px;
   border-radius: 9px;
   background: var(--accent);
-  color: #050810;
+  color: var(--bg);
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -1481,8 +1507,8 @@ body.stereo-on #status {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 14, 26, 0.82);
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--panel-base) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 6px;
   backdrop-filter: blur(8px);
   font-size: 12px;
@@ -1499,7 +1525,7 @@ body.stereo-on #status {
 
 #aircraft-panel header {
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(76, 200, 255, 0.12);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1541,11 +1567,11 @@ body.stereo-on #status {
 }
 
 .panel-filters .filter {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   color: var(--muted);
   font: inherit;
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-radius: 999px;
   padding: 2px 10px;
   cursor: pointer;
@@ -1554,18 +1580,18 @@ body.stereo-on #status {
 
 .panel-filters .filter:hover {
   color: var(--fg);
-  border-color: rgba(76, 200, 255, 0.5);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .panel-filters .filter.active {
   color: var(--fg);
-  border-color: rgba(76, 200, 255, 0.7);
-  background: rgba(76, 200, 255, 0.18);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 #panel-search {
   background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(76, 200, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 4px;
   color: var(--fg);
   font-family: inherit;
@@ -1583,7 +1609,7 @@ body.stereo-on #status {
   grid-template-columns: 1fr 56px 52px 60px;
   gap: 4px;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(76, 200, 255, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 8%, transparent);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1629,7 +1655,7 @@ body.stereo-on #status {
   flex: 1;
   font-variant-numeric: tabular-nums;
   scrollbar-width: thin;
-  scrollbar-color: rgba(76, 200, 255, 0.3) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent) 30%, transparent) transparent;
 }
 
 #panel-list li {
@@ -1643,16 +1669,16 @@ body.stereo-on #status {
 }
 
 #panel-list li:hover {
-  background: rgba(76, 200, 255, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 #panel-list li.selected {
-  background: rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-left-color: var(--accent);
 }
 
 #panel-list li.military {
-  border-left-color: rgba(255, 107, 129, 0.7);
+  border-left-color: color-mix(in srgb, var(--military) 70%, transparent);
 }
 
 #panel-list li.ground {
@@ -1699,44 +1725,44 @@ body.stereo-on #status {
   font-weight: 700;
   line-height: 1;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
 }
 
 #panel-list .flight .tags .tag.military {
-  color: #ff6b81;
-  border-color: rgba(255, 107, 129, 0.55);
-  background: rgba(255, 107, 129, 0.18);
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--military) 55%, transparent);
+  background: color-mix(in srgb, var(--military) 18%, transparent);
 }
 
 #panel-list .flight .tags .tag.special {
-  color: #ffd166;
-  border-color: rgba(255, 209, 102, 0.55);
-  background: rgba(255, 209, 102, 0.18);
+  color: var(--special);
+  border-color: color-mix(in srgb, var(--special) 55%, transparent);
+  background: color-mix(in srgb, var(--special) 18%, transparent);
 }
 
 #panel-list .flight .tags .tag.emergency {
-  color: #ffffff;
-  border-color: rgba(255, 51, 68, 0.85);
-  background: rgba(255, 51, 68, 0.7);
+  color: var(--emergency-text);
+  border-color: color-mix(in srgb, var(--emergency) 85%, transparent);
+  background: color-mix(in srgb, var(--emergency) 70%, transparent);
   animation: emergency-pulse 1.4s ease-in-out infinite;
 }
 
 #panel-list .flight .tags .tag.acars {
-  color: #d4b8ff;
-  border-color: rgba(178, 132, 255, 0.55);
-  background: rgba(178, 132, 255, 0.18);
+  color: var(--acars);
+  border-color: color-mix(in srgb, var(--acars) 55%, transparent);
+  background: color-mix(in srgb, var(--acars) 18%, transparent);
 }
 
 #panel-list li.emergency {
-  background: rgba(255, 51, 68, 0.08);
-  border-left: 2px solid rgba(255, 51, 68, 0.7);
+  background: color-mix(in srgb, var(--emergency) 8%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--emergency) 70%, transparent);
 }
 
 @keyframes emergency-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 51, 68, 0.5); }
-  50% { box-shadow: 0 0 6px 2px rgba(255, 51, 68, 0.7); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--emergency) 50%, transparent); }
+  50% { box-shadow: 0 0 6px 2px color-mix(in srgb, var(--emergency) 70%, transparent); }
 }
 
 #panel-list .flight .reg {
@@ -1788,8 +1814,8 @@ body.stereo-on #status {
      Also subtract the footer clearance so the card never bleeds over
      the bottom bar even when its content is taller than the viewport. */
   max-height: calc(100vh - 120px - var(--footer-h, 48px));
-  background: rgba(8, 14, 26, 0.85);
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  background: color-mix(in srgb, var(--panel-base) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 6px;
   backdrop-filter: blur(10px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -1834,11 +1860,11 @@ body.stereo-on #status {
 }
 
 #panel-detail .copyable:hover {
-  background: rgba(76, 200, 255, 0.12);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 #panel-detail .copyable.copied {
-  background: rgba(76, 220, 135, 0.22);
+  background: color-mix(in srgb, var(--good) 22%, transparent);
   color: var(--good);
 }
 
@@ -1850,7 +1876,7 @@ body.stereo-on #status {
 
 #panel-detail .detail-share {
   background: none;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   color: var(--muted);
   border-radius: 3px;
   width: 22px;
@@ -1871,7 +1897,7 @@ body.stereo-on #status {
 
 #panel-detail .close {
   background: none;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   color: var(--muted);
   border-radius: 3px;
   width: 22px;
@@ -1895,7 +1921,7 @@ body.stereo-on #status {
   border-radius: 4px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   text-decoration: none;
 }
 
@@ -1914,7 +1940,7 @@ body.stereo-on #status {
   padding: 3px 8px;
   font-size: 9px;
   letter-spacing: 0.04em;
-  color: rgba(220, 232, 250, 0.85);
+  color: color-mix(in srgb, var(--fg-soft) 85%, transparent);
   background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
   text-align: right;
 }
@@ -1926,8 +1952,8 @@ body.stereo-on #status {
   font-size: 13px;
   font-weight: 600;
   color: var(--fg);
-  background: rgba(76, 200, 255, 0.08);
-  border: 1px solid rgba(76, 200, 255, 0.18);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   padding: 6px 10px;
   border-radius: 4px;
 }
@@ -1957,9 +1983,9 @@ body.stereo-on #status {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: rgba(76, 200, 255, 0.95);
-  background: rgba(76, 200, 255, 0.18);
-  border: 1px solid rgba(76, 200, 255, 0.4);
+  color: color-mix(in srgb, var(--accent) 95%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
   text-transform: uppercase;
@@ -1988,25 +2014,25 @@ body.stereo-on #status {
   border-radius: 3px;
   border: 1px solid var(--muted);
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
 #panel-detail .phase-chip[data-phase="taxi-out"] {
-  color: #f5c451;
-  border-color: rgba(245, 196, 81, 0.5);
-  background: rgba(245, 196, 81, 0.1);
+  color: var(--phase-taxi-out);
+  border-color: color-mix(in srgb, var(--phase-taxi-out) 50%, transparent);
+  background: color-mix(in srgb, var(--phase-taxi-out) 10%, transparent);
 }
 
 #panel-detail .phase-chip[data-phase="airborne"] {
-  color: #6fd97a;
-  border-color: rgba(111, 217, 122, 0.5);
-  background: rgba(111, 217, 122, 0.1);
+  color: var(--phase-airborne);
+  border-color: color-mix(in srgb, var(--phase-airborne) 50%, transparent);
+  background: color-mix(in srgb, var(--phase-airborne) 10%, transparent);
 }
 
 #panel-detail .phase-chip[data-phase="taxi-in"] {
-  color: #4cc8ff;
-  border-color: rgba(76, 200, 255, 0.5);
-  background: rgba(76, 200, 255, 0.1);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 #panel-detail .phase-chip[data-phase="at-gate-dest"],
@@ -2067,7 +2093,7 @@ body.stereo-on #status {
 #panel-detail .acars {
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
 }
 
 #panel-detail .autopilot h3,
@@ -2086,8 +2112,8 @@ body.stereo-on #status {
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(178, 132, 255, 0.22);
-  color: #d4b8ff;
+  background: color-mix(in srgb, var(--acars) 22%, transparent);
+  color: var(--acars);
   font-size: 9px;
   font-weight: 700;
 }
@@ -2105,8 +2131,8 @@ body.stereo-on #status {
 
 #panel-detail .acars li.acars-msg {
   padding: 6px 8px;
-  background: rgba(178, 132, 255, 0.06);
-  border: 1px solid rgba(178, 132, 255, 0.15);
+  background: color-mix(in srgb, var(--acars) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 15%, transparent);
   border-radius: 4px;
   font-size: 11px;
   line-height: 1.4;
@@ -2117,8 +2143,8 @@ body.stereo-on #status {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 10px;
   font-weight: 700;
-  color: #d4b8ff;
-  background: rgba(178, 132, 255, 0.18);
+  color: var(--acars);
+  background: color-mix(in srgb, var(--acars) 18%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
   margin-right: 6px;
@@ -2135,7 +2161,7 @@ body.stereo-on #status {
   font-size: 10.5px;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #e8f3ff;
+  color: var(--fg-bright);
 }
 
 #panel-detail .acars .acars-meta {
@@ -2149,7 +2175,7 @@ body.stereo-on #status {
 #panel-detail .acars .acars-facts {
   margin-top: 3px;
   font-size: 10px;
-  color: #d4b8ff;
+  color: var(--acars);
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 }
 
@@ -2172,7 +2198,7 @@ body.stereo-on #status {
 .acars-browser .acars-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(4, 8, 16, 0.65);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
 }
 
@@ -2182,8 +2208,8 @@ body.stereo-on #status {
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  background: rgba(8, 14, 26, 0.96);
-  border: 1px solid rgba(178, 132, 255, 0.32);
+  background: color-mix(in srgb, var(--panel-base) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 32%, transparent);
   border-radius: 10px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
   overflow: hidden;
@@ -2196,7 +2222,7 @@ body.stereo-on #status {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(178, 132, 255, 0.15);
+  border-bottom: 1px solid color-mix(in srgb, var(--acars) 15%, transparent);
 }
 
 .acars-browser .acars-title {
@@ -2211,7 +2237,7 @@ body.stereo-on #status {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #e8f3ff;
+  color: var(--fg-bright);
 }
 
 .acars-browser .acars-counts {
@@ -2234,20 +2260,20 @@ body.stereo-on #status {
 
 .acars-browser .acars-close:hover {
   color: var(--fg);
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
 }
 
 .acars-browser .acars-toolbar {
   display: flex;
   gap: 8px;
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
 }
 
 .acars-browser input[type="search"] {
   flex: 1;
   background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(76, 200, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 4px;
   color: var(--fg);
   font: inherit;
@@ -2263,11 +2289,11 @@ body.stereo-on #status {
 .acars-browser select {
   appearance: none;
   -webkit-appearance: none;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
   font: inherit;
   font-size: 12px;
-  border: 1px solid rgba(76, 200, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: 4px;
   padding: 4px 22px 4px 8px;
   cursor: pointer;
@@ -2290,9 +2316,9 @@ body.stereo-on #status {
 
 .acars-browser .acars-row {
   padding: 7px 10px;
-  border: 1px solid rgba(178, 132, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--acars) 12%, transparent);
   border-radius: 5px;
-  background: rgba(178, 132, 255, 0.04);
+  background: color-mix(in srgb, var(--acars) 4%, transparent);
 }
 
 .acars-browser .acars-row.clickable {
@@ -2301,8 +2327,8 @@ body.stereo-on #status {
 }
 
 .acars-browser .acars-row.clickable:hover {
-  background: rgba(178, 132, 255, 0.14);
-  border-color: rgba(178, 132, 255, 0.45);
+  background: color-mix(in srgb, var(--acars) 14%, transparent);
+  border-color: color-mix(in srgb, var(--acars) 45%, transparent);
 }
 
 .acars-browser .acars-row.acars-empty {
@@ -2326,8 +2352,8 @@ body.stereo-on #status {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 10px;
   font-weight: 700;
-  color: #d4b8ff;
-  background: rgba(178, 132, 255, 0.18);
+  color: var(--acars);
+  background: color-mix(in srgb, var(--acars) 18%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -2359,7 +2385,7 @@ body.stereo-on #status {
 .acars-browser .acars-row-text {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 10.5px;
-  color: #cfe5ff;
+  color: var(--fg-soft);
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.4;
@@ -2392,26 +2418,26 @@ body.stereo-on #status {
   letter-spacing: 0.08em;
   padding: 2px 6px;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
 #panel-detail .chips .chip.military {
-  color: #ff6b81;
-  border-color: rgba(255, 107, 129, 0.5);
-  background: rgba(255, 107, 129, 0.12);
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--military) 50%, transparent);
+  background: color-mix(in srgb, var(--military) 12%, transparent);
 }
 
 #panel-detail .chips .chip.special {
-  color: #ffd166;
-  border-color: rgba(255, 209, 102, 0.5);
-  background: rgba(255, 209, 102, 0.12);
+  color: var(--special);
+  border-color: color-mix(in srgb, var(--special) 50%, transparent);
+  background: color-mix(in srgb, var(--special) 12%, transparent);
 }
 
 #panel-detail .chips .chip.emergency {
-  color: #ffffff;
-  border-color: rgba(255, 51, 68, 0.85);
-  background: rgba(255, 51, 68, 0.65);
+  color: var(--emergency-text);
+  border-color: color-mix(in srgb, var(--emergency) 85%, transparent);
+  background: color-mix(in srgb, var(--emergency) 65%, transparent);
   animation: emergency-pulse 1.4s ease-in-out infinite;
 }

@@ -16,6 +16,7 @@ import {
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { RANGE_NM } from '../core/config';
 import { getSettings, subscribeSettings } from '../core/settings';
+import { getTheme, subscribeTheme } from '../core/theme';
 import { createTileLayer } from './tiles';
 
 export interface World {
@@ -39,8 +40,12 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
   const scene = new Scene();
-  scene.background = new Color(0x050810);
-  scene.fog = new FogExp2(0x050810, 0.0015);
+  // Sky bg + fog read from the active theme so a daylight/light theme can
+  // wash out the void. Both colors are mutated in place by the theme
+  // subscriber further down — Color and FogExp2 expose .color we can .set().
+  const initialTheme = getTheme().tokens.three;
+  scene.background = new Color(initialTheme.skyBg);
+  scene.fog = new FogExp2(initialTheme.skyBg, 0.0015);
 
   scene.add(new AmbientLight(0x6680aa, 0.5));
   const key = new DirectionalLight(0x9fd2ff, 1.1);
@@ -75,18 +80,24 @@ export function createWorld(canvas: HTMLCanvasElement): World {
 
   // Range rings every 50 NM as a quick distance reference on top of the basemap.
   // Stashed in a Group so a single .visible toggle handles the whole set.
+  // Keep refs to each ring's material indexed by whether it's the outermost
+  // (major) so the theme subscriber can recolor them in place.
   const ringsGroup = new Group();
   ringsGroup.name = 'range-rings';
+  const ringMaterials: { major: MeshBasicMaterial[]; minor: MeshBasicMaterial[] } = {
+    major: [],
+    minor: [],
+  };
   for (let r = 50; r <= RANGE_NM; r += 50) {
-    const ring = new Mesh(
-      new RingGeometry(r - 0.5, r + 0.5, 128),
-      new MeshBasicMaterial({
-        color: r === RANGE_NM ? 0x4cc8ff : 0x66aaff,
-        transparent: true,
-        opacity: r === RANGE_NM ? 0.65 : 0.25,
-        depthWrite: false
-      })
-    );
+    const isMajor = r === RANGE_NM;
+    const mat = new MeshBasicMaterial({
+      color: new Color(isMajor ? initialTheme.rangeRingMajor : initialTheme.rangeRingMinor),
+      transparent: true,
+      opacity: isMajor ? 0.65 : 0.25,
+      depthWrite: false,
+    });
+    (isMajor ? ringMaterials.major : ringMaterials.minor).push(mat);
+    const ring = new Mesh(new RingGeometry(r - 0.5, r + 0.5, 128), mat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.05;
     ringsGroup.add(ring);
@@ -131,17 +142,34 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   const towerHidden = Boolean(
     (window as { TOWER_CONFIG?: { hidden?: boolean } }).TOWER_CONFIG?.hidden,
   );
+  let homeMaterial: MeshBasicMaterial | null = null;
   if (!towerHidden) {
-    const home = new Mesh(
-      new CircleGeometry(1.2, 24),
-      new MeshBasicMaterial({ color: 0xffd66b, transparent: true, opacity: 0.95, depthWrite: false }),
-    );
+    homeMaterial = new MeshBasicMaterial({
+      color: new Color(initialTheme.homeMarker),
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    const home = new Mesh(new CircleGeometry(1.2, 24), homeMaterial);
     home.rotation.x = -Math.PI / 2;
     home.position.y = 0.07;
     home.renderOrder = 2; // draw above range rings + tile layer
     home.name = 'home-marker';
     scene.add(home);
   }
+
+  // Live theme updates — mutate the same materials/colors in place so the
+  // scene reflects a theme change without disposal or rebuilds. The
+  // basemap and CSS2D labels handle themselves (CSS variables); only the
+  // raw Three.js materials we own need to be touched here.
+  subscribeTheme((tokens) => {
+    const t = tokens.three;
+    (scene.background as Color).set(t.skyBg);
+    if (scene.fog instanceof FogExp2) scene.fog.color.set(t.skyBg);
+    for (const m of ringMaterials.major) m.color.set(t.rangeRingMajor);
+    for (const m of ringMaterials.minor) m.color.set(t.rangeRingMinor);
+    if (homeMaterial) homeMaterial.color.set(t.homeMarker);
+  });
 
   // Apply settings changes live. Visibility-only flags toggle directly;
   // a basemap change requires rebuilding the tile layer (textures and
