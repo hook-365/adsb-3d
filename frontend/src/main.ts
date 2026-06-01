@@ -180,10 +180,20 @@ const xrControllers = setupXrControllers({
 // the desktop view goes back to identity.
 const VR_OFFSET_Y = 0.8;        // chest height
 const VR_OFFSET_Z = -1.5;       // 1.5 m in front
+// In a headset the camera near/far are metres. The desktop default of
+// near=1 m clips anything you lean toward and eats the wrist menu, which
+// rides ~0.3–0.5 m off your hand — reported as VR clipping + menu flicker
+// (issue #6). Three.js copies the reference camera's near/far onto the
+// XR array camera each frame, so lowering near here while presenting and
+// restoring it on exit is all that's needed.
+const VR_NEAR = 0.05;           // 5 cm — close-up geometry and the wrist menu stay visible
+const DESKTOP_NEAR = 1;         // matches the PerspectiveCamera constructed in scene.ts
 subscribeXr((s) => {
   document.body.classList.toggle('xr-on', s.presenting);
   if (s.presenting) {
     labelRenderer.domElement.style.display = 'none';
+    world.camera.near = VR_NEAR;
+    world.camera.updateProjectionMatrix();
     world.xrRoot.scale.setScalar(getSettings().vrScale);
     world.xrRoot.position.set(0, VR_OFFSET_Y, VR_OFFSET_Z);
     world.xrRoot.rotation.set(0, 0, 0);
@@ -193,6 +203,8 @@ subscribeXr((s) => {
     world.setPassthrough(s.presentingMode === 'ar');
   } else {
     if (!getSettings().stereo) labelRenderer.domElement.style.display = '';
+    world.camera.near = DESKTOP_NEAR;
+    world.camera.updateProjectionMatrix();
     world.xrRoot.scale.setScalar(1);
     world.xrRoot.position.set(0, 0, 0);
     world.xrRoot.rotation.set(0, 0, 0);
@@ -219,6 +231,16 @@ const xrLocomotion = setupXrLocomotion({
   renderer: world.renderer,
   camera: world.camera,
   xrRoot: world.xrRoot,
+  // Orbit the selected aircraft when one is picked (matches the desktop
+  // follow-cam), else fall back to the scope center. positionOf returns a
+  // fresh Vector3 in xrRoot-local space; localToWorld maps it into the
+  // world space the snap-turn maths runs in. reconciler/xrSelectedHex are
+  // declared below but only read when a snap actually fires, long after boot.
+  getOrbitPivot: () => {
+    if (!xrSelectedHex) return null;
+    const local = reconciler.positionOf(xrSelectedHex);
+    return local ? world.xrRoot.localToWorld(local) : null;
+  },
 });
 
 const initialSelectedHex = readSelectedHex();

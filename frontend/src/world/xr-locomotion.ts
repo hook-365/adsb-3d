@@ -1,7 +1,9 @@
 // Phase 4 in-VR locomotion: thumbstick + button driven world transform.
 //
 //   Left thumbstick Y   — scale xrRoot up/down (tabletop ↔ room scale)
-//   Right thumbstick X  — snap-turn the world around the user in 30° steps
+//   Right thumbstick X  — snap-turn the world in 30° steps, orbiting the
+//                         scope center (or the selected aircraft) like the
+//                         desktop OrbitControls do
 //   Right A button      — recenter the world in front of the headset
 //
 // All three only mutate the xrRoot transform (scale, rotation around Y,
@@ -63,8 +65,15 @@ export function setupXrLocomotion(opts: {
   renderer: WebGLRenderer;
   camera: PerspectiveCamera;
   xrRoot: Group;
+  /**
+   * World-space point the snap-turn should orbit around. Return the
+   * selected aircraft's world position when one is selected (so turning
+   * orbits it, matching the desktop follow-cam), or null to orbit the
+   * scope center. Called once per snap, never per-frame.
+   */
+  getOrbitPivot?: () => Vector3 | null;
 }): XrLocomotion {
-  const { renderer, camera, xrRoot } = opts;
+  const { renderer, camera, xrRoot, getOrbitPivot } = opts;
 
   // Edge-trigger state. Snap-turn and A-button fire once per press, not
   // continuously while held. We remember whether the relevant input was
@@ -109,8 +118,13 @@ export function setupXrLocomotion(opts: {
           // Stick recentred → arm the next snap.
           snapTurnArmed = true;
         } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
-          const dir = x > 0 ? -1 : 1; // push right → world rotates left around user
-          snapTurnWorld(xrRoot, camera, SNAP_TURN_STEP * dir);
+          const dir = x > 0 ? -1 : 1; // push right → scene orbits left
+          // Orbit the selected aircraft when one is selected, else the
+          // scope center. The center pivot is xrRoot's own world-space
+          // origin, so passing it leaves position untouched and only
+          // spins the airspace in place.
+          const pivot = getOrbitPivot?.() ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld);
+          snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * dir);
           snapTurnArmed = false;
         }
 
@@ -132,25 +146,26 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** Rotate xrRoot around a vertical axis through the camera's XZ
- *  position. Rotating about the user's head (rather than the scene
- *  origin) makes the snap feel like *you* turned, not like the world
- *  drifted sideways — the same image stays roughly in front of you. */
-function snapTurnWorld(xrRoot: Group, camera: PerspectiveCamera, angle: number): void {
-  const cx = camera.position.x;
-  const cz = camera.position.z;
-  // Translate so the camera XZ becomes the pivot, rotate, translate back.
-  // xrRoot's position is in world space, so this maths works regardless
-  // of the current scale.
-  const px = xrRoot.position.x - cx;
-  const pz = xrRoot.position.z - cz;
+/** Rotate xrRoot around a vertical axis through a world-space pivot.
+ *  This matches the desktop OrbitControls feel: the pivot (scope center,
+ *  or the selected aircraft) stays put while the rest of the airspace
+ *  swings around it. When the pivot is xrRoot's own origin, px/pz are
+ *  zero so position is untouched and only rotation.y changes — the
+ *  scene spins in place. */
+function snapTurnWorld(xrRoot: Group, pivot: Vector3, angle: number): void {
+  // Translate so the pivot XZ becomes the rotation center, rotate, then
+  // translate back. xrRoot's position is in world space, so this maths
+  // works regardless of the current scale.
+  const px = xrRoot.position.x - pivot.x;
+  const pz = xrRoot.position.z - pivot.z;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  xrRoot.position.x = cx + px * cos - pz * sin;
-  xrRoot.position.z = cz + px * sin + pz * cos;
+  xrRoot.position.x = pivot.x + px * cos - pz * sin;
+  xrRoot.position.z = pivot.z + px * sin + pz * cos;
   xrRoot.rotation.y += angle;
 }
 
+const tmpPivot = new Vector3();
 const tmpFwd = new Vector3();
 
 /** Place xrRoot's local origin RECENTER_FORWARD_M in front of the
