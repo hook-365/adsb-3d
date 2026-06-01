@@ -200,7 +200,12 @@ export class XrWristMenu {
     // user's head when the arm is at a natural reading angle. +π around
     // Y so the canvas reads correctly (otherwise it's mirrored relative
     // to the controller's -Z forward axis).
-    this.mesh.rotation.set(-Math.PI / 3, Math.PI, 0);
+    // No Y flip: a previous +π around Y spun the plane to face
+    // down-and-away, so the user saw the mirrored back face through
+    // DoubleSide (issue #6: "flipped the wrong way"). The -60° X tilt
+    // alone turns the +Z front face up and back toward the head, where
+    // it reads correctly.
+    this.mesh.rotation.set(-Math.PI / 3, 0, 0);
     this.mesh.visible = true;
   }
 
