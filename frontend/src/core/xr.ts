@@ -36,9 +36,32 @@ export interface XrState {
    * settings-panel tooltip. null when supported.
    */
   unavailableReason: string | null;
+  /**
+   * The error message from the most recent failed enterVR()/enterAR()
+   * attempt, or null. Surfaced in the settings panel so a session that
+   * silently fails to start (common on headsets the dev can't test on)
+   * leaves a visible, actionable trail instead of vanishing.
+   */
+  lastError: string | null;
 }
 
 type XrListener = (state: XrState) => void;
+
+// Verbose, prefixed logging for the whole XR lifecycle. WebXR failures are
+// almost always device-specific and the dev may have no headset to test on,
+// so every step logs to the console — visible via remote-inspecting the
+// headset browser (chrome://inspect). Cheap; only fires on probe + the
+// handful of session start/stop events, never per-frame.
+const TAG = '[xr]';
+function xrLog(...args: unknown[]): void {
+  console.info(TAG, ...args);
+}
+function xrWarn(...args: unknown[]): void {
+  console.warn(TAG, ...args);
+}
+function xrError(...args: unknown[]): void {
+  console.error(TAG, ...args);
+}
 
 // Three.js's renderer.xr accepts a session and drives the rest. We don't
 // import Three.js here — the renderer is injected via setRenderer() so
@@ -58,6 +81,7 @@ let state: XrState = {
   presenting: false,
   presentingMode: null,
   unavailableReason: 'Checking WebXR support…',
+  lastError: null,
 };
 const listeners = new Set<XrListener>();
 let currentSession: XRSession | null = null;
@@ -77,7 +101,28 @@ function setState(patch: Partial<XrState>): void {
 // when navigator.xr is undefined rather than just returning undefined.
 async function probeSupport(): Promise<void> {
   try {
+    xrLog('probing WebXR support', {
+      secureContext: typeof window !== 'undefined' ? window.isSecureContext : 'no-window',
+      hasNavigatorXr: typeof navigator !== 'undefined' && 'xr' in navigator,
+      origin: typeof location !== 'undefined' ? location.origin : 'no-location',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'no-navigator',
+    });
+    // WebXR is gated on a secure context. Over plain HTTP (e.g. reaching
+    // the app at http://<lan-ip>:port instead of through an HTTPS proxy)
+    // the headset browser refuses to start a session and navigator.xr is
+    // often absent entirely — so call this out specifically rather than
+    // blaming the browser, which sends people debugging the wrong thing.
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      xrWarn('insecure context — WebXR will not start over plain HTTP');
+      setState({
+        vrSupported: false,
+        unavailableReason:
+          'WebXR requires a secure (HTTPS) connection. This page is loaded over an insecure origin, so no headset browser will start a session. Serve the app over HTTPS (or use localhost) and reload.',
+      });
+      return;
+    }
     if (typeof navigator === 'undefined' || !('xr' in navigator)) {
+      xrWarn('navigator.xr absent — browser has no WebXR implementation');
       setState({
         vrSupported: false,
         unavailableReason:
@@ -94,9 +139,16 @@ async function probeSupport(): Promise<void> {
     // for both; Quest 2 returns true only for vr; a Cardboard browser
     // typically returns false for both (no headset attached yet).
     const [vrOk, arOk] = await Promise.all([
-      xr.isSessionSupported('immersive-vr').catch(() => false),
-      xr.isSessionSupported('immersive-ar').catch(() => false),
+      xr.isSessionSupported('immersive-vr').catch((e) => {
+        xrWarn('isSessionSupported(immersive-vr) threw', e);
+        return false;
+      }),
+      xr.isSessionSupported('immersive-ar').catch((e) => {
+        xrWarn('isSessionSupported(immersive-ar) threw', e);
+        return false;
+      }),
     ]);
+    xrLog('isSessionSupported result', { 'immersive-vr': vrOk, 'immersive-ar': arOk });
     if (vrOk) {
       setState({ vrSupported: true, arSupported: arOk, unavailableReason: null });
     } else {
@@ -108,6 +160,7 @@ async function probeSupport(): Promise<void> {
       });
     }
   } catch (err) {
+    xrError('probe failed', err);
     setState({
       vrSupported: false,
       arSupported: false,
@@ -159,7 +212,16 @@ export async function enterAR(): Promise<void> {
 }
 
 async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
-  if (state.presenting) return;
+  xrLog(`enterSession(${mode}) requested`, {
+    presenting: state.presenting,
+    hasRenderer: !!renderer,
+    vrSupported: state.vrSupported,
+    arSupported: state.arSupported,
+  });
+  if (state.presenting) {
+    xrLog('already presenting — ignoring');
+    return;
+  }
   if (!renderer) throw new Error('XR renderer not set — call setRenderer first');
   if (mode === 'vr' && !state.vrSupported) {
     throw new Error(state.unavailableReason ?? 'WebXR is not available');
@@ -172,17 +234,43 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
   // boot. The player's height is reported by the runtime; aircraft
   // appear above their head as expected. local (no -floor) would put
   // the camera at scene origin which is wrong for an air-traffic scope.
+  //
+  // It's an OPTIONAL feature, not a required one: making it required means
+  // any runtime that won't grant local-floor rejects the whole session
+  // outright (a silent dead end on headsets we can't test). As optional,
+  // the session still starts and three.js falls back to a 'local' space.
   const sessionMode = mode === 'vr' ? 'immersive-vr' : 'immersive-ar';
-  const session = await xr.requestSession(sessionMode, {
-    requiredFeatures: ['local-floor'],
-  });
-  currentSession = session;
-  session.addEventListener('end', () => {
-    currentSession = null;
-    setState({ presenting: false, presentingMode: null });
-  });
-  await renderer.xr.setSession(session);
-  setState({ presenting: true, presentingMode: mode });
+  try {
+    xrLog(`requestSession(${sessionMode}) with optionalFeatures: ['local-floor']`);
+    const session = await xr.requestSession(sessionMode, {
+      optionalFeatures: ['local-floor'],
+    });
+    xrLog('requestSession resolved — session granted', {
+      // Logs which features the runtime actually granted, so a missing
+      // local-floor (the reason aircraft could float at the wrong height)
+      // is visible without guessing.
+      grantedFeatures: (session as XRSession & { enabledFeatures?: readonly string[] })
+        .enabledFeatures,
+    });
+    currentSession = session;
+    session.addEventListener('end', () => {
+      xrLog('session ended');
+      currentSession = null;
+      setState({ presenting: false, presentingMode: null });
+    });
+    xrLog('handing session to renderer.xr.setSession()');
+    await renderer.xr.setSession(session);
+    xrLog(`setSession resolved — ${mode.toUpperCase()} session is live`);
+    setState({ presenting: true, presentingMode: mode, lastError: null });
+  } catch (err) {
+    // Surface the failure instead of letting it vanish — the settings
+    // panel renders lastError so the actual runtime message is visible
+    // (the only way to diagnose headset-specific failures remotely).
+    xrError(`enterSession(${mode}) failed`, err);
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    setState({ lastError: `Could not start ${mode.toUpperCase()} session — ${message}` });
+    throw err;
+  }
 }
 
 /**

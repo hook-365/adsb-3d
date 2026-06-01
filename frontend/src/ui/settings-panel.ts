@@ -163,7 +163,9 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
             } else if (s.vrSupported) {
               update({
                 label: 'Enter VR',
-                description: 'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
+                description:
+                  s.lastError ??
+                  'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
                 disabled: false,
               });
             } else {
@@ -198,7 +200,9 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
             } else if (s.arSupported) {
               update({
                 label: 'Enter AR',
-                description: 'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
+                description:
+                  s.lastError ??
+                  'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
                 disabled: false,
               });
             } else {
