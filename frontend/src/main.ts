@@ -23,7 +23,7 @@ import { HistoryBackfill } from './feed/history';
 import type { HistoricalFeed as HistoricalFeedType } from './feed/historical';
 import type { HeatmapLayer as HeatmapLayerType } from './world/heatmap';
 import { addAcarsMessage, clearAcars, resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
-import { getSettings, subscribeSettings } from './core/settings';
+import { getSettings, subscribeSettings, type VrQuality } from './core/settings';
 import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
@@ -225,7 +225,28 @@ subscribeSettings((s) => {
   if (world.renderer.xr.isPresenting) {
     world.xrRoot.scale.setScalar(s.vrScale);
   }
+  applyVrQuality(s.vrQuality);
 });
+
+// WebXR framebuffer supersampling. setFramebufferScaleFactor only takes
+// effect when the next session's base layer is created, so applying it on
+// every settings change (and once at boot below) means whatever the user
+// picked is already in place by the time they tap Enter VR. 1.0 is the
+// runtime's native recommended resolution; >1 supersamples for sharper
+// distant aircraft (issue #6) at a GPU cost.
+const VR_QUALITY_SCALE: Record<VrQuality, number> = {
+  low: 0.7,
+  balanced: 1.0,
+  high: 1.4,
+  ultra: 2.0,
+};
+let lastVrQuality: VrQuality | null = null;
+function applyVrQuality(quality: VrQuality): void {
+  if (quality === lastVrQuality) return;
+  lastVrQuality = quality;
+  world.renderer.xr.setFramebufferScaleFactor(VR_QUALITY_SCALE[quality]);
+}
+applyVrQuality(getSettings().vrQuality);
 
 const xrLocomotion = setupXrLocomotion({
   renderer: world.renderer,

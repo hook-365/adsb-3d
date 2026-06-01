@@ -14,6 +14,13 @@ import type { ThemeSelection } from './theme';
 export type DistanceUnit = 'nm' | 'km';
 export type SpeedUnit = 'kt' | 'mph' | 'kmh';
 export type AltitudeUnit = 'ft' | 'm';
+/**
+ * Immersive-VR render quality. Maps to a WebXR framebuffer scale factor in
+ * main.ts: higher supersamples the headset's eye buffers so distant aircraft
+ * stay sharp, at a GPU cost. 'balanced' is the runtime's native recommended
+ * resolution (factor 1.0).
+ */
+export type VrQuality = 'low' | 'balanced' | 'high' | 'ultra';
 export type Basemap =
   | 'dark'
   | 'carto_voyager'
@@ -67,6 +74,12 @@ export interface Settings {
    * left thumbstick in VR (Phase 4) and applied to xrRoot.scale.
    */
   vrScale: number;
+  /**
+   * Immersive-VR render quality (framebuffer supersampling). Applied via
+   * renderer.xr.setFramebufferScaleFactor; takes effect on the next VR
+   * entry, not mid-session. See VrQuality.
+   */
+  vrQuality: VrQuality;
   /** Slippy-map basemap provider proxied by nginx /tiles/{provider}/... */
   basemap: Basemap;
   distanceUnit: DistanceUnit;
@@ -90,6 +103,7 @@ const DEFAULTS: Settings = {
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,
+  vrQuality: 'balanced',
   basemap: 'dark',
   distanceUnit: 'nm',
   speedUnit: 'kt',

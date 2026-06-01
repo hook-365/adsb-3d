@@ -215,6 +215,18 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           }),
       },
       {
+        kind: 'choice',
+        key: 'vrQuality',
+        label: 'VR render quality',
+        description: 'Supersampling for immersive VR. Higher keeps distant aircraft sharp at a GPU cost. Takes effect the next time you enter VR.',
+        options: [
+          { value: 'low', label: 'Low (faster)' },
+          { value: 'balanced', label: 'Balanced' },
+          { value: 'high', label: 'High' },
+          { value: 'ultra', label: 'Ultra (sharpest)' },
+        ],
+      },
+      {
         kind: 'toggle',
         key: 'stereo',
         label: 'Side-by-side stereo',
