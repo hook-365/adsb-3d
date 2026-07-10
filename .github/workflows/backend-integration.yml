@@ -46,4 +46,3 @@ jobs:
 
       - name: Run full-stack integration suite
         run: tests/integration/run.sh
-

@@ -29,4 +29,3 @@ docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --wait track-service 
 
 echo "Re-running verification after backend restart..."
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" run --rm integration-tests
-
