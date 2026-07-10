@@ -1,0 +1,49 @@
+name: backend-integration
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "track-service/**"
+      - "acars-service/**"
+      - "nginx/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "docker-healthcheck.sh"
+      - "tests/integration/**"
+      - ".github/workflows/backend-integration.yml"
+  pull_request:
+    paths:
+      - "track-service/**"
+      - "acars-service/**"
+      - "nginx/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "docker-healthcheck.sh"
+      - "tests/integration/**"
+      - ".github/workflows/backend-integration.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Docker versions
+        run: |
+          docker version
+          docker compose version
+
+      - name: Run full-stack integration suite
+        run: tests/integration/run.sh
+
