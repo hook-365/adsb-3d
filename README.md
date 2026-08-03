@@ -80,9 +80,12 @@ machine-drafted pending native review — corrections welcome). `Auto`
 follows your browser locale.
 
 **3D terrain** (opt-in) — the basemap rises to real ground elevation,
-with range rings and markers draped over the hills and an
-above-ground-level readout in the detail card. Free elevation data, no
-API key. Pairs beautifully with the OpenTopoMap basemap. A companion
+with range rings, markers, and aircraft ground icons draped over the
+hills and an above-ground-level readout in the detail card. Free
+elevation data, no API key. Pairs beautifully with the OpenTopoMap
+basemap. With terrain off, the flat map stands at the home field's
+elevation, so landing traffic meets the map instead of floating at
+field-elevation height above it. A companion
 **altitude scale** slider warps the vertical axis toward low-altitude
 detail (pattern traffic spreads out) or high-altitude detail (flight
 levels spread out) — terrain and aircraft stay consistent at any
@@ -161,7 +164,7 @@ synthesises the rest:
 FEED1_NAME=Home Station
 FEED1_LAT=45.0000
 FEED1_LON=-90.0000
-FEED1_ALT=1000
+FEED1_ALT=1000                # feet MSL, like all altitudes here
 FEED1_ACARS=true              # optional
 
 FEED2_NAME=Remote Site
@@ -181,7 +184,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LATITUDE` / `LONGITUDE` / `ALTITUDE` | — | Receiver location |
+| `LATITUDE` / `LONGITUDE` / `ALTITUDE` | — | Receiver location; `ALTITUDE` in **feet** MSL (as are all `FEEDN_ALT`) |
 | `LOCATION_NAME` | `Home` | Display name |
 | `FEEDER_URL` | `http://ultrafeeder` | Anything publishing `/data/aircraft.json` — must be reachable from the container |
 | `ENABLE_HISTORICAL` | `false` | Historical playback UI (needs track-service) |

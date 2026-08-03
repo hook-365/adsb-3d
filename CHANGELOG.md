@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Flat mode grounds at the home field, not sea level.** Without 3D
+  terrain, aircraft altitudes now render relative to the home field's
+  elevation (clamped at the map plane), so a jet rolling out at a
+  4,200 ft-elevation airport sits on the map instead of floating
+  field-elevation-high above it. With terrain on, geometry stays true
+  MSL. Docs now state explicitly that `ALTITUDE` and every `FEEDN_ALT`
+  are feet MSL.
+
 ## [0.5.2] - 2026-08-03
 
 ### Fixed

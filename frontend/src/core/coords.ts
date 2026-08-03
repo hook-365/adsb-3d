@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { ALT_EXAGGERATION, HOME, subscribeHome } from './config';
+import { ALT_EXAGGERATION, HOME, TERRAIN_ENABLED, subscribeHome } from './config';
 import { getSettings, subscribeSettings } from './settings';
 import { CURVE_CEILING_FT, biasToExponent, warpAltitudeFraction } from './altitude-curve';
 
@@ -29,6 +29,20 @@ const curveExponent = biasToExponent(getSettings().altitudeCurveBias);
 // slider redistributes space below the ceiling without rescaling the scene.
 const CEILING_UP = (CURVE_CEILING_FT / FT_PER_NM) * ALT_EXAGGERATION;
 
+// Flat-mode ground reference: without 3D terrain the basemap plane stands
+// for the ground at the home field, not sea level — a jet rolling out at
+// KSLC (4,227 ft MSL) should sit on the map, not float 4,200 ft above it.
+// Altitudes render relative to HOME.altFt (feet MSL), clamped at the
+// plane, since a flat map cannot depict ground lower than the home field
+// anyway. With terrain on, geometry stays true MSL (the terrain toggle
+// reloads the page, so a boot-time constant is safe). HOME mutates on
+// feed switch, hence the subscription.
+const terrainOn = TERRAIN_ENABLED && getSettings().terrain3d;
+let flatGroundRefFt = terrainOn ? 0 : HOME.altFt;
+subscribeHome(() => {
+  flatGroundRefFt = terrainOn ? 0 : HOME.altFt;
+});
+
 // The settings slider fires on every input tick of a drag; reload once the
 // value has settled rather than per tick.
 let lastBias = getSettings().altitudeCurveBias;
@@ -46,7 +60,8 @@ subscribeSettings((s) => {
 export function toScene(lat: number, lon: number, altFt: number, out: Vector3): Vector3 {
   const east = (lon - HOME.lon) * NM_PER_DEG_LAT * cosHomeLat;
   const north = (lat - HOME.lat) * NM_PER_DEG_LAT;
-  const up = warpAltitudeFraction(altFt / CURVE_CEILING_FT, curveExponent) * CEILING_UP;
+  const relAltFt = terrainOn ? altFt : Math.max(altFt - flatGroundRefFt, 0);
+  const up = warpAltitudeFraction(relAltFt / CURVE_CEILING_FT, curveExponent) * CEILING_UP;
   // three.js: x = east, y = up, z = -north (right-handed, looking south = +z)
   return out.set(east, up, -north);
 }
