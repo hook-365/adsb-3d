@@ -237,8 +237,13 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // raw Three.js materials we own need to be touched here.
   subscribeTheme((tokens) => {
     const t = tokens.three;
-    (scene.background as Color).set(t.skyBg);
+    // In AR passthrough scene.background is null (see setPassthrough) —
+    // retint the saved sky instead so exiting AR restores the new theme.
+    // Calling .set on the null background froze AR sessions (issue #6).
+    if (scene.background instanceof Color) scene.background.set(t.skyBg);
+    else savedBackground?.set(t.skyBg);
     if (scene.fog instanceof FogExp2) scene.fog.color.set(t.skyBg);
+    else savedFog?.color.set(t.skyBg);
     for (const m of ringMaterials.major) m.color.set(t.rangeRingMajor);
     for (const m of ringMaterials.minor) m.color.set(t.rangeRingMinor);
     if (homeMaterial) homeMaterial.color.set(t.homeMarker);
@@ -288,12 +293,13 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       scene.background = null;
       scene.fog = null;
       renderer.setClearAlpha(0);
-      tileLayer.visible = false;
+      // The basemap stays visible in passthrough (issue #6 feedback):
+      // a map disc floating in the room reads as a diorama and gives the
+      // aircraft spatial context; only sky + fog vanish.
     } else {
       scene.background = savedBackground;
       scene.fog = savedFog;
       renderer.setClearAlpha(1);
-      tileLayer.visible = true;
     }
   }
 

@@ -175,7 +175,17 @@ export function updateSettings(patch: Partial<Settings>): void {
   } catch {
     // localStorage may be unavailable (privacy mode); behave as session-only.
   }
-  for (const fn of listeners) fn(current);
+  // Isolate subscribers: one throwing listener must not starve the rest,
+  // and updateSettings is called from inside the WebXR animation loop
+  // (thumbstick scale), where an uncaught throw kills rendering outright
+  // (issue #6, AR freeze).
+  for (const fn of listeners) {
+    try {
+      fn(current);
+    } catch (e) {
+      console.error('[settings] subscriber failed:', e);
+    }
+  }
 }
 
 export function subscribeSettings(fn: (s: Settings) => void): () => void {

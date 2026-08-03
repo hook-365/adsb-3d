@@ -37,6 +37,17 @@ const BILLBOARD_HEIGHT_OFFSET_NM = 2.5;
 const CANVAS_W = 512;
 const CANVAS_H = 256;
 
+// Readability floor (issue #6, AR#3): the sprite may never render
+// narrower than this fraction of its distance to the headset —
+// 0.3 m per metre of distance ≈ 17° of visual field. Far or
+// small-scaled billboards grow to stay legible; near ones keep their
+// airspace-tied size.
+const MIN_WIDTH_PER_METER = 0.3;
+
+const tmpWorldPos = new Vector3();
+const tmpEyePos = new Vector3();
+const tmpParentScale = new Vector3();
+
 export class XrBillboard {
   private readonly sprite: Sprite;
   private readonly canvas: HTMLCanvasElement;
@@ -108,6 +119,22 @@ export class XrBillboard {
     this.sprite.position.copy(scenePos);
     this.sprite.position.y += BILLBOARD_HEIGHT_OFFSET_NM;
     this.sprite.visible = true;
+  }
+
+  /**
+   * Enforce the minimum angular size against the current headset pose
+   * (pass renderer.xr.getCamera()). Called per frame after update();
+   * cheap — two vector ops, no canvas work.
+   */
+  keepReadable(xrCamera: Object3D): void {
+    if (!this.sprite.visible || !this.sprite.parent) return;
+    this.sprite.getWorldPosition(tmpWorldPos);
+    tmpEyePos.setFromMatrixPosition(xrCamera.matrixWorld);
+    const distM = tmpWorldPos.distanceTo(tmpEyePos);
+    const parentScale = this.sprite.parent.getWorldScale(tmpParentScale).x || 1;
+    const minLocalW = (MIN_WIDTH_PER_METER * distM) / parentScale;
+    const w = Math.max(BILLBOARD_W_NM, minLocalW);
+    this.sprite.scale.set(w, w * (BILLBOARD_H_NM / BILLBOARD_W_NM), 1);
   }
 
   /** Hide the billboard without changing the cached aircraft. */

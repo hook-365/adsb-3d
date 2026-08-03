@@ -73,7 +73,7 @@ export function setupXrLocomotion(opts: {
    */
   getOrbitPivot?: () => Vector3 | null;
 }): XrLocomotion {
-  const { renderer, camera, xrRoot, getOrbitPivot } = opts;
+  const { renderer, xrRoot, getOrbitPivot } = opts;
 
   // Edge-trigger state. Snap-turn and A-button fire once per press, not
   // continuously while held. We remember whether the relevant input was
@@ -130,7 +130,12 @@ export function setupXrLocomotion(opts: {
 
         const aPressed = gp.buttons[BUTTON_A_OR_X]?.pressed ?? false;
         if (aPressed && !aButtonWasPressed) {
-          recenterWorld(xrRoot, camera);
+          // Use the XR camera, not the desktop reference camera:
+          // OrbitControls resets the reference camera's position every
+          // tick, so reading it here teleported the world hundreds of
+          // scene units away (issue #6 — "pressing A makes the screen
+          // go all black").
+          recenterWorld(xrRoot, renderer.xr.getCamera());
         }
         aButtonWasPressed = aPressed;
       }
@@ -167,26 +172,30 @@ function snapTurnWorld(xrRoot: Group, pivot: Vector3, angle: number): void {
 
 const tmpPivot = new Vector3();
 const tmpFwd = new Vector3();
+const tmpEye = new Vector3();
 
 /** Place xrRoot's local origin RECENTER_FORWARD_M in front of the
- *  camera at RECENTER_DOWN_M below eye height, on the horizontal plane
- *  the camera is looking along. Preserves the current vrScale. The
- *  rotation is reset so the basemap N axis points away from the user. */
+ *  headset at RECENTER_DOWN_M below eye height, on the horizontal plane
+ *  the headset is looking along. Preserves the current vrScale. The
+ *  rotation is reset so the basemap N axis points away from the user.
+ *  Pose is read from matrixWorld — the XR array camera's position/
+ *  quaternion properties aren't reliably synced. */
 function recenterWorld(xrRoot: Group, camera: PerspectiveCamera): void {
-  // Forward direction projected onto the horizontal plane. If the user
-  // is looking straight up or down (rare during normal use) fall back
-  // to scene -Z so the recentre is at least deterministic.
-  camera.getWorldDirection(tmpFwd);
-  tmpFwd.y = 0;
+  const e = camera.matrixWorld.elements;
+  tmpEye.setFromMatrixPosition(camera.matrixWorld);
+  // Forward = -Z basis column, projected onto the horizontal plane. If
+  // the user is looking straight up or down (rare during normal use)
+  // fall back to scene -Z so the recentre is at least deterministic.
+  tmpFwd.set(-(e[8] ?? 0), 0, -(e[10] ?? 0));
   if (tmpFwd.lengthSq() < 1e-6) {
     tmpFwd.set(0, 0, -1);
   } else {
     tmpFwd.normalize();
   }
   xrRoot.position.set(
-    camera.position.x + tmpFwd.x * RECENTER_FORWARD_M,
-    camera.position.y - RECENTER_DOWN_M,
-    camera.position.z + tmpFwd.z * RECENTER_FORWARD_M,
+    tmpEye.x + tmpFwd.x * RECENTER_FORWARD_M,
+    tmpEye.y - RECENTER_DOWN_M,
+    tmpEye.z + tmpFwd.z * RECENTER_FORWARD_M,
   );
   xrRoot.rotation.set(0, 0, 0);
 }

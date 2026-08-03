@@ -451,7 +451,16 @@ function applyTokens(tokens: ThemeTokens): void {
 function reapply(): void {
   const tokens = THEMES[currentName];
   applyTokens(tokens);
-  for (const fn of listeners) fn(tokens, currentName);
+  // Isolated like the settings fan-out: a throwing subscriber must not
+  // starve later ones (issue #6 — the scene subscriber threw in AR and
+  // silently killed the wrist menu's redraws).
+  for (const fn of listeners) {
+    try {
+      fn(tokens, currentName);
+    } catch (e) {
+      console.error('[theme] subscriber failed:', e);
+    }
+  }
 }
 
 // Apply on module load so the first paint already carries the right palette

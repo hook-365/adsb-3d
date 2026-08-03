@@ -138,8 +138,17 @@ applyStereoMode();
 
 // Theme bridge: Settings owns persistence, theme module owns application.
 // Apply once on boot to honor a stored preference, then re-apply on change.
+// Deduped: updateSettings fires per-frame from XR thumbstick scaling, and
+// re-running the whole theme pipeline (CSS vars, canvas redraws) each
+// frame is pure waste when the selection hasn't moved.
 setTheme(getSettings().theme);
-subscribeSettings((s) => setTheme(s.theme));
+let lastThemeSelection = getSettings().theme;
+subscribeSettings((s) => {
+  if (s.theme !== lastThemeSelection) {
+    lastThemeSelection = s.theme;
+    setTheme(s.theme);
+  }
+});
 
 // XR controllers + billboard for Phase 2. Controllers attach to the
 // scene (meter-space, outside xrRoot — they track the user's hands at
@@ -185,8 +194,11 @@ const xrControllers = setupXrControllers({
 // 2 tabletop scale into a persisted setting; the left thumbstick
 // drives it live via xr-locomotion). On end, transform is reset so
 // the desktop view goes back to identity.
-const VR_OFFSET_Y = 0.8;        // chest height
-const VR_OFFSET_Z = -1.5;       // 1.5 m in front
+// Board-game placement (issue #6 feedback): table height and close enough
+// to lean over, so the first thing you see is the airspace below you
+// rather than a distant disc at eye level.
+const VR_OFFSET_Y = 0.65;       // table height
+const VR_OFFSET_Z = -0.9;       // 90 cm in front
 // In a headset the camera near/far are metres. The desktop default of
 // near=1 m clips anything you lean toward and eats the wrist menu, which
 // rides ~0.3–0.5 m off your hand — reported as VR clipping + menu flicker
@@ -1079,7 +1091,11 @@ function tick(frameTime: number): void {
   if (world.renderer.xr.isPresenting && xrSelectedHex) {
     const a = store.snapshot.get(xrSelectedHex);
     const pos = reconciler.positionOf(xrSelectedHex);
-    xrBillboard.update(a ?? null, pos);
+    // The wrist menu's Labels row maps to aircraftLabels; in a headset the
+    // billboard IS the label, so the toggle governs it (issue #6, VR#7 —
+    // CSS2D labels are hidden in XR, making the toggle appear dead).
+    xrBillboard.update(getSettings().aircraftLabels ? (a ?? null) : null, pos);
+    xrBillboard.keepReadable(world.renderer.xr.getCamera());
   } else if (world.renderer.xr.isPresenting) {
     xrBillboard.hide();
   }
