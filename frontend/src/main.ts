@@ -68,6 +68,7 @@ import { mountTimeControls } from './ui/time-controls';
 import { showLoading, type LoadingHandle } from './ui/loading-overlay';
 import { attachPicking } from './interaction/picking';
 import { HOME, setHome } from './core/config';
+import { groundSceneY } from './world/elevation';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
 import { setSearchQuery } from './core/filter';
 import {
@@ -1058,6 +1059,15 @@ function tick(frameTime: number): void {
     }
   }
   controls.update();
+  // Terrain collision: OrbitControls' polar clamp keeps the camera above
+  // the y=0 plane, but 3D terrain rises above it — zooming toward a hill
+  // could put the eye underground. Hold a small clearance above the
+  // sampled ground. Skipped in XR, where the headset owns the camera.
+  if (!world.renderer.xr.isPresenting) {
+    const camGroundY =
+      groundSceneY(world.camera.position.x, -world.camera.position.z) + 0.6;
+    if (world.camera.position.y < camGroundY) world.camera.position.y = camGroundY;
+  }
   reconciler.syncFrame();
   reconciler.updateLabelLOD();
   aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });

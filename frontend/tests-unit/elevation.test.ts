@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { terrariumToMeters, bilinearSample } from '../src/world/elevation';
+import { terrariumToMeters, bilinearSample } from '../src/world/elevation-math';
 
 describe('terrarium decoding', () => {
   it('decodes the documented reference values', () => {

@@ -506,7 +506,7 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
 
   const altPos = entry.altLine.geometry.getAttribute('position') as BufferAttribute;
   altPos.setXYZ(0, tmpPos.x, tmpPos.y, tmpPos.z);
-  altPos.setXYZ(1, tmpGround.x, 0, tmpGround.z);
+  altPos.setXYZ(1, tmpGround.x, tmpGround.y, tmpGround.z);
   altPos.needsUpdate = true;
 
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
@@ -515,7 +515,15 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   // Ground icon position follows the aircraft's lat/lon foot regardless of
   // whether heading changed — its quaternion was either updated above or
   // is already correct from a prior frame.
-  entry.iconMesh.position.set(tmpGround.x, ICON_GROUND_Y, tmpGround.z);
+  // Lift above the sampled ground by more than the flat-world constant:
+  // the terrain mesh linearly interpolates between vertices ~1.25 NM
+  // apart, so the surface can locally sit above the bilinear sample on
+  // convex slopes. 0.25 scene units clears that everywhere sane.
+  entry.iconMesh.position.set(
+    tmpGround.x,
+    tmpGround.y === 0 ? ICON_GROUND_Y : tmpGround.y + 0.25,
+    tmpGround.z,
+  );
 }
 
 function refreshColor(entry: RenderEntry, a: Aircraft): void {

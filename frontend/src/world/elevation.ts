@@ -12,13 +12,11 @@
 // elevationFtAt() returns 0 for anything not (yet) loaded, so consumers
 // degrade to today's flat-world behavior with no special casing.
 
-const TILE_PX = 256;
-const FT_PER_M = 3.28084;
+import { Vector3 } from 'three';
+import { enuToLatLon, toScene } from '../core/coords';
+import { TILE_PX, bilinearSample, terrariumToMeters } from './elevation-math';
 
-/** Decode one terrarium pixel to meters. Pure — unit-tested directly. */
-export function terrariumToMeters(r: number, g: number, b: number): number {
-  return r * 256 + g + b / 256 - 32768;
-}
+const FT_PER_M = 3.28084;
 
 function lonToTileX(lon: number, z: number): number {
   return ((lon + 180) / 360) * Math.pow(2, z);
@@ -26,24 +24,6 @@ function lonToTileX(lon: number, z: number): number {
 function latToTileY(lat: number, z: number): number {
   const r = (lat * Math.PI) / 180;
   return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z);
-}
-
-/**
- * Bilinear sample of a TILE_PX×TILE_PX elevation grid at fractional pixel
- * coordinates, clamped to the tile. Pure — unit-tested directly.
- */
-export function bilinearSample(grid: Float32Array, px: number, py: number): number {
-  const cx = Math.min(Math.max(px, 0), TILE_PX - 1);
-  const cy = Math.min(Math.max(py, 0), TILE_PX - 1);
-  const x0 = Math.floor(cx);
-  const y0 = Math.floor(cy);
-  const x1 = Math.min(x0 + 1, TILE_PX - 1);
-  const y1 = Math.min(y0 + 1, TILE_PX - 1);
-  const fx = cx - x0;
-  const fy = cy - y0;
-  const top = grid[y0 * TILE_PX + x0]! * (1 - fx) + grid[y0 * TILE_PX + x1]! * fx;
-  const bottom = grid[y1 * TILE_PX + x0]! * (1 - fx) + grid[y1 * TILE_PX + x1]! * fx;
-  return top * (1 - fy) + bottom * fy;
 }
 
 // Loaded tiles keyed "z/x/y". `null` marks a failed fetch so we don't
@@ -84,7 +64,14 @@ export function ensureElevationTile(z: number, x: number, y: number): Promise<vo
       const grid = new Float32Array(TILE_PX * TILE_PX);
       for (let i = 0; i < grid.length; i++) {
         const o = i * 4;
-        grid[i] = terrariumToMeters(data[o]!, data[o + 1]!, data[o + 2]!) * FT_PER_M;
+        let m = terrariumToMeters(data[o]!, data[o + 1]!, data[o + 2]!);
+        // Sanitize nodata/void pixels: SRTM voids decode to ±32k m and
+        // render as kilometer-tall spikes. Anything below the Dead Sea or
+        // above Everest is not terrain — treat as sea level. This also
+        // flattens deep-ocean bathymetry, which is what an aircraft viz
+        // wants anyway (real below-sea-level land like -430 m survives).
+        if (m < -450 || m > 9000) m = 0;
+        grid[i] = m * FT_PER_M;
       }
       tiles.set(key, grid);
       for (const fn of listeners) fn();
@@ -107,6 +94,20 @@ export const ELEVATION_ZOOM = 8;
  * isn't loaded (or failed). Bilinear within the owning tile; the sub-pixel
  * clamp at tile edges is well under a metre of disagreement.
  */
+const groundV = new Vector3();
+
+/**
+ * Scene-space ground height at an ENU offset from home (NM east/north) —
+ * elevation through the same toScene() curve the aircraft use. 0-ish in a
+ * flat world. Shared by ring draping (scene.ts) and the camera's
+ * terrain-collision clamp (main.ts).
+ */
+export function groundSceneY(eastNm: number, northNm: number): number {
+  const { lat, lon } = enuToLatLon(eastNm, northNm);
+  toScene(lat, lon, elevationFtAt(lat, lon), groundV);
+  return groundV.y;
+}
+
 export function elevationFtAt(lat: number, lon: number): number {
   const z = ELEVATION_ZOOM;
   const tx = lonToTileX(lon, z);
