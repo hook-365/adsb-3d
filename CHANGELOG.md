@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **track-service polls remote feeders every 5 s instead of every 1 s.**
+  Heuristic default: docker-internal hostnames and non-global IPs keep
+  the 1 s cadence; anything on the public internet gets 5 s — hammering
+  someone else's home connection once a second around the clock was
+  impolite. `FEEDER_POLL_SECONDS` overrides in either direction (needed
+  for feeders behind local proxy containers or tunnels, which look
+  local to the heuristic). WS heartbeats tighten to every 3 ticks on
+  slow cadences so the frontend's staleness gauge keeps its margin.
+
 ## [0.5.0] - 2026-08-03
 
 A community-issues release — everything in it traces to a GitHub issue

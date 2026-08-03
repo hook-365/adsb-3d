@@ -65,13 +65,46 @@ ws_subscribers: set = set()
 _ws_subscribers_lock: asyncio.Lock | None = None  # initialized in startup; guards add/discard/snapshot
 ws_last_snapshot: dict = {}        # hex (lower) -> last seen RawAircraft dict
 ws_broadcast_task = None
-WS_TICK_SECONDS = 1.0
+
+
+def _default_poll_seconds(feeder_url: str) -> float:
+    """
+    Feeder fetch cadence: 1 s against local infrastructure, 5 s against
+    someone else's feeder on the public internet — polling a stranger's
+    home connection every second around the clock is impolite (issue #6
+    era multi-feed feedback). Heuristic: dotless hostnames (docker
+    service names) and private/loopback IPs are local; anything else is
+    remote. Proxied or tunneled feeders look local to this heuristic, so
+    FEEDER_POLL_SECONDS overrides it either way.
+    """
+    from urllib.parse import urlparse
+    import ipaddress
+    host = urlparse(feeder_url if '://' in feeder_url else f'http://{feeder_url}').hostname or ''
+    if not host or '.' not in host:
+        return 1.0
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return 5.0  # dotted DNS name → assume remote
+    return 5.0 if ip.is_global else 1.0
+
+
+_feeder_url_for_poll = os.getenv('FEEDER_URL', os.getenv('ULTRAFEEDER_URL', 'http://ultrafeeder'))
+try:
+    WS_TICK_SECONDS = float(os.getenv('FEEDER_POLL_SECONDS', '') or _default_poll_seconds(_feeder_url_for_poll))
+    if WS_TICK_SECONDS <= 0:
+        raise ValueError('must be > 0')
+except ValueError:
+    logging.getLogger(__name__).warning('Invalid FEEDER_POLL_SECONDS; falling back to heuristic default')
+    WS_TICK_SECONDS = _default_poll_seconds(_feeder_url_for_poll)
 # Every Nth tick, broadcast all currently-tracked aircraft as "updated"
 # regardless of whether their fields changed. This keeps the client's `seen`
 # / lastSeenMs accurate for parked/stationary aircraft that otherwise
 # wouldn't trigger a diff. At ~30 aircraft and ~80 bytes each, this is
-# ~2.5KB every 5s — cheap insurance against drift.
-WS_HEARTBEAT_EVERY = 5
+# ~2.5KB every 5s — cheap insurance against drift. With slow (remote)
+# ticks the count is reduced so the heartbeat stays well inside the
+# frontend's 30 s feeder-staleness threshold.
+WS_HEARTBEAT_EVERY = 5 if WS_TICK_SECONDS <= 3.0 else 3
 # Fields that, when changed between ticks, mean "this aircraft moved/updated".
 # `seen` is excluded on purpose — it ticks every second for everyone and would
 # defeat the diff entirely.
@@ -622,6 +655,11 @@ async def startup():
             command_timeout=60
         )
         logger.info(f"Database pool created: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
+        logger.info(
+            f"Feeder poll cadence: {WS_TICK_SECONDS:g}s "
+            f"({'FEEDER_POLL_SECONDS override' if os.getenv('FEEDER_POLL_SECONDS') else 'heuristic default'}), "
+            f"WS heartbeat every {WS_HEARTBEAT_EVERY} ticks"
+        )
 
         # Test connection
         async with db_pool.acquire() as conn:
