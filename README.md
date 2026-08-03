@@ -28,15 +28,15 @@ This project is better because people showed up:
   became the entire hardware QA department for it: two rounds of Quest 3
   testing with annotated videos, the bug isolation that cracked the AR
   rendering freeze, the control-scheme design that became free-fly mode,
-  and the altitude-scale idea (#8) that became the vertical scale slider.
+  and the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the vertical scale slider.
 - **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
-  full-stack Docker integration test suite and CI workflow (#9), and
+  full-stack Docker integration test suite and CI workflow ([#9](https://github.com/hook-365/adsb-3d/issues/9)), and
   caught a bug that silently broke retention on every fresh install.
 - **[@unLieb](https://github.com/unLieb)** — scoped the localization
-  architecture before a line was written (#10) and is the native-speaker
+  architecture before a line was written ([#10](https://github.com/hook-365/adsb-3d/issues/10)) and is the native-speaker
   reviewer for the German translation.
 - **[@rknobbe](https://github.com/rknobbe)** — asked the "can it render
-  the mountains?" question (#7) that became 3D terrain.
+  the mountains?" question ([#7](https://github.com/hook-365/adsb-3d/issues/7)) that became 3D terrain.
 
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
