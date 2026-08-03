@@ -296,6 +296,9 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.5.3** (2026-08-03): Flat mode grounds at the home field's
+  elevation instead of sea level, so high-elevation stations read right
+  with terrain off too. Docs now state all altitudes are feet MSL.
 - **v0.5.2** (2026-08-03): Terrain polish — ground icons drape over the
   hills shadow-style instead of being sliced by them, the emergency ring
   rides the terrain, and high-elevation feeds no longer flash aircraft

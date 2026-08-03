@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-03
+
 ### Changed
 
 - **Flat mode grounds at the home field, not sea level.** Without 3D
