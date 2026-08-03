@@ -311,6 +311,36 @@ async def run_database_migrations(db_pool):
                 logger.info("  → Orders by time DESC for query performance")
                 logger.info("  → Expected storage savings: 70-80%")
 
+            # Retention policy self-heal: releases before v0.5.1 failed the
+            # add_retention_policy call on clean-database init (a str was
+            # passed for an ::interval parameter), then restarted healthy
+            # with the policy permanently missing — clean init never re-runs
+            # once tables exist, so affected databases grew without bound.
+            # if_not_exists makes this a no-op everywhere else.
+            logger.info("Checking aircraft_positions retention policy...")
+            has_retention = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT 1 FROM timescaledb_information.jobs
+                    WHERE proc_name = 'policy_retention'
+                      AND hypertable_name = 'aircraft_positions'
+                )
+            """)
+            if has_retention:
+                logger.info("✓ Retention policy present")
+            else:
+                logger.info("✗ Retention policy missing (pre-v0.5.1 clean-init bug) - adding...")
+                try:
+                    retention_days = int(os.getenv('RETENTION_DAYS', '90'))
+                    if retention_days < 1:
+                        raise ValueError("must be >= 1")
+                except (ValueError, TypeError):
+                    retention_days = 90
+                await conn.execute(
+                    "SELECT add_retention_policy('aircraft_positions', $1::interval, if_not_exists => TRUE)",
+                    timedelta(days=retention_days)
+                )
+                logger.info(f"✓ Retention policy added ({retention_days} days)")
+
             # Check if is_military column exists
             logger.info("Checking aircraft_metadata schema...")
             has_military = await conn.fetchval("""

@@ -35,9 +35,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   contributed by @ValkyrieUK). asyncpg requires a timedelta for the
   `::interval` parameter, so `add_retention_policy` failed on clean
   database init; the service then restarted healthy with retention
-  permanently missing. Existing databases were unaffected. If you
-  first deployed after v0.1.0 with a fresh database, check
-  `timescaledb_information.jobs` and add the policy manually.
+  permanently missing. Existing databases were unaffected. A startup
+  migration now detects the missing policy and adds it automatically,
+  so upgrading to this release repairs affected databases on restart.
 - The integration stack's timescaledb healthcheck probed the unix
   socket, which the postgres image's init-phase temporary server also
   answers — the suite raced its own backend on fast machines. Forced
