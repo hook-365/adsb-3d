@@ -10,7 +10,7 @@ import { applyDomStrings, t } from './core/i18n';
 applyDomStrings();
 import { Vector3 } from 'three';
 import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
-import { AircraftStore, setDefaultTrailCap } from './aircraft/store';
+import { AircraftStore } from './aircraft/store';
 
 // On user selection, lift the per-hex trail cap and refetch a much larger
 // history window. Anchored at 24h since that comfortably covers any
@@ -19,16 +19,7 @@ import { AircraftStore, setDefaultTrailCap } from './aircraft/store';
 // aircraft dropping out and re-entering scope within the session.
 const SELECTION_BACKFILL_MS = 24 * 60 * 60 * 1000;
 import { AircraftReconciler } from './aircraft/reconciler';
-import { LiveFeed } from './feed/live';
-import { AcarsFeed, type AcarsStatus } from './feed/acars';
-import { HistoryBackfill } from './feed/history';
-// Historical-mode feed + heatmap layer are loaded dynamically on first
-// entry to historical mode — see enterHistoricalMode. Both modules are
-// only needed when the user actually switches to historical playback and
-// would otherwise inflate the cold-load bundle for everyone.
-import type { HistoricalFeed as HistoricalFeedType } from './feed/historical';
-import type { HeatmapLayer as HeatmapLayerType } from './world/heatmap';
-import { addAcarsMessage, clearAcars, resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
+import { resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings, type VrQuality } from './core/settings';
 import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
@@ -36,18 +27,7 @@ import { XrBillboard } from './aircraft/xr-billboard';
 import { XrWristMenu } from './world/xr-wrist-menu';
 import { faceWorldPoint, setupXrLocomotion } from './world/xr-locomotion';
 import { distanceFromHomeNm } from './core/coords';
-import {
-  attachRouteBatchPrefetcher,
-  configureRoutesApi,
-  clearRouteCache,
-} from './feed/routes';
-import {
-  getActiveFeed,
-  getFeeds,
-  getFeedMode,
-  onFeedSwitch,
-  type Feed,
-} from './feed/feeds';
+import { getActiveFeed, getFeeds, getFeedMode } from './feed/feeds';
 import { createWorld } from './world/scene';
 import { attachControls } from './world/controls';
 import { createLabelRenderer } from './world/labels';
@@ -57,6 +37,7 @@ import { attachPanelToggle } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
 import { mountAltitudeLegend } from './ui/altitude-legend';
+import { mountHud, refreshSubtitle } from './ui/hud';
 // ACARS browser modal is loaded dynamically on first open click — most
 // pageviews never open it, so the modal UI shouldn't bloat the cold-load
 // bundle. The HUD chip and aircraft-list ACARS badges live in the main
@@ -66,49 +47,29 @@ import { mountTimeControls } from './ui/time-controls';
 // Voice panel module is loaded dynamically inside syncVoicePanel when
 // the feature is enabled — it's a sizable chunk (audio decode + media
 // session UI) that deployments without ENABLE_VOICE never need to ship.
-import { showLoading, type LoadingHandle } from './ui/loading-overlay';
 import { attachPicking } from './interaction/picking';
-import { HOME, setHome } from './core/config';
+import { setHome } from './core/config';
 import { groundSceneY } from './world/elevation';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
 import { setSearchQuery } from './core/filter';
+import { initSession } from './app/session';
 import {
   getTimeContext,
   setHistorical,
   subscribeTime,
   tickPlayback,
-  type TimeContext,
 } from './core/time-context';
 
-const hudLocName = document.getElementById('hud-loc-name')!;
-const hudLocCoords = document.getElementById('hud-loc-coords')!;
-// Privacy flag from entrypoint.sh (HIDE_TOWER). When set, the HUD omits the
-// precise receiver coordinates — the map still centres on HOME, but the exact
-// lat/lon isn't spelled out on screen.
-const hideCoords = Boolean(
-  (window as { TOWER_CONFIG?: { hidden?: boolean } }).TOWER_CONFIG?.hidden,
-);
-const hudLive = document.querySelector<HTMLElement>('.hud-live')!;
 const hudAcars = document.getElementById('hud-acars') as HTMLElement;
-const hudAcarsLabel = document.getElementById('hud-acars-label')!;
-const feedStatus = document.getElementById('feed-status')!;
-
-// Threshold beyond which we consider WS-reported feeder freshness "stale"
-// — i.e. the track-service is connected but its upstream readsb hasn't
-// answered for a while. Heartbeats fire every 5s so 30s leaves a margin
-// for transient hiccups.
-const FEEDER_STALE_THRESHOLD_S = 30;
 const aircraftCount = document.getElementById('aircraft-count')!;
 const frameRate = document.getElementById('frame-rate')!;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
-const feedMode = getFeedMode();
-let activeFeed = getActiveFeed();
-
-mountFeedSelector({ feeds: getFeeds(), active: activeFeed, mode: feedMode });
+mountFeedSelector({ feeds: getFeeds(), active: getActiveFeed(), mode: getFeedMode() });
 mountSettingsPanel();
 mountTimeControls();
 mountAltitudeLegend();
+mountHud();
 
 const world = createWorld(canvas);
 const controls = attachControls(world.camera, world.renderer);
@@ -418,7 +379,7 @@ function applySelection(hex: string | null): void {
 // without bumping the cap for the other ~1500 contacts.
 function extendTrailForSelection(hex: string): void {
   store.setTrailCap(hex, Number.POSITIVE_INFINITY);
-  session.history.refresh(hex, SELECTION_BACKFILL_MS);
+  session.refreshHistory(hex, SELECTION_BACKFILL_MS);
 }
 
 aircraftList.onSelect(applySelection);
@@ -552,22 +513,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Live clocks: local + UTC. Once a second is plenty for HH:MM display,
-// and pinning the update to the start of each minute would cost more
-// scheduling complexity than it saves at 1 Hz.
-const clocksEl = document.getElementById('clocks')!;
-function fmtHHMM(d: Date, utc: boolean): string {
-  const h = utc ? d.getUTCHours() : d.getHours();
-  const m = utc ? d.getUTCMinutes() : d.getMinutes();
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-}
-function tickClocks(): void {
-  const now = new Date();
-  clocksEl.textContent = `${fmtHHMM(now, false)} · ${fmtHHMM(now, true)}Z`;
-}
-tickClocks();
-setInterval(tickClocks, 1000);
-
 window.addEventListener('resize', () => {
   world.camera.aspect = window.innerWidth / window.innerHeight;
   world.camera.updateProjectionMatrix();
@@ -575,417 +520,51 @@ window.addEventListener('resize', () => {
   labelRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Publish the actual height of the status footer as `--footer-h` on
-// :root so the sidebar + detail card can sit just above it. The footer
-// gets significantly taller in historical mode (time-controls expand
-// to a full row) and even taller on mobile when its flex-wrap kicks
-// in, so a static CSS bottom would either over- or under-shoot.
-const statusEl = document.getElementById('status') as HTMLElement;
-const publishFooterHeight = (): void => {
-  // Round up so we never undershoot by a fractional pixel.
-  const h = Math.ceil(statusEl.getBoundingClientRect().height);
-  document.documentElement.style.setProperty('--footer-h', `${h}px`);
-};
-publishFooterHeight();
-new ResizeObserver(publishFooterHeight).observe(statusEl);
-
 // ────────────────────────────────────────────────────────────────────
-// Feed session: per-feed lifecycle (live socket, history backfill,
-// route prefetcher). Torn down on switch and recreated against the
-// new feed; everything else (world, store, reconciler, UI) persists.
+// Session manager: owns live/historical bundles, feed switching, and
+// health reporting (app/session.ts). main.ts only supplies the
+// view-level hooks that touch the world/camera/panels.
 
-interface FeedSession {
-  feed: Feed;
-  liveFeed: LiveFeed;
-  history: HistoryBackfill;
-  acars: AcarsFeed | null;
-  detachRoutePrefetcher: () => void;
-  /** The initial-connect loading overlay, null once the first snapshot arrives. */
-  connectLoader: LoadingHandle | null;
-}
-
-function feedNamePrefix(feed: Feed): string {
-  return feedMode === 'multi' ? `${feed.name} · ` : '';
-}
-
-function applySubtitle(): void {
-  hudLocName.textContent = HOME.name;
-  // Browser tab title tracks the active feed's location. Static across
-  // the session (no live count or selected aircraft) so the tab doesn't
-  // flicker every render; updates when the feed switches because
-  // applySubtitle() is called again from the feed-switch handler.
-  document.title = HOME.name ? `ADS-B 3D · ${HOME.name}` : 'ADS-B 3D';
-  if (hideCoords) {
-    hudLocCoords.hidden = true;
-    return;
-  }
-  // Hemisphere-suffixed coords read more like an aviation chart and avoid
-  // the awkward leading minus on western longitudes.
-  const ns = HOME.lat >= 0 ? 'N' : 'S';
-  const ew = HOME.lon >= 0 ? 'E' : 'W';
-  hudLocCoords.textContent =
-    `${Math.abs(HOME.lat).toFixed(3)}°${ns}  ${Math.abs(HOME.lon).toFixed(3)}°${ew}  ·  ${HOME.altFt.toLocaleString()} ft`;
-}
-
-function startSession(feed: Feed): FeedSession {
-  configureRoutesApi(feed.apiBase);
-  // Per-feed trail policy: local gets unlimited, others stay at the safe
-  // 600 (see feeds.ts). Set this before LiveFeed starts pushing snapshots
-  // so the very first appendTrail uses the right cap.
-  setDefaultTrailCap(feed.trailMaxPoints);
-  const liveFeed = new LiveFeed({
-    liveUrl: feed.liveUrl,
-    wsUrl: feed.supportsWs ? `${feed.apiBase}/ws/live` : null,
-  });
-  // Surface the initial connect with the centered loading card so the
-  // user knows we're alive while the WebSocket negotiates. Cleared on
-  // the first successful snapshot. Also stored on the session so
-  // stopSession() can dismiss it if the session is torn down before
-  // the first snapshot arrives (feed switch, entering historical mode).
-  const connectLoader: LoadingHandle = showLoading(
-    t('main.connecting_feed'),
-    `${feed.name}`
-  );
-  const prefix = feedNamePrefix(feed);
-  liveFeed.subscribe((records, status) => {
-    if (session.connectLoader && status.ok) {
-      session.connectLoader.done();
-      session.connectLoader = null;
-    }
-    store.syncFromFeed(records);
-    // Tri-state: 'ok' when fresh, 'stale' when WS connected but the
-    // backend's upstream feeder hasn't updated recently, 'down' when the
-    // socket / HTTP both fail.
-    let state: 'ok' | 'stale' | 'down';
-    if (!status.ok) {
-      state = 'down';
-    } else if (
-      typeof status.feederAgeS === 'number' &&
-      status.feederAgeS > FEEDER_STALE_THRESHOLD_S
-    ) {
-      state = 'stale';
-    } else if (status.feederAgeS === null) {
-      // Server says it has never had a successful feeder fetch.
-      state = 'stale';
-    } else {
-      state = 'ok';
-    }
-
-    hudLive.dataset.state = state;
-    hudLive.textContent =
-      state === 'down'
-        ? t('main.status_down')
-        : state === 'stale'
-          ? t('main.status_stale')
-          : t('main.status_live');
-
-    // Bottom pill is just feed identity + a short status word. Transport
-    // (ws/http) is an implementation detail; the HUD pulse already conveys
-    // liveness; the aircraft-count chip beside it shows the number.
-    const head = prefix.replace(/ · $/, '') || feed.name;
-    if (state === 'down') {
-      feedStatus.textContent = t('main.feed_status_down', { feed: head });
-      feedStatus.className = 'err';
-    } else if (state === 'stale') {
-      feedStatus.textContent =
-        typeof status.feederAgeS === 'number'
-          ? t('main.feed_status_stale_age', {
-              feed: head,
-              age: Math.round(status.feederAgeS),
-            })
-          : t('main.feed_status_stale', { feed: head });
-      feedStatus.className = 'warn';
-    } else {
-      feedStatus.textContent = head;
-      feedStatus.className = 'ok';
-    }
-  });
-  liveFeed.start();
-
-  const history = new HistoryBackfill(store, {
-    apiBase: feed.apiBase,
-    enabled: feed.supportsHistory,
-    windowMs: feed.backfillWindowMs,
-  });
-
-  const detachRoutePrefetcher = attachRouteBatchPrefetcher(store);
-
-  // ACARS — only when this feed has it configured AND the user hasn't
-  // disabled the feature. The settings toggle gates the wire-up entirely
-  // (saves opening a socket the user doesn't want) but if it's off at
-  // boot and they enable it later, applyAcarsLifecycle() picks it up.
-  const acars = createAcarsForFeed(feed);
-
-  return { feed, liveFeed, history, acars, detachRoutePrefetcher, connectLoader };
-}
-
-function createAcarsForFeed(feed: Feed): AcarsFeed | null {
-  if (!feed.acarsApiBase) return null;
-  if (!getSettings().acarsMessages) return null;
-  const acars = new AcarsFeed({ apiBase: feed.acarsApiBase });
-  acars.subscribe((msg) => addAcarsMessage(msg));
-  acars.subscribeStatus((s) => updateAcarsHud(s));
-  acars.start();
-  return acars;
-}
-
-// Threshold beyond which we consider the ACARS hub silent. ACARS is
-// bursty so we're more lenient here than the 30s feeder threshold.
-const ACARS_STALE_THRESHOLD_S = 600;
-
-function updateAcarsHud(status: AcarsStatus | null): void {
-  if (!session?.feed.acarsApiBase || !getSettings().acarsMessages) {
-    hudAcars.hidden = true;
-    return;
-  }
-  hudAcars.hidden = false;
-  let state: 'ok' | 'stale' | 'down';
-  if (!status || !status.transportOk) {
-    state = 'down';
-  } else if (!status.hubConnected) {
-    state = 'stale';
-  } else if (status.hubAgeS === null) {
-    // Connected but no message has ever arrived — hub is silent.
-    state = 'stale';
-  } else if (status.hubAgeS > ACARS_STALE_THRESHOLD_S) {
-    state = 'stale';
-  } else {
-    state = 'ok';
-  }
-  hudAcars.dataset.state = state;
-  if (state === 'ok' && status?.hubAgeS !== null && status?.hubAgeS !== undefined) {
-    const ageS = Math.round(status.hubAgeS);
-    hudAcarsLabel.textContent =
-      ageS < 60
-        ? t('main.acars_age_seconds', { n: ageS })
-        : t('main.acars_age_minutes', { n: Math.round(ageS / 60) });
-  } else if (state === 'stale') {
-    hudAcarsLabel.textContent = t('main.acars_silent');
-  } else if (state === 'down') {
-    hudAcarsLabel.textContent = t('main.acars_down');
-  } else {
-    hudAcarsLabel.textContent = t('main.acars_label');
-  }
-}
-
-function stopSession(session: FeedSession): void {
-  // Dismiss the initial-connect overlay if it never resolved (e.g. the user
-  // switched feeds or entered historical mode before the first snapshot).
-  if (session.connectLoader) {
-    session.connectLoader.done();
-    session.connectLoader = null;
-  }
-  session.liveFeed.stop();
-  session.history.stop();
-  session.acars?.stop();
-  session.acars = null;
-  session.detachRoutePrefetcher();
-}
-
-let session: FeedSession = startSession(activeFeed);
-applySubtitle();
-updateAcarsHud(null);
-
-// ────────────────────────────────────────────────────────────────────
-// Historical-mode session: when the user switches to historical, the
-// live session is paused and a HistoricalFeed drives the store from
-// the playback cursor. Switching back to live resumes the live feed.
-
-let historicalFeed: HistoricalFeedType | null = null;
-let heatmapLayer: HeatmapLayerType | null = null;
-// Bumped on every enter/exit; in-flight `enterHistoricalMode` calls check
-// their captured token against the current value and bail if the user
-// pivoted away during the chunk load.
-let historicalEnterToken = 0;
-let historicalEnterInFlight = false;
-
-async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
-  if (!ctx.window) return;
-  const myToken = ++historicalEnterToken;
-  // Pause live transport. stopSession handles the connectLoader dismissal,
-  // the acars null-out, and route prefetcher teardown — avoids a double-stop
-  // when exitHistoricalMode later calls stopSession on the same session.
-  stopSession(session);
-  hudAcars.hidden = true;
-  // ACARS browser stays open across mode switches if we don't close it,
-  // leaving stale live messages visible during historical playback.
-  // Modal was lazily mounted; if it was never opened there's nothing to close.
-  acarsBrowser?.close();
-
-  store.clear();
-  feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_loading')}`;
-  feedStatus.className = 'warn';
-  hudLive.dataset.state = 'stale';
-  hudLive.textContent = t('main.status_historical');
-
-  // Surface the bulk fetch with the centered loading card. Cleared on
-  // load completion or error so the world becomes interactive again.
-  let histLoader: LoadingHandle | null = showLoading(
-    t('main.loading_historical'),
-    formatWindowLabel(ctx.window)
-  );
-
-  // Pull in the historical playback + heatmap chunks lazily. Both are
-  // sizable (volumetric rendering, bulk-tracks decoder) and only matter
-  // once the user toggles historical mode.
-  const [historicalMod, heatmapMod] = await Promise.all([
-    import('./feed/historical'),
-    import('./world/heatmap'),
-  ]);
-  // User flipped back to live while the chunks were loading — abandon
-  // this enter without touching shared state. exitHistoricalMode already
-  // bumped the token to invalidate us.
-  if (myToken !== historicalEnterToken) {
-    if (histLoader) { histLoader.done(); histLoader = null; }
-    return;
-  }
-  if (!heatmapLayer) heatmapLayer = new heatmapMod.HeatmapLayer(world.scene);
-  const buildTrailUpTo = historicalMod.buildTrailUpTo;
-  const localHeatmap = heatmapLayer;
-
-  historicalFeed = new historicalMod.HistoricalFeed({ apiBase: activeFeed.apiBase });
-  historicalFeed.subscribe((records, status) => {
-    store.syncFromFeed(records);
-    // Replace each live aircraft's trail with the real samples that
-    // pre-date the cursor. Without this the trail would carry forward
-    // appendTrail's synthetic per-frame positions (smearing future
-    // points behind a backward scrub) and rely on interpolation
-    // artifacts instead of broadcast samples.
-    if (historicalFeed && status.cursorMs !== null) {
-      const tracks = historicalFeed.getTracks();
-      const cursor = status.cursorMs;
-      for (const a of records) {
-        const samples = tracks.get(a.hex);
-        if (!samples) continue;
-        store.setTrail(a.hex, buildTrailUpTo(samples, cursor));
-      }
-    }
-    feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_counts', {
-      visible: status.visibleCount,
-      total: status.aircraftCount,
-    })}`;
-    feedStatus.className = 'ok';
-  });
-  // Track which (loaded, cellCount-flavored) signature we last rebuilt
-  // the airway layer for. The status fires every cursor tick once
-  // playback starts, so without a cheap idempotent check we'd rebuild
-  // a million-segment LineSegments mesh on every frame.
-  let lastBuildSignature: string | null = null;
-  historicalFeed.subscribeStatus((status) => {
-    if (status.errored) {
-      feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_error')}`;
-      feedStatus.className = 'err';
-      if (histLoader) { histLoader.done(); histLoader = null; }
-    } else if (status.loading) {
-      feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_loading')}`;
-      feedStatus.className = 'warn';
-      lastBuildSignature = null; // new fetch in flight; allow rebuild on completion
-      if (!histLoader) {
-        histLoader = showLoading(t('main.loading_historical'), formatWindowLabel(historicalFeed?.getWindow() ?? null));
-      }
-    }
-    // Rebuild on the loaded transition. Signature uses aircraftCount as
-    // a cheap proxy for "has the underlying dataset changed".
-    if (status.loaded && historicalFeed) {
-      const sig = `${status.aircraftCount}`;
-      if (sig !== lastBuildSignature) {
-        localHeatmap.rebuildFromTracks(historicalFeed.getTracks());
-        heatmapBuiltWindowKey = lastWindowKey;
-        lastBuildSignature = sig;
-      }
-      if (histLoader) { histLoader.done(); histLoader = null; }
-    }
-  });
-  void historicalFeed.start(ctx.window, ctx.cursorMs ?? undefined);
-}
-
-function formatWindowLabel(window: { startMs: number; endMs: number } | null): string {
-  if (!window) return '';
-  const hours = (window.endMs - window.startMs) / 3_600_000;
-  if (hours <= 1.01) return t('main.window_last_hour');
-  if (hours <= 24.01) return t('main.window_last_hours', { n: Math.round(hours) });
-  const days = hours / 24;
-  return t('main.window_last_days', { n: Math.round(days) });
-}
-
-function exitHistoricalMode(): void {
-  // Invalidate any in-flight enterHistoricalMode that hasn't resolved yet.
-  ++historicalEnterToken;
-  if (historicalFeed) {
-    historicalFeed.stop();
-    historicalFeed = null;
-  }
-  heatmapLayer?.clear();
-  store.clear();
-  // enterHistoricalMode already called stopSession() to tear down the live
-  // feed. Spin up a fresh session against the current feed instead of
-  // trying to resume the stopped one.
-  session = startSession(activeFeed);
-  updateAcarsHud(null);
-}
-
-// Cache the last-seen window so we can distinguish "cursor moved" (cheap)
-// from "window changed" (re-fetch). Subscriber fires on every cursor tick
-// during playback, so the comparison must be O(1).
-let lastWindowKey: string | null = null;
-// Heatmap is fetched once per (window, on/off) — track the last window
-// we built data for so toggling visibility doesn't refetch.
-let heatmapBuiltWindowKey: string | null = null;
-
-subscribeTime((ctx) => {
-  writeTimeState(ctx);
-  const windowKey = ctx.window ? `${ctx.window.startMs}|${ctx.window.endMs}` : null;
-
-  if (ctx.mode === 'historical') {
-    if (!historicalFeed && !historicalEnterInFlight) {
-      historicalEnterInFlight = true;
-      void enterHistoricalMode(ctx).finally(() => { historicalEnterInFlight = false; });
-      lastWindowKey = windowKey;
-    } else if (historicalFeed && windowKey !== lastWindowKey && ctx.window) {
-      void historicalFeed.start(ctx.window, ctx.cursorMs ?? undefined);
-      lastWindowKey = windowKey;
-    } else if (historicalFeed && ctx.cursorMs !== null) {
-      historicalFeed.setCursor(ctx.cursorMs);
-    }
-
-    // Heatmap: build from the playback feed's loaded tracks (no
-    // separate fetch). When the window changes the feed re-loads and
-    // its status subscriber triggers a rebuild. Toggling visibility
-    // here is cheap — the geometry stays cached. The null guard catches
-    // the brief gap between enter trigger and chunk-load completion.
-    if (heatmapLayer && ctx.heatmap && historicalFeed && heatmapBuiltWindowKey !== windowKey) {
-      const tracks = historicalFeed.getTracks();
-      if (tracks.size > 0) {
-        heatmapLayer.rebuildFromTracks(tracks);
-        heatmapBuiltWindowKey = windowKey;
-      }
-    }
-    heatmapLayer?.setVisible(ctx.heatmap);
-  } else if (historicalFeed || historicalEnterInFlight) {
-    exitHistoricalMode();
-    lastWindowKey = null;
-    heatmapBuiltWindowKey = null;
-  }
+const session = initSession({
+  store,
+  scene: world.scene,
+  hooks: {
+    onFeedChanged(next) {
+      // Selection is per-feed — routes/airframes won't carry over.
+      applySelection(null);
+      aircraftList.setSelected(null);
+      // Recenter the world: HOME mutates in place so coords/distances
+      // immediately reproject to the new origin; the basemap tile mesh
+      // coordinates were baked at construction time, so swap that layer.
+      // Camera goes back to the default orbit so the first frame of the
+      // new feed shows its tower from a predictable angle.
+      setHome(next.home);
+      world.recenter();
+      world.camera.position.set(0, 220, 280);
+      controls.target.set(0, 0, 0);
+      controls.update();
+      refreshSubtitle();
+      // Voice scanner belongs to the local station only — show it for the
+      // local feed, tear it down for remote feeds (no false ATC coverage).
+      syncVoicePanel();
+    },
+    onEnterHistorical() {
+      // ACARS browser stays open across mode switches if we don't close
+      // it, leaving stale live messages visible during historical
+      // playback. Lazily mounted — nothing to close if never opened.
+      acarsBrowser?.close();
+    },
+  },
 });
+
+// Keep the URL's time-state params in sync with the time context.
+subscribeTime((ctx) => writeTimeState(ctx));
 
 // Initial URL → if it carries a historical window, enter that mode.
 const urlTimeState = readTimeState();
 if (urlTimeState && urlTimeState.window) {
   setHistorical(urlTimeState.window, urlTimeState.cursorMs ?? undefined);
 }
-
-// Settings can flip the ACARS feature on/off mid-session. Spin the WS
-// up/down to match without rebuilding the whole feed session.
-subscribeSettings((s) => {
-  if (s.acarsMessages && !session.acars) {
-    session.acars = createAcarsForFeed(session.feed);
-  } else if (!s.acarsMessages && session.acars) {
-    session.acars.stop();
-    session.acars = null;
-    clearAcars();
-  }
-  updateAcarsHud(null);
-});
 
 if (initialSelectedHex) {
   aircraftList.setSelected(initialSelectedHex);
@@ -1007,53 +586,6 @@ if (initialSelectedHex) {
   setSearchQuery(initialSelectedHex);
 }
 
-onFeedSwitch((next) => {
-  // 1. Stop everything bound to the old feed before mutating shared
-  //    state. Pending HTTP/WS callbacks that race the swap check
-  //    `stopped`/`detached` and bail.
-  stopSession(session);
-
-  // 2. Drop selection — selected hex is per-feed and routes/airframes
-  //    won't carry over.
-  followHex = null;
-  returningHome = true;
-  applySelection(null);
-  aircraftList.setSelected(null);
-
-  // 3. Wipe shared caches that key off feed identity.
-  store.clear();
-  clearRouteCache();
-  clearAcars();
-  updateAcarsHud(null);
-
-  // 4. Recenter the world: HOME mutates in place so coords/distances
-  //    immediately reproject to the new origin; the basemap tile mesh
-  //    coordinates were baked at construction time, so swap that layer.
-  //    Camera goes back to the default orbit so the first frame of the
-  //    new feed shows its tower from a predictable angle.
-  setHome(next.home);
-  world.recenter();
-  world.camera.position.set(0, 220, 280);
-  controls.target.set(0, 0, 0);
-  controls.update();
-  applySubtitle();
-  feedStatus.textContent = `${feedNamePrefix(next)}${t('main.feed_connecting')}`;
-  feedStatus.className = 'warn';
-  hudLive.dataset.state = 'stale';
-  hudLive.textContent = t('main.status_connecting');
-
-  // 5. Spin up new feed session.
-  activeFeed = next;
-  session = startSession(next);
-
-  // 6. Voice scanner belongs to the local station only — show it for the
-  //    local feed, tear it down for remote feeds (no false ATC coverage).
-  syncVoicePanel();
-
-  heatmapLayer?.clear();
-  heatmapBuiltWindowKey = null;
-});
-
 let lastFrame = performance.now();
 let frames = 0;
 let fpsAccumMs = 0;
@@ -1065,7 +597,7 @@ function tick(frameTime: number): void {
   fpsAccumMs += dt;
 
   // Advance the historical playback cursor when playing. tickPlayback
-  // emits a time-context change, which our subscriber funnels into
+  // emits a time-context change, which the session manager funnels into
   // historicalFeed.setCursor — which re-emits a synthetic snapshot.
   const ctx = getTimeContext();
   if (ctx.mode === 'historical' && ctx.playing) {
