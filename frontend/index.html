@@ -22,7 +22,7 @@
           <path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" fill="currentColor"/>
         </svg>
         <span class="hud-wordmark">ADS-B 3D</span>
-        <span class="hud-live" aria-label="Live data feed">live</span>
+        <span class="hud-live" aria-label="Live data feed" data-i18n-aria-label="static.live_feed_aria">live</span>
       </div>
       <div class="hud-loc">
         <div class="hud-loc-name" id="hud-loc-name">—</div>
@@ -37,23 +37,23 @@
     <div id="voice-panel" class="voice-panel" hidden></div>
     <footer id="status">
       <div id="time-controls" class="time-controls" data-mode="live">
-        <div class="tc-mode" role="tablist" aria-label="Time mode">
-          <button id="tc-mode-live" type="button" class="active" role="tab">Live</button>
-          <button id="tc-mode-hist" type="button" role="tab">Historical</button>
+        <div class="tc-mode" role="tablist" aria-label="Time mode" data-i18n-aria-label="static.time_mode_aria">
+          <button id="tc-mode-live" type="button" class="active" role="tab" data-i18n="static.mode_live">Live</button>
+          <button id="tc-mode-hist" type="button" role="tab" data-i18n="static.mode_historical">Historical</button>
         </div>
         <div id="tc-expanded" class="tc-expanded" hidden>
-          <div id="tc-presets" class="tc-presets" aria-label="Window presets"></div>
+          <div id="tc-presets" class="tc-presets" aria-label="Window presets" data-i18n-aria-label="static.window_presets_aria"></div>
           <div class="tc-scrub">
-            <button id="tc-play" type="button" class="tc-play" aria-label="Play">▶</button>
-            <input id="tc-scrubber" class="tc-scrubber" type="range" min="0" max="1000" value="1000" aria-label="Playback cursor" />
+            <button id="tc-play" type="button" class="tc-play" aria-label="Play" data-i18n-aria-label="static.play_aria">▶</button>
+            <input id="tc-scrubber" class="tc-scrubber" type="range" min="0" max="1000" value="1000" aria-label="Playback cursor" data-i18n-aria-label="static.playback_cursor_aria" />
             <span id="tc-cursor" class="tc-cursor">—</span>
           </div>
           <div class="tc-meta">
             <span id="tc-range" class="tc-range">—</span>
-            <div id="tc-rates" class="tc-rates" aria-label="Playback speed"></div>
+            <div id="tc-rates" class="tc-rates" aria-label="Playback speed" data-i18n-aria-label="static.playback_speed_aria"></div>
             <label class="tc-heatmap">
               <input id="tc-heatmap" type="checkbox" />
-              <span>heatmap</span>
+              <span data-i18n="static.heatmap_toggle">heatmap</span>
             </label>
           </div>
         </div>
@@ -62,39 +62,39 @@
       <span id="feed-status">feed: …</span>
       <span id="aircraft-count">aircraft: 0</span>
       <span id="frame-rate">— fps</span>
-      <span id="clocks" class="clocks" title="Local · UTC">—:— · —:—Z</span>
-      <button id="share-btn" type="button" class="status-btn" title="Copy a shareable link">share</button>
-      <button id="recenter-btn" type="button" class="status-btn" title="Recenter view on home">recenter</button>
+      <span id="clocks" class="clocks" title="Local · UTC" data-i18n-title="static.clocks_title">—:— · —:—Z</span>
+      <button id="share-btn" type="button" class="status-btn" title="Copy a shareable link" data-i18n="static.share" data-i18n-title="static.share_title">share</button>
+      <button id="recenter-btn" type="button" class="status-btn" title="Recenter view on home" data-i18n="static.recenter" data-i18n-title="static.recenter_title">recenter</button>
       <span class="footer-links">
-        <a href="https://github.com/hook-365/adsb-3d" target="_blank" rel="noopener noreferrer" class="footer-link" title="Source on GitHub" aria-label="GitHub repository">github</a>
-        <a href="https://buymeacoffee.com/anthonyhook" target="_blank" rel="noopener noreferrer" class="footer-link footer-link-coffee" title="Support development" aria-label="Buy me a coffee">☕</a>
+        <a href="https://github.com/hook-365/adsb-3d" target="_blank" rel="noopener noreferrer" class="footer-link" title="Source on GitHub" data-i18n-title="static.github_title" aria-label="GitHub repository" data-i18n-aria-label="static.github_aria">github</a>
+        <a href="https://buymeacoffee.com/anthonyhook" target="_blank" rel="noopener noreferrer" class="footer-link footer-link-coffee" title="Support development" data-i18n-title="static.coffee_title" aria-label="Buy me a coffee" data-i18n-aria-label="static.coffee_aria">☕</a>
       </span>
       <span id="altitude-legend" class="altitude-legend"></span>
     </footer>
-    <button id="panel-toggle" aria-label="Toggle aircraft list" aria-controls="aircraft-panel" aria-expanded="true">
+    <button id="panel-toggle" aria-label="Toggle aircraft list" data-i18n-aria-label="static.toggle_aircraft_list_aria" aria-controls="aircraft-panel" aria-expanded="true">
       <span class="icon" aria-hidden="true"></span>
       <span class="badge" id="panel-toggle-count">0</span>
     </button>
-    <aside id="aircraft-panel" aria-label="Aircraft list">
+    <aside id="aircraft-panel" aria-label="Aircraft list" data-i18n-aria-label="static.aircraft_list_aria">
       <header>
         <div class="panel-title">
-          <span>Aircraft</span>
+          <span data-i18n="static.aircraft_heading">Aircraft</span>
           <span id="panel-count" class="panel-count">0</span>
         </div>
-        <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" autocomplete="off" />
-        <div class="panel-filters" id="panel-filters" role="tablist" aria-label="Filter by status">
-          <button type="button" class="filter active" data-filter="all">All</button>
-          <button type="button" class="filter" data-filter="air">Air</button>
-          <button type="button" class="filter" data-filter="ground">Ground</button>
-          <button type="button" class="filter" data-filter="mil">Mil</button>
-          <button type="button" class="filter" data-filter="emerg">Emerg</button>
+        <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" data-i18n-placeholder="static.list_search_placeholder" autocomplete="off" />
+        <div class="panel-filters" id="panel-filters" role="tablist" aria-label="Filter by status" data-i18n-aria-label="static.filter_by_status_aria">
+          <button type="button" class="filter active" data-filter="all" data-i18n="static.filter_all">All</button>
+          <button type="button" class="filter" data-filter="air" data-i18n="static.filter_air">Air</button>
+          <button type="button" class="filter" data-filter="ground" data-i18n="static.filter_ground">Ground</button>
+          <button type="button" class="filter" data-filter="mil" data-i18n="static.filter_mil">Mil</button>
+          <button type="button" class="filter" data-filter="emerg" data-i18n="static.filter_emerg">Emerg</button>
         </div>
       </header>
       <div class="panel-cols" role="row">
-        <button class="col col-flight" data-sort="flight">Flight</button>
-        <button class="col col-alt" data-sort="alt">Alt</button>
-        <button class="col col-spd" data-sort="spd">Spd</button>
-        <button class="col col-dist" data-sort="dist">Dist</button>
+        <button class="col col-flight" data-sort="flight" data-i18n="static.col_flight">Flight</button>
+        <button class="col col-alt" data-sort="alt" data-i18n="static.col_alt">Alt</button>
+        <button class="col col-spd" data-sort="spd" data-i18n="static.col_spd">Spd</button>
+        <button class="col col-dist" data-sort="dist" data-i18n="static.col_dist">Dist</button>
       </div>
       <ul id="panel-list" role="list"></ul>
     </aside>
@@ -105,8 +105,8 @@
           <span class="hex" id="detail-hex"></span>
         </div>
         <div class="detail-actions">
-          <button class="detail-share" id="detail-share" aria-label="Copy a shareable link to this aircraft" title="Copy share link">🔗</button>
-          <button class="close" id="detail-close" aria-label="Clear selection">×</button>
+          <button class="detail-share" id="detail-share" aria-label="Copy a shareable link to this aircraft" data-i18n-aria-label="static.detail_share_aria" title="Copy share link" data-i18n-title="static.detail_share_title">🔗</button>
+          <button class="close" id="detail-close" aria-label="Clear selection" data-i18n-aria-label="static.clear_selection_aria">×</button>
         </div>
       </header>
       <a class="photo" id="detail-photo" hidden target="_blank" rel="noopener noreferrer">
@@ -127,27 +127,27 @@
       <div class="route-eta" id="detail-route-eta" hidden></div>
       <div class="chips" id="detail-chips" hidden></div>
       <section class="airframe" id="detail-airframe">
-        <h3>Airframe</h3>
+        <h3 data-i18n="static.airframe_heading">Airframe</h3>
         <dl class="grid">
-          <dt>Type</dt><dd id="detail-type">—</dd>
+          <dt data-i18n="static.detail_type">Type</dt><dd id="detail-type">—</dd>
           <dt id="detail-icao-label" hidden>ICAO</dt><dd id="detail-icao" hidden>—</dd>
-          <dt>Reg.</dt><dd id="detail-reg">—</dd>
+          <dt data-i18n="static.detail_reg">Reg.</dt><dd id="detail-reg">—</dd>
           <dt id="detail-operator-label" hidden>Operator</dt><dd id="detail-operator" hidden>—</dd>
           <dt id="detail-class-label" hidden>Class</dt><dd id="detail-class" hidden>—</dd>
         </dl>
       </section>
       <dl class="grid">
-        <dt>Alt</dt><dd id="detail-alt">—</dd>
-        <dt>Vert.</dt><dd id="detail-vrate">—</dd>
-        <dt>Spd</dt><dd id="detail-spd">—</dd>
-        <dt>Hdg</dt><dd id="detail-hdg">—</dd>
-        <dt>Sqk</dt><dd id="detail-squawk">—</dd>
-        <dt>Pos</dt><dd id="detail-pos">—</dd>
-        <dt>Range</dt><dd id="detail-range">—</dd>
-        <dt>Seen</dt><dd id="detail-seen">—</dd>
+        <dt data-i18n="static.detail_alt">Alt</dt><dd id="detail-alt">—</dd>
+        <dt data-i18n="static.detail_vert">Vert.</dt><dd id="detail-vrate">—</dd>
+        <dt data-i18n="static.detail_spd">Spd</dt><dd id="detail-spd">—</dd>
+        <dt data-i18n="static.detail_hdg">Hdg</dt><dd id="detail-hdg">—</dd>
+        <dt data-i18n="static.detail_sqk">Sqk</dt><dd id="detail-squawk">—</dd>
+        <dt data-i18n="static.detail_pos">Pos</dt><dd id="detail-pos">—</dd>
+        <dt data-i18n="static.detail_range">Range</dt><dd id="detail-range">—</dd>
+        <dt data-i18n="static.detail_seen">Seen</dt><dd id="detail-seen">—</dd>
       </dl>
       <section class="autopilot" id="detail-autopilot" hidden>
-        <h3>Autopilot</h3>
+        <h3 data-i18n="static.autopilot_heading">Autopilot</h3>
         <dl class="grid">
           <dt id="detail-ap-alt-label">Sel. Alt</dt><dd id="detail-ap-alt">—</dd>
           <dt id="detail-ap-hdg-label">Sel. Hdg</dt><dd id="detail-ap-hdg">—</dd>
@@ -160,20 +160,20 @@
         <ul id="detail-acars-list"></ul>
       </section>
     </section>
-    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-label="ACARS message browser">
+    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-label="ACARS message browser" data-i18n-aria-label="static.acars_browser_aria">
       <div class="acars-backdrop" id="acars-backdrop"></div>
       <section class="acars-panel">
         <header>
           <div class="acars-title">
-            <h2>ACARS messages</h2>
+            <h2 data-i18n="static.acars_messages_heading">ACARS messages</h2>
             <span class="acars-counts" id="acars-browser-counts">0 / 0</span>
           </div>
-          <button class="acars-close" id="acars-browser-close" type="button" aria-label="Close">×</button>
+          <button class="acars-close" id="acars-browser-close" type="button" aria-label="Close" data-i18n-aria-label="static.close_aria">×</button>
         </header>
         <div class="acars-toolbar">
-          <input type="search" id="acars-browser-search" placeholder="filter text · flight · reg · label" autocomplete="off" />
-          <select id="acars-browser-label" aria-label="Filter by label">
-            <option value="">All labels</option>
+          <input type="search" id="acars-browser-search" placeholder="filter text · flight · reg · label" data-i18n-placeholder="static.acars_search_placeholder" autocomplete="off" />
+          <select id="acars-browser-label" aria-label="Filter by label" data-i18n-aria-label="static.filter_by_label_aria">
+            <option value="" data-i18n="acars.all_labels">All labels</option>
           </select>
         </div>
         <ul class="acars-rows" id="acars-browser-rows" role="list"></ul>

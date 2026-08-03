@@ -18,12 +18,13 @@
 
 import { getSettings, subscribeSettings } from './settings';
 import { en } from './strings/en';
+import { de } from './strings/de';
 
 export type StringKey = keyof typeof en;
 export type StringTable = Readonly<Record<StringKey, string>>;
 
 /** Locale registry. New locales are added here (see header recipe). */
-export const LOCALES: Record<string, StringTable> = { en };
+export const LOCALES: Record<string, StringTable> = { en, de };
 
 function resolveLocale(pref: string): string {
   if (pref !== 'auto' && pref in LOCALES) return pref;

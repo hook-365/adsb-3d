@@ -5,6 +5,7 @@ import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact } from '../core/units'
 import { getFilter, setFilter, subscribeFilter, passesFilter, setSearchQuery, subscribeSearchQuery, type FilterKey } from '../core/filter';
 import { hasAcars, subscribeAcars } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
+import { t } from '../core/i18n';
 
 // tar1090-style aircraft list panel. Subscribes to the store and re-renders
 // at ~1Hz. To stay flat on big feeds (Europe regularly hits 1500+ contacts),
@@ -66,19 +67,19 @@ function renderRowTags(el: HTMLElement, mask: number, emergencyTitle: string | n
     return;
   }
   const tags: Array<{ glyph: string; cls: string; title: string }> = [];
-  if (mask & TAG_EMERGENCY) tags.push({ glyph: '!', cls: 'emergency', title: emergencyTitle ?? 'Emergency' });
-  if (mask & TAG_MILITARY) tags.push({ glyph: 'M', cls: 'military', title: 'Military' });
-  if (mask & TAG_SPECIAL) tags.push({ glyph: '★', cls: 'special', title: 'Special interest' });
-  if (mask & TAG_ACARS) tags.push({ glyph: 'A', cls: 'acars', title: 'Recent ACARS messages' });
-  if (mask & TAG_PRIVACY) tags.push({ glyph: 'P', cls: '', title: 'Privacy ICAO' });
-  if (mask & TAG_LADD) tags.push({ glyph: 'L', cls: '', title: 'LADD' });
+  if (mask & TAG_EMERGENCY) tags.push({ glyph: '!', cls: 'emergency', title: emergencyTitle ?? t('list.tag_emergency') });
+  if (mask & TAG_MILITARY) tags.push({ glyph: 'M', cls: 'military', title: t('list.tag_military') });
+  if (mask & TAG_SPECIAL) tags.push({ glyph: '★', cls: 'special', title: t('list.tag_special_interest') });
+  if (mask & TAG_ACARS) tags.push({ glyph: 'A', cls: 'acars', title: t('list.tag_acars') });
+  if (mask & TAG_PRIVACY) tags.push({ glyph: 'P', cls: '', title: t('list.tag_privacy_icao') });
+  if (mask & TAG_LADD) tags.push({ glyph: 'L', cls: '', title: t('list.tag_ladd') });
   el.innerHTML = tags
-    .map((t) => `<span class="tag${t.cls ? ` ${t.cls}` : ''}" title="${t.title}">${t.glyph}</span>`)
+    .map((tag) => `<span class="tag${tag.cls ? ` ${tag.cls}` : ''}" title="${tag.title}">${tag.glyph}</span>`)
     .join('');
 }
 
 function fmtAlt(a: Aircraft): string {
-  if (a.onGround) return 'GND';
+  if (a.onGround) return t('list.altitude_ground');
   return fmtAltitude(a.altFt, { compact: true });
 }
 

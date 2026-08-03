@@ -1,4 +1,5 @@
 import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
+import { t } from '../core/i18n';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
 
@@ -59,22 +60,22 @@ interface SettingsSection {
 
 const SETTINGS_SCHEMA: SettingsSection[] = [
   {
-    heading: 'Theme',
+    heading: t('settings.section_theme'),
     rows: [
       {
         kind: 'choice',
         key: 'theme',
-        label: 'Color theme',
-        description: 'Palette for panels, accents, and the scene background. Auto follows your system light/dark preference.',
+        label: t('settings.color_theme'),
+        description: t('settings.color_theme_desc'),
         options: THEME_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
       },
       {
         kind: 'choice',
         key: 'language',
-        label: 'Language',
-        description: "UI language. Auto follows your browser's locale. Changing this reloads the page.",
+        label: t('settings.language'),
+        description: t('settings.language_desc'),
         options: [
-          { value: 'auto', label: 'Auto' },
+          { value: 'auto', label: t('settings.language_auto') },
           { value: 'en', label: 'English' },
           // Native names on purpose: a user stuck in the wrong language
           // must be able to find their own.
@@ -84,79 +85,79 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
   {
-    heading: 'Display',
+    heading: t('settings.section_display'),
     rows: [
       {
         kind: 'toggle',
         key: 'groundSprites',
-        label: 'Ground aircraft icons',
-        description: 'Show the tar1090 silhouette under each aircraft.',
+        label: t('settings.ground_sprites'),
+        description: t('settings.ground_sprites_desc'),
       },
       {
         kind: 'toggle',
         key: 'altitudeLines',
-        label: 'Altitude lines',
-        description: 'Vertical line dropping each aircraft to its ground position.',
+        label: t('settings.altitude_lines'),
+        description: t('settings.altitude_lines_desc'),
       },
       {
         kind: 'toggle',
         key: 'aircraftLabels',
-        label: 'Aircraft labels',
-        description: 'Callsign / registration / hex above each aircraft.',
+        label: t('settings.aircraft_labels'),
+        description: t('settings.aircraft_labels_desc'),
       },
       {
         kind: 'toggle',
         key: 'acarsMessages',
-        label: 'ACARS messages',
-        description: 'Show ACARS datalink messages and the receiver status chip.',
+        label: t('settings.acars_messages'),
+        description: t('settings.acars_messages_desc'),
       },
       {
         kind: 'range',
         key: 'labelDensity',
-        label: 'Label density',
-        description: 'Higher values hide farther-away labels when zoomed in. 0 keeps every label visible.',
+        label: t('settings.label_density'),
+        description: t('settings.label_density_desc'),
         min: 0,
         max: 100,
         step: 1,
-        format: (v) => (v === 0 ? 'all' : `${v}`),
+        format: (v) => (v === 0 ? t('settings.label_density_all') : `${v}`),
       },
       {
         kind: 'toggle',
         key: 'rangeRings',
-        label: 'Range rings',
-        description: 'Concentric distance rings every 50 NM.',
+        label: t('settings.range_rings'),
+        description: t('settings.range_rings_desc'),
       },
       {
         kind: 'choice',
         key: 'basemap',
-        label: 'Basemap',
-        description: 'Map tile provider drawn beneath the scene.',
+        label: t('settings.basemap'),
+        description: t('settings.basemap_desc'),
         options: [
-          { value: 'dark', label: 'Carto Dark' },
-          { value: 'carto_voyager', label: 'Carto Voyager (light)' },
-          { value: 'osm', label: 'OpenStreetMap' },
-          { value: 'topo', label: 'OpenTopoMap' },
-          { value: 'hillshade', label: 'ESRI Hillshade' },
-          { value: 'satellite', label: 'ESRI Satellite' },
+          { value: 'dark', label: t('settings.basemap_carto_dark') },
+          { value: 'carto_voyager', label: t('settings.basemap_carto_voyager') },
+          { value: 'osm', label: t('settings.basemap_osm') },
+          { value: 'topo', label: t('settings.basemap_topo') },
+          { value: 'hillshade', label: t('settings.basemap_hillshade') },
+          { value: 'satellite', label: t('settings.basemap_satellite') },
           // US-only aeronautical charts (FAA, via vfrmap.com). Coverage
           // outside CONUS/AK/HI will be blank.
-          { value: 'sectional', label: 'FAA Sectional (US)' },
-          { value: 'sectional_hybrid', label: 'FAA Sectional + Roads (US)' },
-          { value: 'helicopter', label: 'FAA Helicopter (US)' },
-          { value: 'ifr_low', label: 'FAA IFR Low (US)' },
-          { value: 'ifr_high', label: 'FAA IFR High (US)' },
+          { value: 'sectional', label: t('settings.basemap_sectional') },
+          { value: 'sectional_hybrid', label: t('settings.basemap_sectional_hybrid') },
+          { value: 'helicopter', label: t('settings.basemap_helicopter') },
+          { value: 'ifr_low', label: t('settings.basemap_ifr_low') },
+          { value: 'ifr_high', label: t('settings.basemap_ifr_high') },
         ],
       },
     ],
   },
   {
-    heading: 'Stereo / VR',
+    heading: t('settings.section_stereo_vr'),
     rows: [
       {
         kind: 'button',
         id: 'enter-vr',
-        label: 'Enter VR',
-        description: 'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
+        label: t('settings.enter_vr'),
+        description: t('settings.enter_vr_desc'),
         onClick: async () => {
           const s = getXrState();
           if (s.presenting) await exitVR();
@@ -165,26 +166,24 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         subscribe: (update) =>
           subscribeXr((s) => {
             if (s.presenting && s.presentingMode === 'vr') {
-              update({ label: 'Exit VR', description: 'End the active immersive session.', disabled: false });
+              update({ label: t('settings.exit_vr'), description: t('settings.exit_vr_desc'), disabled: false });
             } else if (s.presenting) {
               // An AR session is active — VR button is disabled until it ends.
               update({
-                label: 'Enter VR',
-                description: 'Exit the AR session first.',
+                label: t('settings.enter_vr'),
+                description: t('settings.exit_ar_first'),
                 disabled: true,
               });
             } else if (s.vrSupported) {
               update({
-                label: 'Enter VR',
-                description:
-                  s.lastError ??
-                  'Open an immersive WebXR session in a connected headset (Meta Quest, Vision Pro, etc.).',
+                label: t('settings.enter_vr'),
+                description: s.lastError ?? t('settings.enter_vr_desc'),
                 disabled: false,
               });
             } else {
               update({
-                label: 'VR unavailable',
-                description: s.unavailableReason ?? 'WebXR is not available in this browser.',
+                label: t('settings.vr_unavailable'),
+                description: s.unavailableReason ?? t('settings.webxr_unavailable'),
                 disabled: true,
               });
             }
@@ -193,8 +192,8 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
       {
         kind: 'button',
         id: 'enter-ar',
-        label: 'Enter AR',
-        description: 'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
+        label: t('settings.enter_ar'),
+        description: t('settings.enter_ar_desc'),
         onClick: async () => {
           const s = getXrState();
           if (s.presenting) await exitVR();
@@ -203,25 +202,23 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         subscribe: (update) =>
           subscribeXr((s) => {
             if (s.presenting && s.presentingMode === 'ar') {
-              update({ label: 'Exit AR', description: 'End the active passthrough session.', disabled: false });
+              update({ label: t('settings.exit_ar'), description: t('settings.exit_ar_desc'), disabled: false });
             } else if (s.presenting) {
               update({
-                label: 'Enter AR',
-                description: 'Exit the VR session first.',
+                label: t('settings.enter_ar'),
+                description: t('settings.exit_vr_first'),
                 disabled: true,
               });
             } else if (s.arSupported) {
               update({
-                label: 'Enter AR',
-                description:
-                  s.lastError ??
-                  'Passthrough mode — aircraft floating in your room. Quest 3, Vision Pro.',
+                label: t('settings.enter_ar'),
+                description: s.lastError ?? t('settings.enter_ar_desc'),
                 disabled: false,
               });
             } else {
               update({
-                label: 'AR unavailable',
-                description: 'This device does not support immersive-ar passthrough.',
+                label: t('settings.ar_unavailable'),
+                description: t('settings.ar_unsupported'),
                 disabled: true,
               });
             }
@@ -230,26 +227,26 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
       {
         kind: 'choice',
         key: 'vrQuality',
-        label: 'VR render quality',
-        description: 'Supersampling for immersive VR. Higher keeps distant aircraft sharp at a GPU cost. Takes effect the next time you enter VR.',
+        label: t('settings.vr_quality'),
+        description: t('settings.vr_quality_desc'),
         options: [
-          { value: 'low', label: 'Low (faster)' },
-          { value: 'balanced', label: 'Balanced' },
-          { value: 'high', label: 'High' },
-          { value: 'ultra', label: 'Ultra (sharpest)' },
+          { value: 'low', label: t('settings.vr_quality_low') },
+          { value: 'balanced', label: t('settings.vr_quality_balanced') },
+          { value: 'high', label: t('settings.vr_quality_high') },
+          { value: 'ultra', label: t('settings.vr_quality_ultra') },
         ],
       },
       {
         kind: 'toggle',
         key: 'stereo',
-        label: 'Side-by-side stereo',
-        description: 'Split the view into left/right eye halves for Google Cardboard or a phone VR headset. Ignored while an immersive WebXR session is active.',
+        label: t('settings.stereo'),
+        description: t('settings.stereo_desc'),
       },
       {
         kind: 'range',
         key: 'stereoStrength',
-        label: 'Stereo strength',
-        description: 'Eye separation when stereo is on. Higher gives deeper 3D but more eye strain.',
+        label: t('settings.stereo_strength'),
+        description: t('settings.stereo_strength_desc'),
         min: 1,
         max: 100,
         step: 1,
@@ -257,34 +254,34 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
   {
-    heading: 'Units',
+    heading: t('settings.section_units'),
     rows: [
       {
         kind: 'choice',
         key: 'altitudeUnit',
-        label: 'Altitude',
+        label: t('settings.altitude_unit'),
         options: [
-          { value: 'ft', label: 'Feet (ft)' },
-          { value: 'm', label: 'Meters (m)' },
+          { value: 'ft', label: t('settings.unit_feet') },
+          { value: 'm', label: t('settings.unit_meters') },
         ],
       },
       {
         kind: 'choice',
         key: 'speedUnit',
-        label: 'Speed',
+        label: t('settings.speed_unit'),
         options: [
-          { value: 'kt', label: 'Knots (kt)' },
-          { value: 'mph', label: 'Miles/hour (mph)' },
-          { value: 'kmh', label: 'Kilometers/hour (km/h)' },
+          { value: 'kt', label: t('settings.unit_knots') },
+          { value: 'mph', label: t('settings.unit_mph') },
+          { value: 'kmh', label: t('settings.unit_kmh') },
         ],
       },
       {
         kind: 'choice',
         key: 'distanceUnit',
-        label: 'Distance',
+        label: t('settings.distance_unit'),
         options: [
-          { value: 'nm', label: 'Nautical miles (NM)' },
-          { value: 'km', label: 'Kilometers (km)' },
+          { value: 'nm', label: t('settings.unit_nm') },
+          { value: 'km', label: t('settings.unit_km') },
         ],
       },
     ],
@@ -305,7 +302,7 @@ export function mountSettingsPanel(): void {
   button.className = 'settings-button';
   button.type = 'button';
   button.innerHTML = GEAR_SVG;
-  button.setAttribute('aria-label', 'Settings');
+  button.setAttribute('aria-label', t('settings.title'));
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-expanded', 'false');
   slot.replaceChildren(button);
@@ -313,7 +310,7 @@ export function mountSettingsPanel(): void {
   const panel = document.createElement('div');
   panel.className = 'settings-panel';
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Settings');
+  panel.setAttribute('aria-label', t('settings.title'));
   panel.hidden = true;
 
   // Dialog header: title + an explicit close button. The close button is
@@ -323,11 +320,11 @@ export function mountSettingsPanel(): void {
   header.className = 'settings-header';
   const title = document.createElement('h2');
   title.className = 'settings-title';
-  title.textContent = 'Settings';
+  title.textContent = t('settings.title');
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'settings-close';
-  closeBtn.setAttribute('aria-label', 'Close settings');
+  closeBtn.setAttribute('aria-label', t('settings.close'));
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', () => setOpen(false));
   header.append(title, closeBtn);
@@ -437,8 +434,8 @@ export function mountSettingsPanel(): void {
         resetBtn.type = 'button';
         resetBtn.className = 'settings-range-reset';
         resetBtn.textContent = '↺';
-        resetBtn.title = `Reset to default (${fmt(defaultVal)})`;
-        resetBtn.setAttribute('aria-label', `Reset ${row.label} to default`);
+        resetBtn.title = t('settings.reset_to_default', { value: fmt(defaultVal) });
+        resetBtn.setAttribute('aria-label', t('settings.reset_row_to_default', { label: row.label }));
         const syncReset = (v: number): void => {
           resetBtn.disabled = v === defaultVal;
         };

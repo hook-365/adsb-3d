@@ -1,3 +1,32 @@
 // 'voice.*' UI strings. Populated by the i18n extraction; keys are flat and
 // must carry the 'voice.' prefix (enforced by tests-unit/i18n.test.ts).
-export const voiceStrings = {} as const;
+export const voiceStrings = {
+  'voice.scanner_title': 'Voice scanner',
+  'voice.toggle_label': 'voice',
+  'voice.no_activity': 'No activity',
+  'voice.channel_active': 'Channel active',
+  'voice.live_channel_activity': 'Live channel activity',
+  'voice.start_scanner': 'Start scanner',
+  'voice.pause_scanner': 'Pause scanner',
+  'voice.volume': 'Volume',
+  'voice.jump_to_live': '▼ {n} queued — jump to live',
+  'voice.recent_calls': 'Recent calls',
+  'voice.playing_channel': 'Playing: {label}',
+  'voice.time_now': 'now',
+  'voice.time_seconds_ago': '{n}s ago',
+  'voice.time_minutes_ago': '{n}m ago',
+  'voice.time_hours_ago': '{n}h ago',
+  'voice.status_connecting': 'connecting…',
+  'voice.status_ready': 'ready — press ▶ to start scanner',
+  'voice.status_playing': 'playing · {label}',
+  'voice.status_playing_scanner': 'playing · scanner',
+  'voice.status_listening': 'listening — waiting for activity…',
+  'voice.status_waiting': 'waiting for activity…',
+  'voice.status_paused': 'paused',
+  'voice.status_autoplay_blocked': 'autoplay blocked — click ▶ to resume',
+  'voice.status_play_failed': 'play failed: {error}',
+  'voice.status_clip_error': 'clip error ({code}) — skipping',
+  'voice.error_code': 'code {n}',
+  'voice.error_unknown': 'unknown',
+  'voice.status_reconnecting': 'reconnecting…',
+} as const;

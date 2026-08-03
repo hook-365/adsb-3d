@@ -3,6 +3,7 @@ import {
   subscribeRecentAcars,
 } from '../aircraft/acars-store';
 import type { AcarsMessage } from '../feed/acars';
+import { t } from '../core/i18n';
 
 // Full-page ACARS browser modal. Triggered by clicking the HUD ACARS
 // chip; renders the most-recent N messages from the global store with
@@ -90,7 +91,7 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
     const sorted = Array.from(seenLabels).sort();
     const current = labelSelect.value;
     // Rebuild options preserving current selection if still present.
-    labelSelect.innerHTML = '<option value="">All labels</option>';
+    labelSelect.innerHTML = `<option value="">${escapeHtml(t('acars.all_labels'))}</option>`;
     for (const label of sorted) {
       const opt = document.createElement('option');
       opt.value = label;
@@ -107,7 +108,7 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
     const age = `<span class="acars-row-age">${fmtAge(m.time)}</span>`;
     const text = m.text
       ? escapeHtml(m.text).replace(/\n/g, ' ↵ ')
-      : '<span class="acars-row-empty">(no text)</span>';
+      : `<span class="acars-row-empty">${escapeHtml(t('acars.no_text'))}</span>`;
     const hex = options.resolveHex(m);
     const dataHex = hex ? ` data-hex="${escapeHtml(hex)}"` : '';
     const cls = hex ? 'acars-row clickable' : 'acars-row';
@@ -128,7 +129,7 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
     }
     countsEl.textContent = `${visible.length} / ${all.length}`;
     rowsEl.innerHTML = visible.length === 0
-      ? '<li class="acars-row acars-empty">No messages match.</li>'
+      ? `<li class="acars-row acars-empty">${escapeHtml(t('acars.no_messages_match'))}</li>`
       : visible.map(renderRow).join('');
   }
 

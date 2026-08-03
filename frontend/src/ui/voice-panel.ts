@@ -30,6 +30,7 @@ import {
   subscribeConnection,
   getCalls,
 } from '../feed/voice-calls';
+import { t } from '../core/i18n';
 
 // ─── Channel color palette ────────────────────────────────────────────────
 // Stable hue from label string; avoids reds/oranges used by warning states.
@@ -59,12 +60,12 @@ function shortLabel(label: string): string {
 
 function relativeTime(ms: number): string {
   const sec = Math.round((Date.now() - ms) / 1000);
-  if (sec < 5) return 'now';
-  if (sec < 60) return `${sec}s ago`;
+  if (sec < 5) return t('voice.time_now');
+  if (sec < 60) return t('voice.time_seconds_ago', { n: sec });
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return t('voice.time_minutes_ago', { n: min });
   const hr = Math.floor(min / 60);
-  return `${hr}h ago`;
+  return t('voice.time_hours_ago', { n: hr });
 }
 
 function clockTime(ms: number): string {
@@ -87,32 +88,32 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
   // ── DOM scaffold ─────────────────────────────────────────────────────────
   container.innerHTML = `
     <button class="voice-toggle" id="voice-toggle" aria-expanded="false"
-            aria-controls="voice-body" title="Voice scanner">
+            aria-controls="voice-body" title="${t('voice.scanner_title')}">
       <span class="voice-toggle-icon" aria-hidden="true">📻</span>
-      <span class="voice-toggle-label" id="voice-toggle-label">voice</span>
-      <span class="voice-toggle-dot" id="voice-toggle-dot" aria-label="No activity"></span>
+      <span class="voice-toggle-label" id="voice-toggle-label">${t('voice.toggle_label')}</span>
+      <span class="voice-toggle-dot" id="voice-toggle-dot" aria-label="${t('voice.no_activity')}"></span>
     </button>
     <div class="voice-body" id="voice-body" hidden>
 
       <!-- 1. Live-activity strip -->
-      <div class="voice-activity-strip" id="voice-activity-strip" aria-label="Live channel activity"></div>
+      <div class="voice-activity-strip" id="voice-activity-strip" aria-label="${t('voice.live_channel_activity')}"></div>
 
       <!-- 2. Scanner controls -->
       <div class="voice-controls">
         <button class="voice-play" id="voice-scan-play"
-                aria-pressed="false" aria-label="Start scanner" title="Start scanner">▶</button>
+                aria-pressed="false" aria-label="${t('voice.start_scanner')}" title="${t('voice.start_scanner')}">▶</button>
         <input  type="range" class="voice-volume" id="voice-volume"
-                min="0" max="100" value="75" aria-label="Volume" />
+                min="0" max="100" value="75" aria-label="${t('voice.volume')}" />
       </div>
 
       <!-- 3. Jump-to-live badge -->
       <div class="voice-jump-live" id="voice-jump-live" hidden></div>
 
       <!-- 4. Call feed -->
-      <ul class="voice-call-list" id="voice-call-list" aria-label="Recent calls"></ul>
+      <ul class="voice-call-list" id="voice-call-list" aria-label="${t('voice.recent_calls')}"></ul>
 
       <!-- 5. Status -->
-      <div class="voice-status" id="voice-status">connecting…</div>
+      <div class="voice-status" id="voice-status">${t('voice.status_connecting')}</div>
 
       <audio id="voice-audio" preload="none"></audio>
     </div>
@@ -236,7 +237,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
         // Schedule a clear when the hold expires (only if not already active).
         if (!state.active && !holdTimers.has(label)) {
           const remaining = (holdUntil.get(label) ?? 0) - Date.now();
-          const t = window.setTimeout(() => {
+          const timer = window.setTimeout(() => {
             holdTimers.delete(label);
             holdUntil.delete(label);
             dot.classList.remove('active');
@@ -247,10 +248,13 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
               );
               toggleDot.classList.toggle('active', anyStillLit);
               if (!anyStillLit) toggleDot.style.removeProperty('--dot-color');
-              toggleDot.setAttribute('aria-label', anyStillLit ? 'Channel active' : 'No activity');
+              toggleDot.setAttribute(
+                'aria-label',
+                anyStillLit ? t('voice.channel_active') : t('voice.no_activity'),
+              );
             }
           }, Math.max(0, remaining));
-          holdTimers.set(label, t);
+          holdTimers.set(label, timer);
         }
       }
     }
@@ -259,7 +263,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     if (!playingId) {
       toggleDot.classList.toggle('active', anyActive);
       toggleDot.style.removeProperty('--dot-color');
-      toggleDot.setAttribute('aria-label', anyActive ? 'Channel active' : 'No activity');
+      toggleDot.setAttribute('aria-label', anyActive ? t('voice.channel_active') : t('voice.no_activity'));
     }
   }
 
@@ -280,7 +284,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
   function setScannerPlaying(playing: boolean): void {
     scanPlayBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
     scanPlayBtn.textContent = playing ? '⏸' : '▶';
-    scanPlayBtn.title = playing ? 'Pause scanner' : 'Start scanner';
+    scanPlayBtn.title = playing ? t('voice.pause_scanner') : t('voice.start_scanner');
   }
 
   // Highlight the currently-playing row; update the toggle-chip dot color.
@@ -296,7 +300,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
       if (call) {
         toggleDot.style.setProperty('--dot-color', channelColor(call.label));
         toggleDot.classList.add('active');
-        toggleDot.setAttribute('aria-label', `Playing: ${call.label}`);
+        toggleDot.setAttribute('aria-label', t('voice.playing_channel', { label: call.label }));
       }
     } else {
       toggleDot.style.removeProperty('--dot-color');
@@ -312,7 +316,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     highlightRow(call.id);
     setChipLabel(call);
     pingDot();
-    setStatus(`playing · ${call.label}`, 'ok');
+    setStatus(t('voice.status_playing', { label: call.label }), 'ok');
     return audio.play();
   }
 
@@ -325,7 +329,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
       playingId = null;
       highlightRow(null);
       setChipLabel(null);
-      setStatus('waiting for activity…', 'warn');
+      setStatus(t('voice.status_waiting'), 'warn');
       updateJumpLive();
       return;
     }
@@ -343,7 +347,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
       audioPlaying = false;
       setScannerPlaying(false);
       updateStreamingIndicator();
-      setStatus('autoplay blocked — click ▶ to resume', 'warn');
+      setStatus(t('voice.status_autoplay_blocked'), 'warn');
     });
   }
 
@@ -356,7 +360,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     const pending = playQueue.length;
     if (pending > 0) {
       jumpLiveEl.hidden = false;
-      jumpLiveEl.textContent = `▼ ${pending} queued — jump to live`;
+      jumpLiveEl.textContent = t('voice.jump_to_live', { n: pending });
     } else {
       jumpLiveEl.hidden = true;
     }
@@ -377,7 +381,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
   // Collapsed-chip live indicator: show the playing call's channel + freq,
   // and a one-shot "ping" pulse when a transmission starts.
   function setChipLabel(call: Call | null): void {
-    toggleLabel.textContent = call ? `${shortLabel(call.label)} ${call.freq}` : 'voice';
+    toggleLabel.textContent = call ? `${shortLabel(call.label)} ${call.freq}` : t('voice.toggle_label');
   }
   function pingDot(): void {
     toggleDot.classList.remove('ping');
@@ -396,7 +400,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     // next call to arrive over the WebSocket is what plays. Existing calls
     // stay available via click-to-replay. To the user this reads as a live
     // stream: press play, then hear traffic as it happens.
-    setStatus('listening — waiting for activity…', 'warn');
+    setStatus(t('voice.status_listening'), 'warn');
 
     // Prime the <audio> element inside this user gesture so the next
     // programmatic play() — fired later by a WS call event, outside any
@@ -431,7 +435,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     highlightRow(null);
     toggleBtn.classList.remove('listening');
     setChipLabel(null);
-    setStatus('paused', 'warn');
+    setStatus(t('voice.status_paused'), 'warn');
     updateJumpLive();
   }
 
@@ -460,7 +464,10 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
       audio.pause();
       playSingleCall(call).catch((err: unknown) => {
         console.warn('[voice-calls] row click play failed', err);
-        setStatus(`play failed: ${err instanceof Error ? err.message : String(err)}`, 'bad');
+        setStatus(
+          t('voice.status_play_failed', { error: err instanceof Error ? err.message : String(err) }),
+          'bad',
+        );
       });
     });
     return li;
@@ -529,11 +536,11 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     audioPlaying = false;
     updateStreamingIndicator();
     const err = audio.error;
-    const code = err ? `code ${err.code}` : 'unknown';
+    const code = err ? t('voice.error_code', { n: err.code }) : t('voice.error_unknown');
     console.warn('[voice-calls] <audio> error', code, err?.message);
 
     if (scannerRunning) {
-      setStatus(`clip error (${code}) — skipping`, 'warn');
+      setStatus(t('voice.status_clip_error', { code }), 'warn');
       setTimeout(() => { if (scannerRunning) advanceQueue(); }, 800);
     }
   });
@@ -557,7 +564,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
             audioPlaying = false;
             setScannerPlaying(false);
             updateStreamingIndicator();
-            setStatus('autoplay blocked — click ▶ to resume', 'warn');
+            setStatus(t('voice.status_autoplay_blocked'), 'warn');
           });
         } else {
           playQueue.push(newCall.id);
@@ -567,7 +574,7 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     } else {
       renderCallList();
       if (wsConnected) {
-        setStatus('ready — press ▶ to start scanner', 'ok');
+        setStatus(t('voice.status_ready'), 'ok');
       }
     }
   });
@@ -580,9 +587,9 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     wsConnected = connected;
     updateStreamingIndicator();
     if (connected) {
-      setStatus(scannerRunning ? `playing · scanner` : 'ready — press ▶ to start scanner', 'ok');
+      setStatus(scannerRunning ? t('voice.status_playing_scanner') : t('voice.status_ready'), 'ok');
     } else {
-      setStatus('reconnecting…', 'warn');
+      setStatus(t('voice.status_reconnecting'), 'warn');
     }
   });
 

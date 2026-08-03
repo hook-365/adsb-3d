@@ -1,5 +1,6 @@
 import { altitudeColor } from '../core/altitude-color';
 import { ALT_EXAGGERATION } from '../core/config';
+import { t } from '../core/i18n';
 
 // Footer legend: the altitude → color ramp the aircraft cones use, plus a
 // note that the 3D view's vertical scale is exaggerated. Static content —
@@ -23,16 +24,11 @@ export function mountAltitudeLegend(): void {
   const host = document.getElementById('altitude-legend');
   if (!host) return;
 
-  host.title =
-    'Aircraft are coloured by altitude (tar1090 scheme): low = orange, ' +
-    'mid = green, high = magenta. Aircraft on the ground are dim blue-grey.\n\n' +
-    `Note: the 3D view exaggerates altitude ${ALT_EXAGGERATION}× relative to ` +
-    'horizontal distance so traffic stays readable — the height you see is ' +
-    'NOT to scale against the ground.';
+  host.title = t('misc.legend_tooltip', { factor: ALT_EXAGGERATION });
 
   const cap = document.createElement('span');
   cap.className = 'al-cap';
-  cap.textContent = 'alt';
+  cap.textContent = t('misc.legend_alt_caption');
 
   // Ramp = gradient bar with altitude ticks beneath it. Five evenly-spaced
   // ticks (0–40k) align with the bar because the gradient is linear in ft.
@@ -55,7 +51,7 @@ export function mountAltitudeLegend(): void {
   // Vertical-scale caveat — muted so it sits quietly beside the ramp.
   const note = document.createElement('span');
   note.className = 'al-note';
-  note.textContent = `↕ height ×${ALT_EXAGGERATION} — not to scale`;
+  note.textContent = t('misc.legend_scale_note', { factor: ALT_EXAGGERATION });
 
   host.append(cap, ramp, note);
 }

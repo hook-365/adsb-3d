@@ -10,6 +10,7 @@ import {
   windowEndingNow,
   type PlaybackRate,
 } from '../core/time-context';
+import { t, type StringKey } from '../core/i18n';
 
 // Time-controls strip pinned above the footer. In live mode it collapses
 // to a single Live/Historical toggle. Selecting Historical expands the
@@ -19,10 +20,10 @@ import {
 // Mounted once at boot. All state lives in core/time-context; this file
 // is purely UI + URL-write.
 
-const PRESETS: ReadonlyArray<{ label: string; hours: number }> = [
-  { label: 'Last 1h', hours: 1 },
-  { label: 'Last 24h', hours: 24 },
-  { label: 'Last 7d', hours: 24 * 7 },
+const PRESETS: ReadonlyArray<{ labelKey: StringKey; hours: number }> = [
+  { labelKey: 'time.preset_last_1h', hours: 1 },
+  { labelKey: 'time.preset_last_24h', hours: 24 },
+  { labelKey: 'time.preset_last_7d', hours: 24 * 7 },
 ];
 const RATES: ReadonlyArray<PlaybackRate> = [1, 4, 16, 60];
 
@@ -44,7 +45,7 @@ export function mountTimeControls(): void {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'tc-preset';
-    btn.textContent = p.label;
+    btn.textContent = t(p.labelKey);
     btn.addEventListener('click', () => {
       setHistorical(windowEndingNow(p.hours));
     });
@@ -103,7 +104,7 @@ export function mountTimeControls(): void {
       cursorLabel.textContent = formatCursor(ctx.cursorMs);
       rangeLabel.textContent = `${formatRangeBound(ctx.window.startMs)} → ${formatRangeBound(ctx.window.endMs)}`;
       playBtn.textContent = ctx.playing ? '❚❚' : '▶';
-      playBtn.setAttribute('aria-label', ctx.playing ? 'Pause' : 'Play');
+      playBtn.setAttribute('aria-label', ctx.playing ? t('time.pause') : t('time.play'));
 
       for (const child of ratesEl.children) {
         const btn = child as HTMLButtonElement;

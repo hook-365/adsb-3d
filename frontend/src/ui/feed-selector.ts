@@ -1,4 +1,5 @@
 import { selectFeed, type Feed, type FeedMode } from '../feed/feeds';
+import { t } from '../core/i18n';
 
 // Top-bar feed switcher. Only mounted when running in multi-feed mode
 // with more than one feed configured. Selecting an option calls
@@ -29,7 +30,7 @@ export function mountFeedSelector(options: FeedSelectorOptions): void {
 
   const select = document.createElement('select');
   select.className = 'feed-select';
-  select.setAttribute('aria-label', 'Select feed');
+  select.setAttribute('aria-label', t('feeds.select_feed'));
   for (const feed of options.feeds) {
     const opt = document.createElement('option');
     opt.value = feed.id;

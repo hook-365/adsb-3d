@@ -36,6 +36,9 @@ import {
   subscribeTheme,
   THEME_OPTIONS,
 } from '../core/theme';
+// Aliased: `t` is the conventional local name for theme tokens in the draw
+// code below.
+import { t as tr } from '../core/i18n';
 
 // Plane dimensions in real metres. Sized to feel like a credit card on
 // the inside of the wrist — readable at arm's length but not absurdly
@@ -52,17 +55,17 @@ const HEADER_PX = 28;
 const ROW_HEIGHT_PX = (CANVAS_H - HEADER_PX) / ROW_COUNT;
 
 const BASEMAP_OPTIONS: ReadonlyArray<{ value: Basemap; label: string }> = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'carto_voyager', label: 'Voyager' },
-  { value: 'hillshade', label: 'Hillshade' },
-  { value: 'topo', label: 'Topo' },
-  { value: 'satellite', label: 'Satellite' },
-  { value: 'osm', label: 'OSM' },
-  { value: 'sectional', label: 'FAA Sectional' },
-  { value: 'sectional_hybrid', label: 'Sectional + Roads' },
-  { value: 'helicopter', label: 'FAA Helicopter' },
-  { value: 'ifr_low', label: 'IFR Low' },
-  { value: 'ifr_high', label: 'IFR High' },
+  { value: 'dark', label: tr('misc.xr_basemap_dark') },
+  { value: 'carto_voyager', label: tr('misc.xr_basemap_voyager') },
+  { value: 'hillshade', label: tr('misc.xr_basemap_hillshade') },
+  { value: 'topo', label: tr('misc.xr_basemap_topo') },
+  { value: 'satellite', label: tr('misc.xr_basemap_satellite') },
+  { value: 'osm', label: tr('misc.xr_basemap_osm') },
+  { value: 'sectional', label: tr('misc.xr_basemap_sectional') },
+  { value: 'sectional_hybrid', label: tr('misc.xr_basemap_sectional_hybrid') },
+  { value: 'helicopter', label: tr('misc.xr_basemap_helicopter') },
+  { value: 'ifr_low', label: tr('misc.xr_basemap_ifr_low') },
+  { value: 'ifr_high', label: tr('misc.xr_basemap_ifr_high') },
 ];
 
 interface MenuRow {
@@ -75,7 +78,7 @@ interface MenuRow {
 const ROWS: MenuRow[] = [
   {
     id: 'theme',
-    label: () => 'Theme',
+    label: () => tr('misc.xr_theme'),
     value: () => {
       const sel = getTheme().selection;
       const opt = THEME_OPTIONS.find((o) => o.value === sel);
@@ -93,7 +96,7 @@ const ROWS: MenuRow[] = [
   },
   {
     id: 'basemap',
-    label: () => 'Basemap',
+    label: () => tr('misc.xr_basemap'),
     value: () => {
       const cur = getSettings().basemap;
       const opt = BASEMAP_OPTIONS.find((o) => o.value === cur);
@@ -109,20 +112,20 @@ const ROWS: MenuRow[] = [
   },
   {
     id: 'rangeRings',
-    label: () => 'Range rings',
-    value: () => (getSettings().rangeRings ? 'on' : 'off'),
+    label: () => tr('misc.xr_range_rings'),
+    value: () => (getSettings().rangeRings ? tr('misc.xr_on') : tr('misc.xr_off')),
     activate: () => updateSettings({ rangeRings: !getSettings().rangeRings }),
   },
   {
     id: 'aircraftLabels',
-    label: () => 'Labels',
-    value: () => (getSettings().aircraftLabels ? 'on' : 'off'),
+    label: () => tr('misc.xr_labels'),
+    value: () => (getSettings().aircraftLabels ? tr('misc.xr_on') : tr('misc.xr_off')),
     activate: () => updateSettings({ aircraftLabels: !getSettings().aircraftLabels }),
   },
   {
     id: 'altitudeLines',
-    label: () => 'Alt lines',
-    value: () => (getSettings().altitudeLines ? 'on' : 'off'),
+    label: () => tr('misc.xr_alt_lines'),
+    value: () => (getSettings().altitudeLines ? tr('misc.xr_on') : tr('misc.xr_off')),
     activate: () => updateSettings({ altitudeLines: !getSettings().altitudeLines }),
   },
 ];
@@ -316,7 +319,7 @@ export class XrWristMenu {
     ctx.textAlign = 'right';
     ctx.fillStyle = t.fgSoft;
     ctx.font = '14px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText('point + trigger', CANVAS_W - 20, 8);
+    ctx.fillText(tr('misc.xr_hint'), CANVAS_W - 20, 8);
     // Header divider
     ctx.strokeStyle = withAlpha(t.accent, 0.25);
     ctx.lineWidth = 1;

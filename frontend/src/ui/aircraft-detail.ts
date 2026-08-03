@@ -7,6 +7,7 @@ import { ensureRoute, getRoute, type RouteInfo } from '../feed/routes';
 import { fmtAltitude, fmtDistance, fmtSpeed, fmtVerticalRate } from '../core/units';
 import { getAcarsMessages, getAcarsSummary, subscribeAcars, type AcarsPhase, type AcarsSummary } from '../aircraft/acars-store';
 import { getSettings, subscribeSettings } from '../core/settings';
+import { t, type StringKey } from '../core/i18n';
 import type { AcarsMessage } from '../feed/acars';
 
 // Detail card pinned under the aircraft list. Re-renders every store
@@ -18,34 +19,44 @@ import type { AcarsMessage } from '../feed/acars';
 // ADS-B emitter category → human label. From DO-260B Table 2-69 / readsb's
 // category field. Anything not on this list (or null) falls back to
 // suppressing the row entirely.
-const CATEGORY_LABELS: Record<string, string> = {
-  A1: 'Light (< 7t)',
-  A2: 'Small (< 34t)',
-  A3: 'Large (< 136t)',
-  A4: 'High-vortex large',
-  A5: 'Heavy (> 136t)',
-  A6: 'High performance',
-  A7: 'Rotorcraft',
-  B1: 'Glider',
-  B2: 'Lighter-than-air',
-  B3: 'Parachutist',
-  B4: 'Ultralight',
-  B6: 'UAV',
-  B7: 'Spacecraft',
-  C0: 'Surface — unknown',
-  C1: 'Surface — emergency',
-  C2: 'Surface — service',
-  C3: 'Surface — fixed obstacle',
+const CATEGORY_LABELS: Record<string, StringKey> = {
+  A1: 'detail.category_light',
+  A2: 'detail.category_small',
+  A3: 'detail.category_large',
+  A4: 'detail.category_high_vortex',
+  A5: 'detail.category_heavy',
+  A6: 'detail.category_high_performance',
+  A7: 'detail.category_rotorcraft',
+  B1: 'detail.category_glider',
+  B2: 'detail.category_lighter_than_air',
+  B3: 'detail.category_parachutist',
+  B4: 'detail.category_ultralight',
+  B6: 'detail.category_uav',
+  B7: 'detail.category_spacecraft',
+  C0: 'detail.category_surface_unknown',
+  C1: 'detail.category_surface_emergency',
+  C2: 'detail.category_surface_service',
+  C3: 'detail.category_surface_obstacle',
 };
 function categoryLabel(cat: string | null): string | null {
   if (!cat) return null;
-  return CATEGORY_LABELS[cat] ?? null;
+  const key = CATEGORY_LABELS[cat];
+  return key ? t(key) : null;
 }
 
-const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const COMPASS: readonly StringKey[] = [
+  'detail.compass_n',
+  'detail.compass_ne',
+  'detail.compass_e',
+  'detail.compass_se',
+  'detail.compass_s',
+  'detail.compass_sw',
+  'detail.compass_w',
+  'detail.compass_nw',
+];
 function compass(deg: number): string {
   const idx = Math.round(((deg % 360) + 360) / 45) % 8;
-  return COMPASS[idx]!;
+  return t(COMPASS[idx]!);
 }
 
 function bearingFromHomeDeg(lat: number, lon: number): number {
@@ -59,8 +70,8 @@ function bearingFromHomeDeg(lat: number, lon: number): number {
 
 function fmtAge(ms: number): string {
   const s = Math.max(0, ms / 1000);
-  if (s < 60) return `${s.toFixed(1)}s ago`;
-  return `${Math.round(s / 60)}m ago`;
+  if (s < 60) return t('detail.seconds_ago', { n: s.toFixed(1) });
+  return t('detail.minutes_ago', { n: Math.round(s / 60) });
 }
 
 export interface AircraftDetailHandle {
@@ -132,7 +143,7 @@ export function createAircraftDetail(
   // Flightradar/Flightaware/etc. Brief "copied" flash provides feedback.
   function attachCopy(el: HTMLElement, getText: () => string | null): void {
     el.classList.add('copyable');
-    el.title = 'Click to copy';
+    el.title = t('detail.click_to_copy');
     el.addEventListener('click', () => {
       const text = getText();
       if (!text) return;
@@ -232,9 +243,9 @@ export function createAircraftDetail(
     routeEl.hidden = false;
 
     if (acarsDestActive) {
-      routeSourceEl.textContent = 'ACARS';
+      routeSourceEl.textContent = t('detail.route_source_acars');
       routeSourceEl.hidden = false;
-      routeSourceEl.title = 'Destination from ACARS datalink';
+      routeSourceEl.title = t('detail.route_source_acars_tooltip');
     } else {
       routeSourceEl.hidden = true;
     }
@@ -254,7 +265,7 @@ export function createAircraftDetail(
     }
 
     if (acars?.eta) {
-      routeEtaEl.textContent = `ETA ${formatAcarsTime(acars.eta)}`;
+      routeEtaEl.textContent = t('detail.eta', { time: formatAcarsTime(acars.eta) });
       routeEtaEl.hidden = false;
     } else {
       routeEtaEl.hidden = true;
@@ -271,12 +282,12 @@ export function createAircraftDetail(
     return raw;
   }
 
-  const PHASE_LABELS: Record<AcarsPhase, string> = {
-    'at-gate': 'At gate',
-    'taxi-out': 'Taxiing out',
-    'airborne': 'Airborne',
-    'taxi-in': 'Taxiing in',
-    'at-gate-dest': 'At arrival gate',
+  const PHASE_LABELS: Record<AcarsPhase, StringKey> = {
+    'at-gate': 'detail.phase_at_gate',
+    'taxi-out': 'detail.phase_taxi_out',
+    'airborne': 'detail.phase_airborne',
+    'taxi-in': 'detail.phase_taxi_in',
+    'at-gate-dest': 'detail.phase_arrival_gate',
   };
 
   function updatePhase(a: Aircraft): void {
@@ -286,7 +297,7 @@ export function createAircraftDetail(
       return;
     }
     phaseRowEl.hidden = false;
-    phaseEl.textContent = PHASE_LABELS[summary.phase];
+    phaseEl.textContent = t(PHASE_LABELS[summary.phase]);
     phaseEl.dataset.phase = summary.phase;
     if (summary.phaseAt) {
       const ageMs = Date.now() - Date.parse(summary.phaseAt);
@@ -328,16 +339,16 @@ export function createAircraftDetail(
       icaoLabelEl.hidden = true;
     }
     regEl.textContent = a.registration ?? '—';
-    setRow(operatorLabelEl, operatorEl, 'Operator', a.operator);
-    setRow(classLabelEl, classEl, 'Class', categoryLabel(a.category));
+    setRow(operatorLabelEl, operatorEl, t('detail.operator'), a.operator);
+    setRow(classLabelEl, classEl, t('detail.class'), categoryLabel(a.category));
     renderChips(a);
 
-    altEl.textContent = a.onGround ? 'GND' : fmtAltitude(a.altFt);
+    altEl.textContent = a.onGround ? t('detail.on_ground') : fmtAltitude(a.altFt);
 
     if (a.verticalRateFpm === null) {
       vrateEl.innerHTML = '<span class="level">—</span>';
     } else if (Math.abs(a.verticalRateFpm) < 100) {
-      vrateEl.innerHTML = `<span class="level">level</span>`;
+      vrateEl.innerHTML = `<span class="level">${t('detail.vertical_level')}</span>`;
     } else if (a.verticalRateFpm > 0) {
       vrateEl.innerHTML = `<span class="climb">↑ ${fmtVerticalRate(a.verticalRateFpm)}</span>`;
     } else {
@@ -373,9 +384,9 @@ export function createAircraftDetail(
     const ms = Date.now() - Date.parse(timeIso);
     if (Number.isNaN(ms) || ms < 0) return '';
     const s = Math.max(0, ms / 1000);
-    if (s < 60) return `${Math.round(s)}s ago`;
-    if (s < 3600) return `${Math.round(s / 60)}m ago`;
-    return `${Math.round(s / 3600)}h ago`;
+    if (s < 60) return t('detail.seconds_ago', { n: Math.round(s) });
+    if (s < 3600) return t('detail.minutes_ago', { n: Math.round(s / 60) });
+    return t('detail.hours_ago', { n: Math.round(s / 3600) });
   }
 
   function escapeHtml(s: string): string {
@@ -403,22 +414,22 @@ export function createAircraftDetail(
     }
     if (m.freq) idParts.push(`${escapeHtml(m.freq)} MHz`);
     if (typeof m.level === 'number') idParts.push(`${m.level} dB`);
-    if (typeof m.error === 'number' && m.error > 0) idParts.push(`err ${m.error}`);
+    if (typeof m.error === 'number' && m.error > 0) idParts.push(t('detail.acars_err', { n: m.error }));
     const meta = idParts.length ? `<div class="acars-meta">${idParts.join(' · ')}</div>` : '';
     // OOOI / route bits carried by THIS message — useful for debugging
     // and surfacing the timestamp when an event landed.
     const facts: string[] = [];
     if (m.destination) facts.push(`→ ${escapeHtml(m.destination)}`);
-    if (m.eta) facts.push(`ETA ${escapeHtml(m.eta)}`);
-    if (m.gtout) facts.push(`OUT ${escapeHtml(m.gtout)}`);
-    if (m.wloff) facts.push(`OFF ${escapeHtml(m.wloff)}`);
-    if (m.wlin) facts.push(`ON ${escapeHtml(m.wlin)}`);
-    if (m.gtin) facts.push(`IN ${escapeHtml(m.gtin)}`);
+    if (m.eta) facts.push(t('detail.eta', { time: escapeHtml(m.eta) }));
+    if (m.gtout) facts.push(t('detail.acars_out', { time: escapeHtml(m.gtout) }));
+    if (m.wloff) facts.push(t('detail.acars_off', { time: escapeHtml(m.wloff) }));
+    if (m.wlin) facts.push(t('detail.acars_on', { time: escapeHtml(m.wlin) }));
+    if (m.gtin) facts.push(t('detail.acars_in', { time: escapeHtml(m.gtin) }));
     if (m.position) {
-      facts.push(`pos ${m.position.lat.toFixed(2)},${m.position.lon.toFixed(2)}`);
+      facts.push(t('detail.acars_pos', { coords: `${m.position.lat.toFixed(2)},${m.position.lon.toFixed(2)}` }));
     }
     const factsHtml = facts.length ? `<div class="acars-facts">${facts.join(' · ')}</div>` : '';
-    const text = m.text ? escapeHtml(m.text).replace(/\n/g, '<br>') : '<span class="acars-empty">(no text)</span>';
+    const text = m.text ? escapeHtml(m.text).replace(/\n/g, '<br>') : `<span class="acars-empty">${t('detail.acars_no_text')}</span>`;
     return `<li class="acars-msg">${label}${age}${meta}${factsHtml}<div class="acars-text">${text}</div></li>`;
   }
 
@@ -440,10 +451,10 @@ export function createAircraftDetail(
   function renderChips(a: Aircraft): void {
     const chips: Array<{ label: string; cls: string }> = [];
     if (a.emergency) chips.push({ label: a.emergency.toUpperCase(), cls: 'emergency' });
-    if (a.military) chips.push({ label: 'Military', cls: 'military' });
-    if (a.specialInterest) chips.push({ label: 'Special interest', cls: 'special' });
-    if (a.privacyIcao) chips.push({ label: 'PIA', cls: '' });
-    if (a.ladd) chips.push({ label: 'LADD', cls: '' });
+    if (a.military) chips.push({ label: t('detail.chip_military'), cls: 'military' });
+    if (a.specialInterest) chips.push({ label: t('detail.chip_special_interest'), cls: 'special' });
+    if (a.privacyIcao) chips.push({ label: t('detail.chip_pia'), cls: '' });
+    if (a.ladd) chips.push({ label: t('detail.chip_ladd'), cls: '' });
     if (chips.length === 0) {
       chipsEl.hidden = true;
       chipsEl.textContent = '';
@@ -477,7 +488,7 @@ export function createAircraftDetail(
     const hasFms = a.apAltFmsFt !== null;
     if (hasMcp || hasFms) {
       const altFt = (hasMcp ? a.apAltMcpFt : a.apAltFmsFt) as number;
-      apAltLabelEl.textContent = hasMcp ? 'Sel. Alt' : 'FMS Alt';
+      apAltLabelEl.textContent = hasMcp ? t('detail.selected_altitude') : t('detail.fms_altitude');
       apAltEl.textContent = fmtAltitude(altFt);
       apAltLabelEl.hidden = false;
       apAltEl.hidden = false;
@@ -487,15 +498,15 @@ export function createAircraftDetail(
       apAltEl.hidden = true;
     }
 
-    if (setRow(apHdgRowDt, apHdgEl, 'Sel. Hdg',
+    if (setRow(apHdgRowDt, apHdgEl, t('detail.selected_heading'),
                a.apHeadingDeg === null ? null : `${Math.round(a.apHeadingDeg)}° ${compass(a.apHeadingDeg)}`)) {
       any = true;
     }
-    if (setRow(apQnhRowDt, apQnhEl, 'QNH',
+    if (setRow(apQnhRowDt, apQnhEl, t('detail.qnh'),
                a.apQnhHpa === null ? null : `${a.apQnhHpa.toFixed(0)} hPa`)) {
       any = true;
     }
-    if (setRow(apModesRowDt, apModesEl, 'Modes',
+    if (setRow(apModesRowDt, apModesEl, t('detail.autopilot_modes'),
                a.apModes === null ? null : a.apModes.join(', '))) {
       any = true;
     }

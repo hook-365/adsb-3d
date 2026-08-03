@@ -85,6 +85,24 @@ it's a data convention shared with the heatmap.
 3. The drift-guard test (`tests-unit/theme.test.ts`) will fail if any
    token is missing or extra.
 
+### Adding a locale
+
+UI strings live in `core/strings/<code>/` as per-namespace modules (one per
+owning UI module; keys are flat and dot-prefixed, e.g. `detail.route`) and
+are consumed via `t()` from `core/i18n.ts`. English is the source of truth
+and the compile-time key registry. Static `index.html` markup translates via
+`data-i18n` attributes applied once at boot. Changing the language reloads
+the page. Aviation data (callsigns, airport names, ACARS payloads, aircraft
+types, unit abbreviations) is deliberately not translated.
+
+1. Create `core/strings/<code>/` mirroring the `en/` modules plus an
+   `index.ts` merging them.
+2. Register the locale in `LOCALES` in `core/i18n.ts`, extend
+   `LanguageSelection` in `core/settings.ts`, and add a picker option in
+   `ui/settings-panel.ts` (label in the language's own name).
+3. The drift-guard test (`tests-unit/i18n.test.ts`) fails on missing/extra
+   keys or `{placeholder}` mismatches against English.
+
 ## Backend services
 
 - `track-service` — a feeder-fetch loop drives a `/ws/live` diff stream

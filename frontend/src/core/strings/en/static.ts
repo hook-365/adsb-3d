@@ -1,3 +1,62 @@
 // 'static.*' UI strings. Populated by the i18n extraction; keys are flat and
 // must carry the 'static.' prefix (enforced by tests-unit/i18n.test.ts).
-export const staticStrings = {} as const;
+export const staticStrings = {
+  // HUD
+  'static.live_feed_aria': 'Live data feed',
+  // Time controls
+  'static.time_mode_aria': 'Time mode',
+  'static.mode_live': 'Live',
+  'static.mode_historical': 'Historical',
+  'static.window_presets_aria': 'Window presets',
+  'static.play_aria': 'Play',
+  'static.playback_cursor_aria': 'Playback cursor',
+  'static.playback_speed_aria': 'Playback speed',
+  'static.heatmap_toggle': 'heatmap',
+  // Footer status bar
+  'static.clocks_title': 'Local · UTC',
+  'static.share': 'share',
+  'static.share_title': 'Copy a shareable link',
+  'static.recenter': 'recenter',
+  'static.recenter_title': 'Recenter view on home',
+  'static.github_title': 'Source on GitHub',
+  'static.github_aria': 'GitHub repository',
+  'static.coffee_title': 'Support development',
+  'static.coffee_aria': 'Buy me a coffee',
+  // Aircraft list panel
+  'static.toggle_aircraft_list_aria': 'Toggle aircraft list',
+  'static.aircraft_list_aria': 'Aircraft list',
+  'static.aircraft_heading': 'Aircraft',
+  'static.list_search_placeholder': 'filter callsign / reg / hex',
+  'static.filter_by_status_aria': 'Filter by status',
+  'static.filter_all': 'All',
+  'static.filter_air': 'Air',
+  'static.filter_ground': 'Ground',
+  'static.filter_mil': 'Mil',
+  'static.filter_emerg': 'Emerg',
+  'static.col_flight': 'Flight',
+  'static.col_alt': 'Alt',
+  'static.col_spd': 'Spd',
+  'static.col_dist': 'Dist',
+  // Aircraft detail panel
+  'static.detail_share_aria': 'Copy a shareable link to this aircraft',
+  'static.detail_share_title': 'Copy share link',
+  'static.clear_selection_aria': 'Clear selection',
+  'static.airframe_heading': 'Airframe',
+  'static.detail_type': 'Type',
+  'static.detail_reg': 'Reg.',
+  'static.detail_alt': 'Alt',
+  'static.detail_vert': 'Vert.',
+  'static.detail_spd': 'Spd',
+  'static.detail_hdg': 'Hdg',
+  'static.detail_sqk': 'Sqk',
+  'static.detail_pos': 'Pos',
+  'static.detail_range': 'Range',
+  'static.detail_seen': 'Seen',
+  'static.autopilot_heading': 'Autopilot',
+  // ACARS browser
+  'static.acars_browser_aria': 'ACARS message browser',
+  'static.acars_messages_heading': 'ACARS messages',
+  'static.close_aria': 'Close',
+  'static.acars_search_placeholder': 'filter text · flight · reg · label',
+  'static.filter_by_label_aria': 'Filter by label',
+} as const;

@@ -1,3 +1,28 @@
 // 'main.*' UI strings. Populated by the i18n extraction; keys are flat and
 // must carry the 'main.' prefix (enforced by tests-unit/i18n.test.ts).
-export const mainStrings = {} as const;
+export const mainStrings = {
+  'main.status_live': 'live',
+  'main.status_stale': 'stale',
+  'main.status_down': 'down',
+  'main.status_connecting': 'connecting',
+  'main.status_historical': 'historical',
+  'main.connecting_feed': 'Connecting',
+  'main.feed_connecting': 'connecting…',
+  'main.feed_status_down': '{feed} · down',
+  'main.feed_status_stale': '{feed} · stale',
+  'main.feed_status_stale_age': '{feed} · stale {age}s',
+  'main.acars_label': 'acars',
+  'main.acars_age_seconds': 'acars · {n}s',
+  'main.acars_age_minutes': 'acars · {n}m',
+  'main.acars_silent': 'acars silent',
+  'main.acars_down': 'acars down',
+  'main.share_copied': 'copied!',
+  'main.loading_historical': 'Loading historical',
+  'main.historical_loading': 'historical · loading…',
+  'main.historical_counts': 'historical · {visible}/{total}',
+  'main.historical_error': 'historical · error',
+  'main.window_last_hour': 'last 1 hour',
+  'main.window_last_hours': 'last {n} hours',
+  'main.window_last_days': 'last {n} days',
+  'main.aircraft_count': 'aircraft: {n}',
+} as const;

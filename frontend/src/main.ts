@@ -2,7 +2,7 @@
 // at the top so the first paint already carries the active palette and we
 // don't flash the fallback values that live in :root in style.css.
 import { setTheme } from './core/theme';
-import { applyDomStrings } from './core/i18n';
+import { applyDomStrings, t } from './core/i18n';
 
 // Translate index.html's static markup (data-i18n attributes) before any
 // panel code reads or clones it. Dynamic strings go through t() at their
@@ -486,7 +486,7 @@ shareBtn.addEventListener('click', () => {
   void navigator.clipboard?.writeText(window.location.href).then(() => {
     shareBtn.classList.add('copied');
     const original = shareBtn.textContent;
-    shareBtn.textContent = 'copied!';
+    shareBtn.textContent = t('main.share_copied');
     setTimeout(() => {
       shareBtn.classList.remove('copied');
       shareBtn.textContent = original;
@@ -612,7 +612,7 @@ function startSession(feed: Feed): FeedSession {
   // stopSession() can dismiss it if the session is torn down before
   // the first snapshot arrives (feed switch, entering historical mode).
   const connectLoader: LoadingHandle = showLoading(
-    'Connecting',
+    t('main.connecting_feed'),
     `${feed.name}`
   );
   const prefix = feedNamePrefix(feed);
@@ -641,21 +641,28 @@ function startSession(feed: Feed): FeedSession {
     }
 
     hudLive.dataset.state = state;
-    hudLive.textContent = state === 'down' ? 'down' : state === 'stale' ? 'stale' : 'live';
+    hudLive.textContent =
+      state === 'down'
+        ? t('main.status_down')
+        : state === 'stale'
+          ? t('main.status_stale')
+          : t('main.status_live');
 
     // Bottom pill is just feed identity + a short status word. Transport
     // (ws/http) is an implementation detail; the HUD pulse already conveys
     // liveness; the aircraft-count chip beside it shows the number.
     const head = prefix.replace(/ · $/, '') || feed.name;
     if (state === 'down') {
-      feedStatus.textContent = `${head} · down`;
+      feedStatus.textContent = t('main.feed_status_down', { feed: head });
       feedStatus.className = 'err';
     } else if (state === 'stale') {
-      const ageStr =
+      feedStatus.textContent =
         typeof status.feederAgeS === 'number'
-          ? ` ${Math.round(status.feederAgeS)}s`
-          : '';
-      feedStatus.textContent = `${head} · stale${ageStr}`;
+          ? t('main.feed_status_stale_age', {
+              feed: head,
+              age: Math.round(status.feederAgeS),
+            })
+          : t('main.feed_status_stale', { feed: head });
       feedStatus.className = 'warn';
     } else {
       feedStatus.textContent = head;
@@ -717,13 +724,16 @@ function updateAcarsHud(status: AcarsStatus | null): void {
   hudAcars.dataset.state = state;
   if (state === 'ok' && status?.hubAgeS !== null && status?.hubAgeS !== undefined) {
     const ageS = Math.round(status.hubAgeS);
-    hudAcarsLabel.textContent = ageS < 60 ? `acars · ${ageS}s` : `acars · ${Math.round(ageS / 60)}m`;
+    hudAcarsLabel.textContent =
+      ageS < 60
+        ? t('main.acars_age_seconds', { n: ageS })
+        : t('main.acars_age_minutes', { n: Math.round(ageS / 60) });
   } else if (state === 'stale') {
-    hudAcarsLabel.textContent = 'acars silent';
+    hudAcarsLabel.textContent = t('main.acars_silent');
   } else if (state === 'down') {
-    hudAcarsLabel.textContent = 'acars down';
+    hudAcarsLabel.textContent = t('main.acars_down');
   } else {
-    hudAcarsLabel.textContent = 'acars';
+    hudAcarsLabel.textContent = t('main.acars_label');
   }
 }
 
@@ -772,15 +782,15 @@ async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
   acarsBrowser?.close();
 
   store.clear();
-  feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · loading…`;
+  feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_loading')}`;
   feedStatus.className = 'warn';
   hudLive.dataset.state = 'stale';
-  hudLive.textContent = 'historical';
+  hudLive.textContent = t('main.status_historical');
 
   // Surface the bulk fetch with the centered loading card. Cleared on
   // load completion or error so the world becomes interactive again.
   let histLoader: LoadingHandle | null = showLoading(
-    'Loading historical',
+    t('main.loading_historical'),
     formatWindowLabel(ctx.window)
   );
 
@@ -819,7 +829,10 @@ async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
         store.setTrail(a.hex, buildTrailUpTo(samples, cursor));
       }
     }
-    feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · ${status.visibleCount}/${status.aircraftCount}`;
+    feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_counts', {
+      visible: status.visibleCount,
+      total: status.aircraftCount,
+    })}`;
     feedStatus.className = 'ok';
   });
   // Track which (loaded, cellCount-flavored) signature we last rebuilt
@@ -829,15 +842,15 @@ async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
   let lastBuildSignature: string | null = null;
   historicalFeed.subscribeStatus((status) => {
     if (status.errored) {
-      feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · error`;
+      feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_error')}`;
       feedStatus.className = 'err';
       if (histLoader) { histLoader.done(); histLoader = null; }
     } else if (status.loading) {
-      feedStatus.textContent = `${feedNamePrefix(activeFeed)}historical · loading…`;
+      feedStatus.textContent = `${feedNamePrefix(activeFeed)}${t('main.historical_loading')}`;
       feedStatus.className = 'warn';
       lastBuildSignature = null; // new fetch in flight; allow rebuild on completion
       if (!histLoader) {
-        histLoader = showLoading('Loading historical', formatWindowLabel(historicalFeed?.getWindow() ?? null));
+        histLoader = showLoading(t('main.loading_historical'), formatWindowLabel(historicalFeed?.getWindow() ?? null));
       }
     }
     // Rebuild on the loaded transition. Signature uses aircraftCount as
@@ -858,10 +871,10 @@ async function enterHistoricalMode(ctx: TimeContext): Promise<void> {
 function formatWindowLabel(window: { startMs: number; endMs: number } | null): string {
   if (!window) return '';
   const hours = (window.endMs - window.startMs) / 3_600_000;
-  if (hours <= 1.01) return 'last 1 hour';
-  if (hours <= 24.01) return `last ${Math.round(hours)} hours`;
+  if (hours <= 1.01) return t('main.window_last_hour');
+  if (hours <= 24.01) return t('main.window_last_hours', { n: Math.round(hours) });
   const days = hours / 24;
-  return `last ${Math.round(days)} days`;
+  return t('main.window_last_days', { n: Math.round(days) });
 }
 
 function exitHistoricalMode(): void {
@@ -993,10 +1006,10 @@ onFeedSwitch((next) => {
   controls.target.set(0, 0, 0);
   controls.update();
   applySubtitle();
-  feedStatus.textContent = `${feedNamePrefix(next)}connecting…`;
+  feedStatus.textContent = `${feedNamePrefix(next)}${t('main.feed_connecting')}`;
   feedStatus.className = 'warn';
   hudLive.dataset.state = 'stale';
-  hudLive.textContent = 'connecting';
+  hudLive.textContent = t('main.status_connecting');
 
   // 5. Spin up new feed session.
   activeFeed = next;
@@ -1014,9 +1027,9 @@ let lastFrame = performance.now();
 let frames = 0;
 let fpsAccumMs = 0;
 
-function tick(t: number): void {
-  const dt = t - lastFrame;
-  lastFrame = t;
+function tick(frameTime: number): void {
+  const dt = frameTime - lastFrame;
+  lastFrame = frameTime;
   frames++;
   fpsAccumMs += dt;
 
@@ -1047,7 +1060,7 @@ function tick(t: number): void {
   controls.update();
   reconciler.syncFrame();
   reconciler.updateLabelLOD();
-  aircraftCount.textContent = `aircraft: ${reconciler.count}`;
+  aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
 
   // Update the XR billboard only while an immersive session is active.
   // Outside of XR the CSS2D label + #panel-detail already cover the same
