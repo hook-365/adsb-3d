@@ -68,6 +68,19 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         description: 'Palette for panels, accents, and the scene background. Auto follows your system light/dark preference.',
         options: THEME_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
       },
+      {
+        kind: 'choice',
+        key: 'language',
+        label: 'Language',
+        description: "UI language. Auto follows your browser's locale. Changing this reloads the page.",
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'en', label: 'English' },
+          // Native names on purpose: a user stuck in the wrong language
+          // must be able to find their own.
+          { value: 'de', label: 'Deutsch' },
+        ],
+      },
     ],
   },
   {

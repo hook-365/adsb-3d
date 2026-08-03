@@ -2,6 +2,12 @@
 // at the top so the first paint already carries the active palette and we
 // don't flash the fallback values that live in :root in style.css.
 import { setTheme } from './core/theme';
+import { applyDomStrings } from './core/i18n';
+
+// Translate index.html's static markup (data-i18n attributes) before any
+// panel code reads or clones it. Dynamic strings go through t() at their
+// call sites instead.
+applyDomStrings();
 import { Vector3 } from 'three';
 import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
 import { AircraftStore, setDefaultTrailCap } from './aircraft/store';

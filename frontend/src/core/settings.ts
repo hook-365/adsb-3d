@@ -21,6 +21,11 @@ export type AltitudeUnit = 'ft' | 'm';
  * resolution (factor 1.0).
  */
 export type VrQuality = 'low' | 'balanced' | 'high' | 'ultra';
+/**
+ * UI language selection. Lives here (not core/i18n.ts) so settings stays
+ * import-cycle-free; i18n.ts consumes settings, never the reverse.
+ */
+export type LanguageSelection = 'auto' | 'en' | 'de';
 export type Basemap =
   | 'dark'
   | 'carto_voyager'
@@ -91,6 +96,12 @@ export interface Settings {
    * See core/theme.ts for the registry and authoring guide.
    */
   theme: ThemeSelection;
+  /**
+   * UI language. 'auto' resolves navigator.language against the locales
+   * registered in core/i18n.ts, falling back to English. Changing this
+   * reloads the page (strings are baked into the DOM at panel build time).
+   */
+  language: LanguageSelection;
 }
 
 const DEFAULTS: Settings = {
@@ -109,6 +120,7 @@ const DEFAULTS: Settings = {
   speedUnit: 'kt',
   altitudeUnit: 'ft',
   theme: 'auto',
+  language: 'auto',
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';
