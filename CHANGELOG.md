@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-03
+
+### Added
+
+- **Full-stack integration test suite + CI** (#9, contributed by
+  @ValkyrieUK). A deterministic public Docker Compose stack — readsb and
+  ACARS fixtures, TimescaleDB, both backends, the production nginx image
+  in live-only and multi-feed modes — verified end to end on every push,
+  including a backend restart to catch non-idempotent schema startup.
+
 ### Changed
 
 - **track-service polls remote feeders every 5 s instead of every 1 s.**
@@ -18,6 +28,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   for feeders behind local proxy containers or tunnels, which look
   local to the heuristic). WS heartbeats tighten to every 3 ticks on
   slow cadences so the frontend's staleness gauge keeps its margin.
+
+### Fixed
+
+- **Fresh installs silently ended up with no retention policy** (#9,
+  contributed by @ValkyrieUK). asyncpg requires a timedelta for the
+  `::interval` parameter, so `add_retention_policy` failed on clean
+  database init; the service then restarted healthy with retention
+  permanently missing. Existing databases were unaffected. If you
+  first deployed after v0.1.0 with a fresh database, check
+  `timescaledb_information.jobs` and add the policy manually.
+- The integration stack's timescaledb healthcheck probed the unix
+  socket, which the postgres image's init-phase temporary server also
+  answers — the suite raced its own backend on fast machines. Forced
+  through TCP.
 
 ## [0.5.0] - 2026-08-03
 

@@ -293,9 +293,10 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
-- **Unreleased**: track-service now polls remote feeders every 5 s
-  instead of every 1 s (heuristic on the feeder address;
-  `FEEDER_POLL_SECONDS` overrides). Local feeders keep the 1 s cadence.
+- **v0.5.1** (2026-08-03): The integration test suite + CI from #9
+  (thanks @ValkyrieUK), the fresh-install retention-policy fix, and
+  polite 5 s polling of remote feeders (local feeders keep 1 s;
+  `FEEDER_POLL_SECONDS` overrides).
 - **v0.5.0** (2026-08-03): The community-issues release: localization
   (English/German/Spanish), the altitude scale slider, opt-in 3D
   terrain with draped rings and AGL readout, VR comfort options, and
