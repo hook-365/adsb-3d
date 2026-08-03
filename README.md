@@ -1,5 +1,9 @@
 # ADS-B 3D
 
+[![Release](https://img.shields.io/github/v/release/hook-365/adsb-3d)](https://github.com/hook-365/adsb-3d/releases)
+[![Contributors](https://img.shields.io/github/contributors/hook-365/adsb-3d)](https://github.com/hook-365/adsb-3d/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/hook-365/adsb-3d)](https://github.com/hook-365/adsb-3d/issues)
+
 Real-time 3D visualization of ADS-B aircraft, with historical playback,
 3D airway-density heatmaps, and optional ACARS message decoding. One
 Docker image: it serves the viewer and reverse-proxies your existing
@@ -15,6 +19,27 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 > carries **breaking changes** — read [Upgrading](#upgrading) before you pull.
 
 ![ADS-B 3D live view](Live.png)
+
+## Built with the community
+
+This project is better because people showed up:
+
+- **[@tyzbit](https://github.com/tyzbit)** — requested VR support, then
+  became the entire hardware QA department for it: two rounds of Quest 3
+  testing with annotated videos, the bug isolation that cracked the AR
+  rendering freeze, the control-scheme design that became free-fly mode,
+  and the altitude-scale idea (#8) that became the vertical scale slider.
+- **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
+  full-stack Docker integration test suite and CI workflow (#9), and
+  caught a bug that silently broke retention on every fresh install.
+- **[@unLieb](https://github.com/unLieb)** — scoped the localization
+  architecture before a line was written (#10) and is the native-speaker
+  reviewer for the German translation.
+- **[@rknobbe](https://github.com/rknobbe)** — asked the "can it render
+  the mountains?" question (#7) that became 3D terrain.
+
+Want your name here? Issues with reproduction steps, hardware testing,
+and translations count just as much as code.
 
 ## What you get
 
