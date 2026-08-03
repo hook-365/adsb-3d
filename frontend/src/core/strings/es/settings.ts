@@ -86,10 +86,9 @@ export const settingsStrings = {
   'settings.reset_row_to_default': 'Restablecer {label} al valor predeterminado',
   'settings.altitude_curve': 'Escala de altitud',
   'settings.altitude_curve_desc':
-    'Separación vertical de la vista 3D. Desliza hacia baja para separar el ' +
-    'tráfico de circuito, hacia alta para separar los niveles de vuelo; el ' +
-    'centro es lineal. Cambiar esto recarga la página.',
-  'settings.altitude_curve_fmt_linear': 'lineal',
-  'settings.altitude_curve_fmt_low': 'baja +{n}',
-  'settings.altitude_curve_fmt_high': 'alta +{n}',
+    'Más bajo = enfoque en altitudes bajas, más alto = enfoque en altitudes ' +
+    'altas. Cambiarlo recarga la página.',
+  'settings.altitude_curve_fmt_linear': 'equilibrado',
+  'settings.altitude_curve_fmt_low': 'baja {n}%',
+  'settings.altitude_curve_fmt_high': 'alta {n}%',
 } as const;

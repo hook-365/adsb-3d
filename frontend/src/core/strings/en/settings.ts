@@ -87,10 +87,9 @@ export const settingsStrings = {
   'settings.reset_row_to_default': 'Reset {label} to default',
   'settings.altitude_curve': 'Altitude scale',
   'settings.altitude_curve_desc':
-    'Vertical spread of the 3D view. Slide toward low to separate pattern ' +
-    'traffic, toward high to separate the flight levels; the center is ' +
-    'linear. Changing this reloads the page.',
-  'settings.altitude_curve_fmt_linear': 'linear',
-  'settings.altitude_curve_fmt_low': 'low +{n}',
-  'settings.altitude_curve_fmt_high': 'high +{n}',
+    'Lower = low-altitude focus, higher = high-altitude focus. ' +
+    'Changing it reloads the page.',
+  'settings.altitude_curve_fmt_linear': 'balanced',
+  'settings.altitude_curve_fmt_low': 'low {n}%',
+  'settings.altitude_curve_fmt_high': 'high {n}%',
 } as const;
