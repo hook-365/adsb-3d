@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-03
+
 ### Fixed
 
 - **3D-terrain polish for ground chrome.** Ground icons now drape over

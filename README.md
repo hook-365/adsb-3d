@@ -293,6 +293,10 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.5.2** (2026-08-03): Terrain polish — ground icons drape over the
+  hills shadow-style instead of being sliced by them, the emergency ring
+  rides the terrain, and high-elevation feeds no longer flash aircraft
+  at sea level while elevation tiles load.
 - **v0.5.1** (2026-08-03): The integration test suite + CI from #9
   (thanks @ValkyrieUK), the fresh-install retention-policy fix, and
   polite 5 s polling of remote feeders (local feeders keep 1 s;
