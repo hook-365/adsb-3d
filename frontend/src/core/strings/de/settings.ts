@@ -84,4 +84,12 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Auf Standard zurücksetzen ({value})',
   'settings.reset_row_to_default': '{label} auf Standard zurücksetzen',
+  'settings.altitude_curve': 'Höhenskala',
+  'settings.altitude_curve_desc':
+    'Wie Flughöhe in Höhe der 3D-Ansicht übersetzt wird. Detail in niedrigen ' +
+    'Höhen zieht Platzrundenverkehr auseinander; Detail in großen Höhen ' +
+    'spreizt die Flugflächen. Änderung lädt die Seite neu.',
+  'settings.altitude_curve_linear': 'Ausgewogen (linear)',
+  'settings.altitude_curve_spread_low': 'Detail in niedrigen Höhen',
+  'settings.altitude_curve_spread_high': 'Detail in großen Höhen',
 } as const;

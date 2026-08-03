@@ -84,4 +84,12 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Restablecer al valor predeterminado ({value})',
   'settings.reset_row_to_default': 'Restablecer {label} al valor predeterminado',
+  'settings.altitude_curve': 'Escala de altitud',
+  'settings.altitude_curve_desc':
+    'Cómo la altitud se traduce en altura en la vista 3D. El detalle a baja ' +
+    'altitud separa el tráfico de circuito; el detalle a gran altitud separa ' +
+    'los niveles de vuelo. Cambiar esto recarga la página.',
+  'settings.altitude_curve_linear': 'Equilibrada (lineal)',
+  'settings.altitude_curve_spread_low': 'Detalle a baja altitud',
+  'settings.altitude_curve_spread_high': 'Detalle a gran altitud',
 } as const;

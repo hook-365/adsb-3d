@@ -9,6 +9,8 @@ export const miscStrings = {
     'NOT to scale against the ground.',
   'misc.legend_alt_caption': 'alt',
   'misc.legend_scale_note': '↕ height ×{factor} — not to scale',
+  'misc.legend_scale_note_low': '↕ low altitudes emphasized — not to scale',
+  'misc.legend_scale_note_high': '↕ high altitudes emphasized — not to scale',
   // VR wrist menu (world/xr-wrist-menu.ts). Deliberately short — drawn on a
   // 512px canvas; translations must stay terse or they clip.
   'misc.xr_theme': 'Theme',

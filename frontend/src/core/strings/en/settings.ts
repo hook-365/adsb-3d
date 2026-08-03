@@ -85,4 +85,12 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Reset to default ({value})',
   'settings.reset_row_to_default': 'Reset {label} to default',
+  'settings.altitude_curve': 'Altitude scale',
+  'settings.altitude_curve_desc':
+    'How altitude maps to height in the 3D view. Low-altitude detail spreads out ' +
+    'pattern traffic; high-altitude detail spreads out the flight levels. ' +
+    'Changing this reloads the page.',
+  'settings.altitude_curve_linear': 'Balanced (linear)',
+  'settings.altitude_curve_spread_low': 'Low-altitude detail',
+  'settings.altitude_curve_spread_high': 'High-altitude detail',
 } as const;

@@ -149,6 +149,17 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           { value: 'ifr_high', label: t('settings.basemap_ifr_high') },
         ],
       },
+      {
+        kind: 'choice',
+        key: 'altitudeCurve',
+        label: t('settings.altitude_curve'),
+        description: t('settings.altitude_curve_desc'),
+        options: [
+          { value: 'linear', label: t('settings.altitude_curve_linear') },
+          { value: 'spread_low', label: t('settings.altitude_curve_spread_low') },
+          { value: 'spread_high', label: t('settings.altitude_curve_spread_high') },
+        ],
+      },
     ],
   },
   {

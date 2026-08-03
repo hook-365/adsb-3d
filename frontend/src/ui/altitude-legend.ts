@@ -1,5 +1,6 @@
 import { altitudeColor } from '../core/altitude-color';
 import { ALT_EXAGGERATION } from '../core/config';
+import { getSettings } from '../core/settings';
 import { t } from '../core/i18n';
 
 // Footer legend: the altitude → color ramp the aircraft cones use, plus a
@@ -48,10 +49,18 @@ export function mountAltitudeLegend(): void {
   }
   ramp.append(bar, ticks);
 
-  // Vertical-scale caveat — muted so it sits quietly beside the ramp.
+  // Vertical-scale caveat — muted so it sits quietly beside the ramp. The
+  // ×N claim only holds for the linear curve; the nonlinear curves get
+  // their own wording (core/altitude-curve.ts).
   const note = document.createElement('span');
   note.className = 'al-note';
-  note.textContent = t('misc.legend_scale_note', { factor: ALT_EXAGGERATION });
+  const curve = getSettings().altitudeCurve;
+  note.textContent =
+    curve === 'spread_low'
+      ? t('misc.legend_scale_note_low')
+      : curve === 'spread_high'
+        ? t('misc.legend_scale_note_high')
+        : t('misc.legend_scale_note', { factor: ALT_EXAGGERATION });
 
   host.append(cap, ramp, note);
 }

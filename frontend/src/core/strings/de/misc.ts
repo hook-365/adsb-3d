@@ -8,6 +8,8 @@ export const miscStrings = {
     'Die dargestellte Höhe ist NICHT maßstabsgetreu zum Boden.',
   'misc.legend_alt_caption': 'Höhe',
   'misc.legend_scale_note': '↕ Höhe ×{factor}, nicht maßstabsgetreu',
+  'misc.legend_scale_note_low': '↕ niedrige Höhen betont, nicht maßstabsgetreu',
+  'misc.legend_scale_note_high': '↕ große Höhen betont, nicht maßstabsgetreu',
   // VR-Handgelenkmenü — bewusst kurz, wird auf eine 512px-Canvas gezeichnet.
   'misc.xr_theme': 'Design',
   'misc.xr_basemap': 'Karte',

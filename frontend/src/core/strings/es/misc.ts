@@ -9,6 +9,8 @@ export const miscStrings = {
     'a escala con el suelo.',
   'misc.legend_alt_caption': 'alt',
   'misc.legend_scale_note': '↕ altura ×{factor}, no a escala',
+  'misc.legend_scale_note_low': '↕ altitudes bajas enfatizadas, no a escala',
+  'misc.legend_scale_note_high': '↕ altitudes altas enfatizadas, no a escala',
   // Menú de muñeca VR, deliberadamente corto: se dibuja en un canvas de 512px.
   'misc.xr_theme': 'Tema',
   'misc.xr_basemap': 'Mapa',
