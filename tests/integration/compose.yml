@@ -1,0 +1,186 @@
+name: adsb3d-integration
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_DB: adsb_tracks
+      POSTGRES_USER: adsb
+      POSTGRES_PASSWORD: ci-only-password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adsb -d adsb_tracks"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  fixture-feeder:
+    image: python:3.11-alpine
+    command: ["python", "/fixtures/server.py", "http"]
+    volumes:
+      - ./fixtures:/fixtures:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  fixture-acars:
+    image: python:3.11-alpine
+    command: ["python", "/fixtures/server.py", "acars"]
+    volumes:
+      - ./fixtures:/fixtures:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import socket;
+          socket.create_connection(('127.0.0.1', 15550), timeout=2).close()
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  track-service:
+    build:
+      context: ../../track-service
+    environment:
+      FEEDER_URL: http://fixture-feeder:8080
+      COLLECTION_INTERVAL: "1"
+      RETENTION_DAYS: "14"
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: adsb_tracks
+      DB_USER: adsb
+      DB_PASSWORD: ci-only-password
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      fixture-feeder:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  acars-service:
+    build:
+      context: ../../acars-service
+    environment:
+      ACARS_HOST: fixture-acars
+      ACARS_PORT: "15550"
+      STATION_ID: CI_STATION
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: adsb_tracks
+      DB_USER: adsb
+      DB_PASSWORD: ci-only-password
+    depends_on:
+      track-service:
+        condition: service_healthy
+      fixture-acars:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  viewer:
+    image: adsb3d-integration-viewer:local
+    build:
+      context: ../..
+    environment:
+      LATITUDE: "51.5000"
+      LONGITUDE: "-0.1200"
+      ALTITUDE: "100"
+      LOCATION_NAME: CI Local
+      FEEDER_URL: http://fixture-feeder:8080
+      TRACK_API_HOST: track-service:8000
+      ACARS_API_HOST: acars-service:8000
+      ENABLE_HISTORICAL: "true"
+      ENABLE_ACARS: "true"
+      ENABLE_VOICE: "false"
+      FEED1_NAME: CI Local
+      FEED1_LAT: "51.5000"
+      FEED1_LON: "-0.1200"
+      FEED1_ALT: "100"
+      FEED1_ACARS: "true"
+      FEED2_NAME: CI Remote
+      FEED2_URL: fixture-feeder:8080
+      FEED2_LAT: "51.6000"
+      FEED2_LON: "-0.2200"
+      FEED2_ALT: "200"
+    depends_on:
+      track-service:
+        condition: service_healthy
+      acars-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/docker-healthcheck.sh"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  viewer-live-only:
+    image: adsb3d-integration-viewer:local
+    environment:
+      LATITUDE: "40.0000"
+      LONGITUDE: "-75.0000"
+      ALTITUDE: "50"
+      LOCATION_NAME: CI Live Only
+      FEEDER_URL: http://fixture-feeder:8080
+      ENABLE_HISTORICAL: "false"
+      ENABLE_ACARS: "false"
+      ENABLE_VOICE: "false"
+    depends_on:
+      fixture-feeder:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/docker-healthcheck.sh"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  integration-tests:
+    build:
+      context: ../../track-service
+    command: ["python", "/tests/verify.py"]
+    environment:
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      DB_NAME: adsb_tracks
+      DB_USER: adsb
+      DB_PASSWORD: ci-only-password
+      VIEWER_URL: http://viewer
+      LIVE_VIEWER_URL: http://viewer-live-only
+    volumes:
+      - .:/tests:ro
+    depends_on:
+      viewer:
+        condition: service_healthy
+      viewer-live-only:
+        condition: service_healthy

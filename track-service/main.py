@@ -263,7 +263,7 @@ async def initialize_database_schema(db_pool):
                 retention_days = 90
             await conn.execute(
                 "SELECT add_retention_policy('aircraft_positions', $1::interval, if_not_exists => TRUE)",
-                f"{retention_days} days"
+                timedelta(days=retention_days)
             )
             logger.info(f"✓ Added retention policy ({retention_days} days)")
 

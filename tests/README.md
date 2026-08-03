@@ -22,6 +22,29 @@ npm run test -- --watch   # watch mode
 
 CI runs `npm run typecheck && npm run test && npm run build` on every PR.
 
+## Backend and deployment integration tests
+
+`integration/` boots a deterministic public test stack with Docker Compose:
+
+- a moving readsb-compatible `aircraft.json` fixture;
+- a TCP ACARS fixture;
+- TimescaleDB, track-service, and acars-service;
+- the production viewer/nginx image in both live-only and full multi-feed modes.
+
+The verifier exercises track ingestion and history, heatmap aggregation, ACARS
+ingestion, schema creation, compression and retention policies, nginx routing,
+feature flags, and multi-feed proxy generation. It then restarts both backend
+services and repeats the suite to catch non-idempotent database startup.
+
+Run it locally anywhere Docker Compose v2 is available:
+
+```sh
+tests/integration/run.sh
+```
+
+No receiver, radio hardware, credentials, or external service is required.
+GitHub Actions runs the same command on public `ubuntu-latest` runners.
+
 ## Browser smoke test
 
 `tests/smoke-test.html` is a legacy browser-based test page from the early
