@@ -54,11 +54,11 @@ export function mountAltitudeLegend(): void {
   // their own wording (core/altitude-curve.ts).
   const note = document.createElement('span');
   note.className = 'al-note';
-  const curve = getSettings().altitudeCurve;
+  const bias = getSettings().altitudeCurveBias;
   note.textContent =
-    curve === 'spread_low'
+    bias < 0
       ? t('misc.legend_scale_note_low')
-      : curve === 'spread_high'
+      : bias > 0
         ? t('misc.legend_scale_note_high')
         : t('misc.legend_scale_note', { factor: ALT_EXAGGERATION });
 

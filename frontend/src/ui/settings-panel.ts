@@ -150,15 +150,19 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         ],
       },
       {
-        kind: 'choice',
-        key: 'altitudeCurve',
+        kind: 'range',
+        key: 'altitudeCurveBias',
         label: t('settings.altitude_curve'),
         description: t('settings.altitude_curve_desc'),
-        options: [
-          { value: 'linear', label: t('settings.altitude_curve_linear') },
-          { value: 'spread_low', label: t('settings.altitude_curve_spread_low') },
-          { value: 'spread_high', label: t('settings.altitude_curve_spread_high') },
-        ],
+        min: -100,
+        max: 100,
+        step: 5,
+        format: (v) =>
+          v === 0
+            ? t('settings.altitude_curve_fmt_linear')
+            : v < 0
+              ? t('settings.altitude_curve_fmt_low', { n: -v })
+              : t('settings.altitude_curve_fmt_high', { n: v }),
       },
     ],
   },

@@ -86,10 +86,10 @@ export const settingsStrings = {
   'settings.reset_row_to_default': '{label} auf Standard zurücksetzen',
   'settings.altitude_curve': 'Höhenskala',
   'settings.altitude_curve_desc':
-    'Wie Flughöhe in Höhe der 3D-Ansicht übersetzt wird. Detail in niedrigen ' +
-    'Höhen zieht Platzrundenverkehr auseinander; Detail in großen Höhen ' +
-    'spreizt die Flugflächen. Änderung lädt die Seite neu.',
-  'settings.altitude_curve_linear': 'Ausgewogen (linear)',
-  'settings.altitude_curve_spread_low': 'Detail in niedrigen Höhen',
-  'settings.altitude_curve_spread_high': 'Detail in großen Höhen',
+    'Vertikale Spreizung der 3D-Ansicht. Nach niedrig schieben, um ' +
+    'Platzrundenverkehr zu trennen, nach hoch für die Flugflächen; die ' +
+    'Mitte ist linear. Änderung lädt die Seite neu.',
+  'settings.altitude_curve_fmt_linear': 'linear',
+  'settings.altitude_curve_fmt_low': 'niedrig +{n}',
+  'settings.altitude_curve_fmt_high': 'hoch +{n}',
 } as const;

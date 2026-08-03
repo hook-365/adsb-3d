@@ -10,7 +10,6 @@
 // All settings are global to the session; nothing here is feed-specific.
 
 import type { ThemeSelection } from './theme';
-import type { AltitudeCurve } from './altitude-curve';
 
 export type DistanceUnit = 'nm' | 'km';
 export type SpeedUnit = 'kt' | 'mph' | 'kmh';
@@ -104,11 +103,13 @@ export interface Settings {
    */
   language: LanguageSelection;
   /**
-   * Vertical-scale curve for altitude → scene height (see
-   * core/altitude-curve.ts). Changing this reloads the page — trails,
-   * heatmap voxels, and other baked geometry embed the mapping.
+   * Vertical-scale bias for altitude → scene height, -100..100 (see
+   * core/altitude-curve.ts). 0 = linear; negative spreads low altitudes
+   * apart, positive spreads the flight levels. Changing it reloads the
+   * page (debounced) — trails, heatmap voxels, and other baked geometry
+   * embed the mapping.
    */
-  altitudeCurve: AltitudeCurve;
+  altitudeCurveBias: number;
 }
 
 const DEFAULTS: Settings = {
@@ -128,7 +129,7 @@ const DEFAULTS: Settings = {
   altitudeUnit: 'ft',
   theme: 'auto',
   language: 'auto',
-  altitudeCurve: 'linear',
+  altitudeCurveBias: 0,
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';
