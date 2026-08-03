@@ -80,6 +80,7 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           // Native names on purpose: a user stuck in the wrong language
           // must be able to find their own.
           { value: 'de', label: 'Deutsch' },
+          { value: 'es', label: 'Español' },
         ],
       },
     ],

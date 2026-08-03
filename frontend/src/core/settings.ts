@@ -25,7 +25,7 @@ export type VrQuality = 'low' | 'balanced' | 'high' | 'ultra';
  * UI language selection. Lives here (not core/i18n.ts) so settings stays
  * import-cycle-free; i18n.ts consumes settings, never the reverse.
  */
-export type LanguageSelection = 'auto' | 'en' | 'de';
+export type LanguageSelection = 'auto' | 'en' | 'de' | 'es';
 export type Basemap =
   | 'dark'
   | 'carto_voyager'
