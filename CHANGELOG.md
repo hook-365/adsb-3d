@@ -8,6 +8,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-03
+
+A community-issues release — everything in it traces to a GitHub issue
+(#6, #7, #8, #10).
+
+### Added
+
+- **Localization.** Every UI string now routes through a typed `t()`
+  helper backed by per-namespace string tables (`core/strings/`).
+  English ships as the source of truth, with machine-drafted German and
+  Spanish awaiting native-speaker review (#10). The language setting
+  (`Auto` / English / Deutsch / Español) follows the browser locale by
+  default, and a drift-guard test enforces key and `{placeholder}`
+  parity across locales so translations can't silently rot.
+- **Altitude scale slider** (#8). A continuous vertical-scale bias from
+  low-altitude detail (square-root curve — pattern traffic spreads
+  apart) through linear to high-altitude detail (squared — flight
+  levels spread apart). Every position pins 45,000 ft to the same scene
+  height, and the curve applies everywhere altitude becomes height:
+  aircraft, trails, historical playback, heatmap, terrain, VR.
+- **3D terrain** (#7, opt-in). The basemap displaces to real ground
+  elevation from AWS Open Data terrarium tiles (proxied + disk-cached
+  like other basemaps, no API key; SRTM voids and glitch needles are
+  sanitized). Range rings, their labels, and the home marker drape over
+  the ground; ground icons and altitude-line feet anchor to terrain;
+  the camera stays above the surface; the detail card gains an AGL
+  readout where ground rises ≥100 ft. `ENABLE_TERRAIN=false` disables
+  it deploy-wide.
+- **VR comfort options** (#6). Two orthogonal settings, in the panel
+  and on the wrist menu: movement model (*scope* — the world scales and
+  orbits around you — vs *free-fly* — fly along your gaze, strafe,
+  change height, grip+stick to scale) and turn style (30° snap vs
+  smooth). B/Y cycles the selection through aircraft nearest-first and
+  swings the view to face each one.
+
+### Fixed
+
+- **AR froze on any settings change** — most visibly the left
+  thumbstick (#6). The theme pipeline tried to recolor the sky that
+  passthrough removes, and the throw killed the XR frame loop. The
+  settings/theme subscriber fan-outs now isolate exceptions so one bad
+  listener can never freeze rendering again.
+- A/X recenter teleported the world to the desktop camera's position
+  ("pressing A makes the screen go all black"); it now derives the pose
+  from the actual headset.
+- The wrist-menu Labels row was a no-op in headsets (it toggled the
+  hidden DOM labels); it now governs the floating aircraft billboard,
+  which also enforces a minimum angular size so it stays readable at
+  distance. AR keeps the basemap visible as a floating diorama, and VR
+  starts at table height instead of a distant disc.
+
 ## [0.4.0] - 2026-05-28
 
 A frontend + backend performance and UX push. The headline goal was

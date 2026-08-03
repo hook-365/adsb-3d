@@ -50,13 +50,27 @@ Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
 3D scene re-tints in place. Plays especially well with the FAA chart
 basemaps below.
 
+**Languages** — English, German, and Spanish (translations are
+machine-drafted pending native review — corrections welcome). `Auto`
+follows your browser locale.
+
+**3D terrain** (opt-in) — the basemap rises to real ground elevation,
+with range rings and markers draped over the hills and an
+above-ground-level readout in the detail card. Free elevation data, no
+API key. Pairs beautifully with the OpenTopoMap basemap. A companion
+**altitude scale** slider warps the vertical axis toward low-altitude
+detail (pattern traffic spreads out) or high-altitude detail (flight
+levels spread out) — terrain and aircraft stay consistent at any
+position.
+
 **VR / AR (experimental)** — "Enter VR" opens an immersive WebXR
 session for any connected headset, with laser-pointer controllers, an
-in-VR wrist menu for settings, and thumbstick locomotion. "Enter AR"
-opens a passthrough session on devices that support `immersive-ar`.
-Built without a real headset on hand, so issue reports are welcome.
-Side-by-side stereo (Cardboard) is still there for anything without
-WebXR.
+in-VR wrist menu for settings, and thumbstick locomotion with comfort
+options (scope vs free-fly movement, snap vs smooth turning, B/Y
+cycles through aircraft). "Enter AR" opens a passthrough session on
+devices that support `immersive-ar`. Built without a real headset on
+hand, so issue reports are welcome. Side-by-side stereo (Cardboard) is
+still there for anything without WebXR.
 
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
@@ -148,6 +162,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `ENABLE_HISTORICAL` | `false` | Historical playback UI (needs track-service) |
 | `ENABLE_ACARS` | `false` | ACARS panel (needs acars-service) |
 | `ENABLE_VOICE` | `false` | VHF voice scanner panel (see [docs/VOICE.md](docs/VOICE.md)) |
+| `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |
 | `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
 | `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
@@ -253,6 +268,10 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.5.0** (2026-08-03): The community-issues release: localization
+  (English/German/Spanish), the altitude scale slider, opt-in 3D
+  terrain with draped rings and AGL readout, VR comfort options, and
+  the fix for the AR rendering freeze.
 - **v0.4.0** (2026-05-28): Performance + UX push for high-density
   feeds. Virtualized aircraft list, click-to-extend trails with 24 h
   backfill, search filters the scene as well as the list, lazy-loaded
