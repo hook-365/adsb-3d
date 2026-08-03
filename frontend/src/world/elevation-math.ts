@@ -10,6 +10,43 @@ export function terrariumToMeters(r: number, g: number, b: number): number {
 }
 
 /**
+ * Remove isolated elevation glitches (classic SRTM artifacts, common near
+ * water boundaries). A pixel is a glitch when at most one of its 8
+ * neighbors is within `thresholdM` of its own height — a genuine
+ * 1-pixel-wide ridgeline still has 2 supporting neighbors along the
+ * ridge, while a needle spike (point or pair) has 0-1. Glitches are
+ * replaced by the neighbor median. Reads from a snapshot so the pass is
+ * order-independent.
+ */
+export function despikeInPlace(grid: Float32Array, thresholdM: number): void {
+  const src = grid.slice();
+  const neighbors: number[] = [];
+  for (let y = 0; y < TILE_PX; y++) {
+    for (let x = 0; x < TILE_PX; x++) {
+      const i = y * TILE_PX + x;
+      const v = src[i]!;
+      neighbors.length = 0;
+      let support = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= TILE_PX || ny >= TILE_PX) continue;
+          const n = src[ny * TILE_PX + nx]!;
+          neighbors.push(n);
+          if (Math.abs(n - v) <= thresholdM) support++;
+        }
+      }
+      if (support <= 1) {
+        neighbors.sort((a, b) => a - b);
+        grid[i] = neighbors[Math.floor(neighbors.length / 2)]!;
+      }
+    }
+  }
+}
+
+/**
  * Bilinear sample of a TILE_PX×TILE_PX elevation grid at fractional pixel
  * coordinates, clamped to the tile.
  */

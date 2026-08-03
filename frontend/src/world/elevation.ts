@@ -14,7 +14,7 @@
 
 import { Vector3 } from 'three';
 import { enuToLatLon, toScene } from '../core/coords';
-import { TILE_PX, bilinearSample, terrariumToMeters } from './elevation-math';
+import { TILE_PX, bilinearSample, despikeInPlace, terrariumToMeters } from './elevation-math';
 
 const FT_PER_M = 3.28084;
 
@@ -71,8 +71,12 @@ export function ensureElevationTile(z: number, x: number, y: number): Promise<vo
         // flattens deep-ocean bathymetry, which is what an aircraft viz
         // wants anyway (real below-sea-level land like -430 m survives).
         if (m < -450 || m > 9000) m = 0;
-        grid[i] = m * FT_PER_M;
+        grid[i] = m;
       }
+      // Kill single-pixel SRTM glitch needles that pass the plausibility
+      // clamp (e.g. a 5 km spike in Michigan), then convert to feet.
+      despikeInPlace(grid, 400);
+      for (let i = 0; i < grid.length; i++) grid[i] = grid[i]! * FT_PER_M;
       tiles.set(key, grid);
       for (const fn of listeners) fn();
     } catch {
