@@ -136,7 +136,9 @@ const DEFAULTS: Settings = {
   theme: 'auto',
   language: 'auto',
   altitudeCurveBias: 0,
-  terrain3d: true,
+  // Off by default: an extra ~25 tile fetches + displaced geometry that
+  // deserves an opt-in, and flat remains the familiar baseline look.
+  terrain3d: false,
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';
