@@ -259,6 +259,26 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         ],
       },
       {
+        kind: 'choice',
+        key: 'xrMoveMode',
+        label: t('settings.xr_move_mode'),
+        description: t('settings.xr_move_mode_desc'),
+        options: [
+          { value: 'scope', label: t('settings.xr_move_scope') },
+          { value: 'freefly', label: t('settings.xr_move_freefly') },
+        ],
+      },
+      {
+        kind: 'choice',
+        key: 'xrTurnStyle',
+        label: t('settings.xr_turn_style'),
+        description: t('settings.xr_turn_style_desc'),
+        options: [
+          { value: 'snap', label: t('settings.xr_turn_snap') },
+          { value: 'smooth', label: t('settings.xr_turn_smooth') },
+        ],
+      },
+      {
         kind: 'toggle',
         key: 'stereo',
         label: t('settings.stereo'),

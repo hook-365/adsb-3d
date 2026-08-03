@@ -85,6 +85,19 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Reset to default ({value})',
   'settings.reset_row_to_default': 'Reset {label} to default',
+  'settings.xr_move_mode': 'VR movement',
+  'settings.xr_move_mode_desc':
+    'Scope keeps you stationary while the world scales and orbits. ' +
+    'Free-fly moves you through the airspace: left stick flies, ' +
+    'right stick up/down changes height, grip + left stick scales.',
+  'settings.xr_move_scope': 'Scope (world moves)',
+  'settings.xr_move_freefly': 'Free-fly (you move)',
+  'settings.xr_turn_style': 'VR turning',
+  'settings.xr_turn_style_desc':
+    'Snap turns in 30° steps — easiest on the stomach. Smooth rotates ' +
+    'continuously.',
+  'settings.xr_turn_snap': 'Snap (30°)',
+  'settings.xr_turn_smooth': 'Smooth',
   'settings.terrain_3d': '3D terrain',
   'settings.terrain_3d_desc':
     'Raise the basemap to real ground elevation. Rings and markers follow ' +

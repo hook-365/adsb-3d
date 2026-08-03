@@ -22,6 +22,15 @@ export type AltitudeUnit = 'ft' | 'm';
  */
 export type VrQuality = 'low' | 'balanced' | 'high' | 'ultra';
 /**
+ * VR movement model (issue #6): 'scope' = world moves around a stationary
+ * observer (left stick scales); 'freefly' = user flies through the
+ * airspace (left stick strafes/flies, grip+stick scales, right stick Y
+ * changes height).
+ */
+export type XrMoveMode = 'scope' | 'freefly';
+/** VR turn style: 30° snap steps (comfort default) vs continuous rotation. */
+export type XrTurnStyle = 'snap' | 'smooth';
+/**
  * UI language selection. Lives here (not core/i18n.ts) so settings stays
  * import-cycle-free; i18n.ts consumes settings, never the reverse.
  */
@@ -85,6 +94,10 @@ export interface Settings {
    * entry, not mid-session. See VrQuality.
    */
   vrQuality: VrQuality;
+  /** VR movement model — see XrMoveMode. Read per-frame by xr-locomotion. */
+  xrMoveMode: XrMoveMode;
+  /** VR turn style — see XrTurnStyle. Read per-frame by xr-locomotion. */
+  xrTurnStyle: XrTurnStyle;
   /** Slippy-map basemap provider proxied by nginx /tiles/{provider}/... */
   basemap: Basemap;
   distanceUnit: DistanceUnit;
@@ -129,6 +142,8 @@ const DEFAULTS: Settings = {
   stereoStrength: 50,
   vrScale: 0.01,
   vrQuality: 'balanced',
+  xrMoveMode: 'scope',
+  xrTurnStyle: 'snap',
   basemap: 'dark',
   distanceUnit: 'nm',
   speedUnit: 'kt',

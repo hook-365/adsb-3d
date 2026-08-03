@@ -84,6 +84,19 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Auf Standard zurücksetzen ({value})',
   'settings.reset_row_to_default': '{label} auf Standard zurücksetzen',
+  'settings.xr_move_mode': 'VR-Bewegung',
+  'settings.xr_move_mode_desc':
+    'Scope: Sie bleiben stehen, die Welt skaliert und dreht sich. ' +
+    'Freiflug: Sie fliegen durch den Luftraum — linker Stick fliegt, ' +
+    'rechter Stick hoch/runter ändert die Höhe, Grip + linker Stick skaliert.',
+  'settings.xr_move_scope': 'Scope (Welt bewegt sich)',
+  'settings.xr_move_freefly': 'Freiflug (Sie bewegen sich)',
+  'settings.xr_turn_style': 'VR-Drehung',
+  'settings.xr_turn_style_desc':
+    'Schrittweise in 30°-Stufen, am magenfreundlichsten. Fließend dreht ' +
+    'kontinuierlich.',
+  'settings.xr_turn_snap': 'Schrittweise (30°)',
+  'settings.xr_turn_smooth': 'Fließend',
   'settings.terrain_3d': '3D-Gelände',
   'settings.terrain_3d_desc':
     'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +

@@ -50,7 +50,9 @@ const MENU_H_M = 0.15;
 const CANVAS_W = 512;
 const CANVAS_H = 384;
 
-const ROW_COUNT = 5;
+// Derived from ROWS.length below via a getter-style constant — keep in
+// sync when adding rows so row heights shrink to fit the fixed canvas.
+const ROW_COUNT = 7;
 const HEADER_PX = 28;
 const ROW_HEIGHT_PX = (CANVAS_H - HEADER_PX) / ROW_COUNT;
 
@@ -127,6 +129,22 @@ const ROWS: MenuRow[] = [
     label: () => tr('misc.xr_alt_lines'),
     value: () => (getSettings().altitudeLines ? tr('misc.xr_on') : tr('misc.xr_off')),
     activate: () => updateSettings({ altitudeLines: !getSettings().altitudeLines }),
+  },
+  {
+    id: 'xrMoveMode',
+    label: () => tr('misc.xr_movement'),
+    value: () =>
+      getSettings().xrMoveMode === 'scope' ? tr('misc.xr_move_scope') : tr('misc.xr_move_freefly'),
+    activate: () =>
+      updateSettings({ xrMoveMode: getSettings().xrMoveMode === 'scope' ? 'freefly' : 'scope' }),
+  },
+  {
+    id: 'xrTurnStyle',
+    label: () => tr('misc.xr_turning'),
+    value: () =>
+      getSettings().xrTurnStyle === 'snap' ? tr('misc.xr_turn_snap') : tr('misc.xr_turn_smooth'),
+    activate: () =>
+      updateSettings({ xrTurnStyle: getSettings().xrTurnStyle === 'snap' ? 'smooth' : 'snap' }),
   },
 ];
 

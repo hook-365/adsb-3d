@@ -84,6 +84,19 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Restablecer al valor predeterminado ({value})',
   'settings.reset_row_to_default': 'Restablecer {label} al valor predeterminado',
+  'settings.xr_move_mode': 'Movimiento en RV',
+  'settings.xr_move_mode_desc':
+    'Radar: usted permanece quieto mientras el mundo se escala y orbita. ' +
+    'Vuelo libre: usted se mueve por el espacio aéreo — el stick izquierdo ' +
+    'vuela, el derecho arriba/abajo cambia la altura, grip + stick izquierdo escala.',
+  'settings.xr_move_scope': 'Radar (el mundo se mueve)',
+  'settings.xr_move_freefly': 'Vuelo libre (usted se mueve)',
+  'settings.xr_turn_style': 'Giro en RV',
+  'settings.xr_turn_style_desc':
+    'Por pasos gira en incrementos de 30°, lo más suave para el estómago. ' +
+    'Continuo gira sin pausas.',
+  'settings.xr_turn_snap': 'Por pasos (30°)',
+  'settings.xr_turn_smooth': 'Continuo',
   'settings.terrain_3d': 'Terreno 3D',
   'settings.terrain_3d_desc':
     'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +

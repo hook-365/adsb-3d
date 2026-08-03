@@ -34,7 +34,8 @@ import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
 import { XrWristMenu } from './world/xr-wrist-menu';
-import { setupXrLocomotion } from './world/xr-locomotion';
+import { faceWorldPoint, setupXrLocomotion } from './world/xr-locomotion';
+import { distanceFromHomeNm } from './core/coords';
 import {
   attachRouteBatchPrefetcher,
   configureRoutesApi,
@@ -276,6 +277,23 @@ const xrLocomotion = setupXrLocomotion({
   // fresh Vector3 in xrRoot-local space; localToWorld maps it into the
   // world space the snap-turn maths runs in. reconciler/xrSelectedHex are
   // declared below but only read when a snap actually fires, long after boot.
+  // B/Y: advance the selection through aircraft ordered by distance from
+  // home, wrapping, then swing the world so the new target sits in front
+  // of the headset (issue #6 control-scheme feedback).
+  onCycleAircraft: () => {
+    const ordered = [...store.snapshot.values()]
+      .map((a) => ({ hex: a.hex, d: distanceFromHomeNm(a.lat, a.lon) }))
+      .sort((p, q) => p.d - q.d)
+      .map((p) => p.hex);
+    if (ordered.length === 0) return;
+    const idx = xrSelectedHex ? ordered.indexOf(xrSelectedHex) : -1;
+    const nextHex = ordered[(idx + 1) % ordered.length]!;
+    applySelection(nextHex);
+    const local = reconciler.positionOf(nextHex);
+    if (local) {
+      faceWorldPoint(world.xrRoot, world.renderer.xr.getCamera(), world.xrRoot.localToWorld(local));
+    }
+  },
   getOrbitPivot: () => {
     if (!xrSelectedHex) return null;
     const local = reconciler.positionOf(xrSelectedHex);
