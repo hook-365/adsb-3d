@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **3D-terrain polish for ground chrome.** Ground icons now drape over
+  the terrain like the range rings do (segmented, heading-aware,
+  shadow-style) instead of being sliced by slopes; the emergency ring
+  rides the terrain rather than sea level; and an elevation tile
+  arriving now re-anchors every aircraft immediately instead of leaving
+  ground chrome at sea level until each aircraft's next data tick.
+
 ## [0.5.1] - 2026-08-03
 
 ### Added

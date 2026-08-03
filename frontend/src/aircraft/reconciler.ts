@@ -25,7 +25,17 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
-import { elevationFtAt } from '../world/elevation';
+import { elevationFtAt, subscribeElevation } from '../world/elevation';
+
+// Elevation tiles decode asynchronously; until they land, ground anchors
+// sample 0 (sea level) and sit far below real terrain in high-elevation
+// areas. Rev-gating would leave each aircraft's chrome buried until its
+// next data tick — up to 5 s on politely-polled remote feeds — so an
+// elevation-tile arrival forces one full transform pass on the next frame.
+let elevationRefreshPending = false;
+subscribeElevation(() => {
+  elevationRefreshPending = true;
+});
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
@@ -321,7 +331,9 @@ function buildEntry(a: Aircraft): RenderEntry {
   const aspect = iconCache?.aspect ?? 1;
   const iconW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
   const iconH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
-  const iconGeom = new PlaneGeometry(iconW, iconH);
+  // Segmented so the icon can drape over 3D terrain (see drapeIcon); on a
+  // flat world the extra vertices stay coplanar and cost nothing.
+  const iconGeom = new PlaneGeometry(iconW, iconH, ICON_DRAPE_SEGMENTS, ICON_DRAPE_SEGMENTS);
   // Lay the plane flat on the ground. PlaneGeometry's UV(0,0) is at vertex
   // (-w/2, -h/2); after rotateX(-π/2) that maps to scene +Z, so the SVG
   // top (which is the aircraft's nose) ends up at scene -Z = north. With
@@ -515,15 +527,55 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   // Ground icon position follows the aircraft's lat/lon foot regardless of
   // whether heading changed — its quaternion was either updated above or
   // is already correct from a prior frame.
-  // Lift above the sampled ground by more than the flat-world constant:
-  // the terrain mesh linearly interpolates between vertices ~1.25 NM
-  // apart, so the surface can locally sit above the bilinear sample on
-  // convex slopes. 0.25 scene units clears that everywhere sane.
   entry.iconMesh.position.set(
     tmpGround.x,
-    tmpGround.y === 0 ? ICON_GROUND_Y : tmpGround.y + 0.25,
+    tmpGround.y === 0 ? ICON_GROUND_Y : tmpGround.y,
     tmpGround.z,
   );
+  drapeIcon(entry, a, tmpGround.y);
+}
+
+// Drape the ground icon over 3D terrain, ring-style: every vertex of the
+// segmented plane samples the terrain under its own world position — with
+// the footprint rotated by the aircraft's heading to match the mesh's yaw
+// quaternion — and takes that height in local Y (which stays world-up
+// under a pure yaw rotation). Depth-testing stays on, so icons conform to
+// ridges yet hide honestly behind mountains. In a flat world the center
+// sample is 0 and the geometry resets to coplanar once.
+const ICON_DRAPE_SEGMENTS = 6;
+const ICON_DRAPE_LIFT = 0.2;
+const tmpDrape = new Vector3();
+function drapeIcon(entry: RenderEntry, a: Aircraft, centerGroundY: number): void {
+  const geom = entry.iconMesh.geometry;
+  const pos = geom.getAttribute('position') as BufferAttribute;
+  if (centerGroundY === 0) {
+    if (entry.iconMesh.userData.draped) {
+      for (let i = 0; i < pos.count; i++) pos.setY(i, 0);
+      pos.needsUpdate = true;
+      geom.computeBoundingSphere();
+      entry.iconMesh.userData.draped = false;
+    }
+    return;
+  }
+  entry.iconMesh.userData.draped = true;
+  const yaw =
+    entry.iconRotates && a.trackDeg !== null ? -((a.trackDeg * Math.PI) / 180) : 0;
+  const cosY = Math.cos(yaw);
+  const sinY = Math.sin(yaw);
+  const cosLat = Math.cos((a.lat * Math.PI) / 180);
+  for (let i = 0; i < pos.count; i++) {
+    const lx = pos.getX(i);
+    const lz = pos.getZ(i);
+    // World-frame footprint offset of this vertex under the yaw rotation.
+    const dx = lx * cosY + lz * sinY;
+    const dz = -lx * sinY + lz * cosY;
+    const lat = a.lat - dz / 60; // scene +z = south
+    const lon = a.lon + dx / (60 * cosLat);
+    toScene(lat, lon, elevationFtAt(lat, lon), tmpDrape);
+    pos.setY(i, tmpDrape.y - centerGroundY + ICON_DRAPE_LIFT);
+  }
+  pos.needsUpdate = true;
+  geom.computeBoundingSphere();
 }
 
 function refreshColor(entry: RenderEntry, a: Aircraft): void {
@@ -989,6 +1041,10 @@ export class AircraftReconciler {
     // Cache the labels-enabled flag so we don't override the global toggle
     // each frame from inside the per-entry filter visibility logic.
     const labelsAllowed = getSettings().aircraftLabels;
+    // Consume the elevation-arrival flag for this frame; events that land
+    // mid-frame re-set it and sweep on the next frame.
+    const forceTransforms = elevationRefreshPending;
+    elevationRefreshPending = false;
     const now = Date.now();
     const perfNow = performance.now();
 
@@ -1024,18 +1080,29 @@ export class AircraftReconciler {
       // per second and ~500 — the bulk of frames find every aircraft at
       // the same rev as last frame and skip the entire block.
       const rev = this.store.getRev(a.hex);
+      if (rev === entry.lastRev && forceTransforms) {
+        // Elevation tile just landed: re-anchor ground chrome without
+        // waiting for this aircraft's next data tick.
+        applyTransform(entry, a);
+      }
       if (rev !== entry.lastRev) {
         refreshColor(entry, a);
         applyTransform(entry, a);
         refreshLabel(entry, a);
-        // Emergency ring follows the aircraft's ground projection. Visibility
-        // tracks the per-tick emergency state so a 7700-then-cleared sequence
-        // surfaces and dismisses without lingering. emergency is in the rev
-        // comparison set, so a state transition arrives via a rev advance.
+        // Emergency ring follows the aircraft's ground projection (icon
+        // height, so it rides the terrain rather than sea level).
+        // Visibility tracks the per-tick emergency state so a
+        // 7700-then-cleared sequence surfaces and dismisses without
+        // lingering. emergency is in the rev comparison set, so a state
+        // transition arrives via a rev advance.
         const inEmergency = a.emergency !== null;
         entry.emergencyRing.visible = inEmergency;
         if (inEmergency) {
-          entry.emergencyRing.position.set(entry.cone.position.x, 0.12, entry.cone.position.z);
+          entry.emergencyRing.position.set(
+            entry.cone.position.x,
+            entry.iconMesh.position.y + 0.07,
+            entry.cone.position.z,
+          );
         }
         // Keep the selection ring pegged to the cone's current ground
         // projection while the aircraft moves. Selecting a previously-static
