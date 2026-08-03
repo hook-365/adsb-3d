@@ -34,9 +34,10 @@ hillshade|https://services.arcgisonline.com/arcgis/rest/services/World_Shaded_Re
 topo|https://a.tile.opentopomap.org/{z}/{x}/{y}.png
 satellite|https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
 osm|https://a.tile.openstreetmap.org/{z}/{x}/{y}.png
+terrain_rgb|https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
 "
 
-    TOTAL_TILES=$((GRID_SIZE * GRID_SIZE * 6))
+    TOTAL_TILES=$((GRID_SIZE * GRID_SIZE * 7))
     CACHED=0
     SKIPPED=0
     FAILED=0
@@ -302,9 +303,10 @@ window.TOWER_CONFIG = {
     hidden: ${HIDE_TOWER:-false}
 };
 
-// Terrain configuration (AWS Terrain-RGB tiles - free, no API key)
+// Terrain configuration (AWS Terrain-RGB tiles - free, no API key).
+// Deploy-level kill switch; users also get a per-browser settings toggle.
 window.TERRAIN_CONFIG = {
-    enabled: true
+    enabled: ${ENABLE_TERRAIN:-true}
 };
 
 // Multi-feed configuration
@@ -350,8 +352,12 @@ else
     echo "Voice scanner disabled (set ENABLE_VOICE=true to enable; requires the voice-services stack)"
 fi
 
-# Terrain configuration (always enabled - AWS tiles are free)
-echo "3D Terrain enabled - using AWS Terrain-RGB tiles"
+# Terrain configuration (default enabled - AWS tiles are free)
+if [ "${ENABLE_TERRAIN:-true}" = "true" ]; then
+    echo "3D Terrain enabled - using AWS Terrain-RGB tiles"
+else
+    echo "3D Terrain disabled via ENABLE_TERRAIN=false"
+fi
 
 # Feed mode configuration
 if [ "${FEED_MODE}" = "multi" ]; then

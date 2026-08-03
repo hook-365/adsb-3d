@@ -38,6 +38,13 @@ export function subscribeHome(fn: (h: HomeLocation) => void): () => void {
 // Visible range from home. Aircraft outside this radius are dropped.
 export const RANGE_NM = 250;
 
+// Deploy-level 3D-terrain kill switch rendered into config.js by
+// entrypoint.sh (ENABLE_TERRAIN, default true). The per-user settings
+// toggle (`terrain3d`) is ANDed with this at the use sites.
+export const TERRAIN_ENABLED: boolean =
+  (typeof window !== 'undefined' &&
+    (window as { TERRAIN_CONFIG?: { enabled?: boolean } }).TERRAIN_CONFIG?.enabled) !== false;
+
 // Scene scale: 1 unit = 1 nautical mile horizontally, exaggerated vertically
 // so altitude reads at a glance (real altitudes are tiny next to range).
 export const ALT_EXAGGERATION = 12;

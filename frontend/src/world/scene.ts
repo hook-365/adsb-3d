@@ -1,5 +1,6 @@
 import {
   AmbientLight,
+  BufferAttribute,
   CircleGeometry,
   Color,
   DirectionalLight,
@@ -11,13 +12,16 @@ import {
   RingGeometry,
   Scene,
   Texture,
+  Vector3,
   WebGLRenderer
 } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { RANGE_NM } from '../core/config';
+import { enuToLatLon, toScene } from '../core/coords';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { setRenderer as registerXrRenderer } from '../core/xr';
+import { elevationFtAt, subscribeElevation } from './elevation';
 import { createTileLayer } from './tiles';
 
 export interface World {
@@ -110,6 +114,10 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     disposeTileLayer(tileLayer);
     tileLayer = createTileLayer({ provider: getSettings().basemap });
     xrRoot.add(tileLayer);
+    // New home, new ground: re-drape immediately for elevation tiles that
+    // are already cached; freshly-fetched ones re-fire via the elevation
+    // subscription as they decode.
+    drapeGroundChrome();
   }
 
   // Range rings every 50 NM as a quick distance reference on top of the basemap.
@@ -131,7 +139,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       depthWrite: false,
     });
     (isMajor ? ringMaterials.major : ringMaterials.minor).push(mat);
-    const ring = new Mesh(new RingGeometry(r - 0.5, r + 0.5, 128), mat);
+    // 256 theta segments (not 128): with 3D terrain the rings conform to
+    // the ground, and coarser segments would cut visibly through hills.
+    const ring = new Mesh(new RingGeometry(r - 0.5, r + 0.5, 256), mat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.05;
     ringsGroup.add(ring);
@@ -177,6 +187,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     (window as { TOWER_CONFIG?: { hidden?: boolean } }).TOWER_CONFIG?.hidden,
   );
   let homeMaterial: MeshBasicMaterial | null = null;
+  let homeMesh: Mesh | null = null;
   if (!towerHidden) {
     homeMaterial = new MeshBasicMaterial({
       color: new Color(initialTheme.homeMarker),
@@ -184,13 +195,49 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       opacity: 0.95,
       depthWrite: false,
     });
-    const home = new Mesh(new CircleGeometry(1.2, 24), homeMaterial);
-    home.rotation.x = -Math.PI / 2;
-    home.position.y = 0.07;
-    home.renderOrder = 2; // draw above range rings + tile layer
-    home.name = 'home-marker';
-    xrRoot.add(home);
+    homeMesh = new Mesh(new CircleGeometry(1.2, 24), homeMaterial);
+    homeMesh.rotation.x = -Math.PI / 2;
+    homeMesh.position.y = 0.07;
+    homeMesh.renderOrder = 2; // draw above range rings + tile layer
+    homeMesh.name = 'home-marker';
+    xrRoot.add(homeMesh);
   }
+
+  // --- Ground-chrome draping (3D terrain, issue #7) --------------------
+  // Rings, ring/cardinal labels, and the home marker are authored at y≈0
+  // for a flat world. With terrain on they conform to the ground as
+  // elevation tiles stream in; with it off elevationFtAt() is always 0
+  // and this reproduces the original flat constants exactly.
+  const groundV = new Vector3();
+  function groundSceneY(eastNm: number, northNm: number): number {
+    const { lat, lon } = enuToLatLon(eastNm, northNm);
+    toScene(lat, lon, elevationFtAt(lat, lon), groundV);
+    return groundV.y;
+  }
+  function drapeGroundChrome(): void {
+    for (const child of ringsGroup.children) {
+      if (child instanceof Mesh) {
+        // RingGeometry lies in local XY; under the -π/2 X rotation local
+        // (x, y, z) maps to world (x, z + 0.05, -y) — so local x/y are
+        // east/north and writing local z sets ground height.
+        const pos = child.geometry.getAttribute('position') as BufferAttribute;
+        for (let i = 0; i < pos.count; i++) {
+          pos.setZ(i, groundSceneY(pos.getX(i), pos.getY(i)));
+        }
+        pos.needsUpdate = true;
+        child.geometry.computeBoundingSphere();
+      } else if (child instanceof CSS2DObject) {
+        child.position.y = groundSceneY(child.position.x, -child.position.z) + 0.05;
+      }
+    }
+    for (const label of cardinalsGroup.children) {
+      label.position.y = groundSceneY(label.position.x, -label.position.z) + 0.05;
+    }
+    if (homeMesh) homeMesh.position.y = groundSceneY(0, 0) + 0.07;
+  }
+  // Re-drape as each elevation tile decodes, and after a feed switch (the
+  // recenter path below) in case the new home's tiles were already cached.
+  subscribeElevation(drapeGroundChrome);
 
   // Live theme updates — mutate the same materials/colors in place so the
   // scene reflects a theme change without disposal or rebuilds. The

@@ -51,6 +51,14 @@ export function toScene(lat: number, lon: number, altFt: number, out: Vector3): 
   return out.set(east, up, -north);
 }
 
+/** Inverse of toScene's horizontal projection: ENU offsets in NM → lat/lon. */
+export function enuToLatLon(eastNm: number, northNm: number): { lat: number; lon: number } {
+  return {
+    lat: HOME.lat + northNm / NM_PER_DEG_LAT,
+    lon: HOME.lon + eastNm / (NM_PER_DEG_LAT * cosHomeLat),
+  };
+}
+
 /** Distance from home in NM (great-circle approximated as flat for small angles). */
 export function distanceFromHomeNm(lat: number, lon: number): number {
   const east = (lon - HOME.lon) * NM_PER_DEG_LAT * cosHomeLat;

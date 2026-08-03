@@ -16,6 +16,7 @@ export const detailStrings = {
   'detail.chip_pia': 'PIA',
   'detail.chip_ladd': 'LADD',
   'detail.on_ground': 'GND',
+  'detail.agl': '{agl} AGL',
   'detail.vertical_level': 'konstant',
   'detail.seconds_ago': 'vor {n}s',
   'detail.minutes_ago': 'vor {n}min',

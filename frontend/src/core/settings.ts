@@ -110,6 +110,12 @@ export interface Settings {
    * embed the mapping.
    */
   altitudeCurveBias: number;
+  /**
+   * Render the basemap at real ground elevation (world/elevation.ts).
+   * ANDed with the deploy-level TERRAIN_ENABLED kill switch. Changing it
+   * reloads the page — tile geometry bakes the displacement in.
+   */
+  terrain3d: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -130,6 +136,7 @@ const DEFAULTS: Settings = {
   theme: 'auto',
   language: 'auto',
   altitudeCurveBias: 0,
+  terrain3d: true,
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';

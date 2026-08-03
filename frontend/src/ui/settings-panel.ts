@@ -150,6 +150,12 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         ],
       },
       {
+        kind: 'toggle',
+        key: 'terrain3d',
+        label: t('settings.terrain_3d'),
+        description: t('settings.terrain_3d_desc'),
+      },
+      {
         kind: 'range',
         key: 'altitudeCurveBias',
         label: t('settings.altitude_curve'),

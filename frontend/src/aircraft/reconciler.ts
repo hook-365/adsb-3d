@@ -25,6 +25,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
+import { elevationFtAt } from '../world/elevation';
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
@@ -480,7 +481,12 @@ function refreshLabel(entry: RenderEntry, a: Aircraft): void {
 
 function applyTransform(entry: RenderEntry, a: Aircraft): void {
   toScene(a.lat, a.lon, a.altFt, tmpPos);
-  toScene(a.lat, a.lon, 0, tmpGround);
+  // Ground anchor (icon + altitude-line foot) sits on the terrain surface;
+  // elevationFtAt() is 0 everywhere when 3D terrain is off. The clamp
+  // keeps cones from sinking under the mesh on baro/ellipsoid quirks when
+  // an aircraft is on or near the ground.
+  toScene(a.lat, a.lon, elevationFtAt(a.lat, a.lon), tmpGround);
+  if (tmpPos.y < tmpGround.y) tmpPos.y = tmpGround.y;
 
   entry.cone.position.copy(tmpPos);
 

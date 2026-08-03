@@ -84,6 +84,10 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Auf Standard zurücksetzen ({value})',
   'settings.reset_row_to_default': '{label} auf Standard zurücksetzen',
+  'settings.terrain_3d': '3D-Gelände',
+  'settings.terrain_3d_desc':
+    'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +
+    'Gelände. Änderung lädt die Seite neu.',
   'settings.altitude_curve': 'Höhenskala',
   'settings.altitude_curve_desc':
     'Niedriger = Fokus auf niedrige Höhen, höher = Fokus auf große Höhen. ' +

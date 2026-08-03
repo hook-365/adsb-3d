@@ -10,8 +10,10 @@ import {
   TextureLoader,
   Vector3
 } from 'three';
-import { HOME, RANGE_NM } from '../core/config';
+import { HOME, RANGE_NM, TERRAIN_ENABLED } from '../core/config';
 import { toScene } from '../core/coords';
+import { getSettings, subscribeSettings } from '../core/settings';
+import { elevationFtAt, ensureElevationTile } from './elevation';
 
 // Web Mercator basemap. nginx proxies /tiles/{provider}/{z}/{y}/{x} with a
 // local on-disk cache pre-warmed by entrypoint.sh at zoom 8. Other zooms
@@ -56,6 +58,28 @@ const PROVIDER_META: Record<TileProvider, { tms: boolean }> = {
 };
 
 const DEFAULT_ZOOM = 8;
+
+// 3D terrain (issue #7): with the toggle on, each tile becomes an N×N
+// vertex grid displaced by terrarium elevation instead of a flat quad.
+// This module is the single gate — when terrainActive() is false no
+// elevation tile is ever fetched, so elevationFtAt() returns 0 everywhere
+// and every other consumer (rings, ground icons, AGL) degrades to the
+// flat world automatically.
+const TERRAIN_SEGMENTS = 48;
+
+export function terrainActive(): boolean {
+  return TERRAIN_ENABLED && getSettings().terrain3d;
+}
+
+// Toggling terrain reloads the page (same pattern as the altitude-curve
+// slider): tile and ring geometry bake the displacement in.
+let lastTerrain3d = getSettings().terrain3d;
+subscribeSettings((s) => {
+  if (s.terrain3d !== lastTerrain3d) {
+    lastTerrain3d = s.terrain3d;
+    if (typeof location !== 'undefined') location.reload();
+  }
+});
 
 function lonToTileX(lon: number, z: number): number {
   return ((lon + 180) / 360) * Math.pow(2, z);
@@ -127,6 +151,55 @@ function buildTileMesh(z: number, x: number, y: number, texture: Texture, dropY:
   return mesh;
 }
 
+/**
+ * Terrain variant of buildTileMesh: a TERRAIN_SEGMENTS² grid displaced by
+ * ground elevation, projected through the same toScene() as the aircraft
+ * so terrain follows the altitude-curve slider automatically. Rows are
+ * spaced evenly in Mercator y (not latitude) so the draped imagery's v
+ * coordinate stays linear. depthWrite is ON — mountains must occlude
+ * aircraft, trails, and rings behind them.
+ */
+function buildTerrainTileMesh(z: number, x: number, y: number, texture: Texture, dropY: number): Mesh {
+  const s = TERRAIN_SEGMENTS;
+  const positions = new Float32Array((s + 1) * (s + 1) * 3);
+  const uvs = new Float32Array((s + 1) * (s + 1) * 2);
+  for (let j = 0; j <= s; j++) {
+    const lat = tileYToLat(y + j / s, z);
+    for (let i = 0; i <= s; i++) {
+      const lon = tileXToLon(x + i / s, z);
+      toScene(lat, lon, elevationFtAt(lat, lon), tmpV);
+      const v = j * (s + 1) + i;
+      positions[v * 3] = tmpV.x;
+      positions[v * 3 + 1] = tmpV.y + dropY;
+      positions[v * 3 + 2] = tmpV.z;
+      uvs[v * 2] = i / s;
+      uvs[v * 2 + 1] = 1 - j / s;
+    }
+  }
+  const indices = new Uint32Array(s * s * 6);
+  let o = 0;
+  for (let j = 0; j < s; j++) {
+    for (let i = 0; i < s; i++) {
+      const a = j * (s + 1) + i;
+      const b = a + 1;
+      const c = a + (s + 1);
+      const d = c + 1;
+      indices[o++] = a; indices[o++] = b; indices[o++] = c;
+      indices[o++] = b; indices[o++] = d; indices[o++] = c;
+    }
+  }
+  const geom = new BufferGeometry();
+  geom.setAttribute('position', new BufferAttribute(positions, 3));
+  geom.setAttribute('uv', new BufferAttribute(uvs, 2));
+  geom.setIndex(new BufferAttribute(indices, 1));
+
+  const material = new MeshBasicMaterial({ map: texture, depthWrite: true, side: DoubleSide });
+  const mesh = new Mesh(geom, material);
+  mesh.renderOrder = -10;
+  mesh.userData = { kind: 'tile', z, x, y };
+  return mesh;
+}
+
 export interface TileLayerOptions {
   provider?: TileProvider;
   zoom?: number;
@@ -179,9 +252,24 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
           texture.wrapS = RepeatWrapping;
           texture.wrapT = RepeatWrapping;
           texture.anisotropy = 4;
-          const mesh = buildTileMesh(zoom, x, y, texture, dropY);
-          group.add(mesh);
-          loaded++;
+          if (terrainActive()) {
+            // Ensure the elevation tile plus its 3×3 neighborhood before
+            // building, so edge vertices sample loaded neighbors and two
+            // adjacent tiles agree at their shared seam.
+            const ensures: Promise<void>[] = [];
+            for (let ny = -1; ny <= 1; ny++) {
+              for (let nx = -1; nx <= 1; nx++) {
+                ensures.push(ensureElevationTile(zoom, x + nx, y + ny));
+              }
+            }
+            void Promise.all(ensures).then(() => {
+              group.add(buildTerrainTileMesh(zoom, x, y, texture, dropY));
+              loaded++;
+            });
+          } else {
+            group.add(buildTileMesh(zoom, x, y, texture, dropY));
+            loaded++;
+          }
         },
         undefined,
         () => {

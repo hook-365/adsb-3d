@@ -85,6 +85,10 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Reset to default ({value})',
   'settings.reset_row_to_default': 'Reset {label} to default',
+  'settings.terrain_3d': '3D terrain',
+  'settings.terrain_3d_desc':
+    'Raise the basemap to real ground elevation. Rings and markers follow ' +
+    'the ground. Changing it reloads the page.',
   'settings.altitude_curve': 'Altitude scale',
   'settings.altitude_curve_desc':
     'Lower = low-altitude focus, higher = high-altitude focus. ' +

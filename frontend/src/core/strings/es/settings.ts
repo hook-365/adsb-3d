@@ -84,6 +84,10 @@ export const settingsStrings = {
   // Range-row reset button
   'settings.reset_to_default': 'Restablecer al valor predeterminado ({value})',
   'settings.reset_row_to_default': 'Restablecer {label} al valor predeterminado',
+  'settings.terrain_3d': 'Terreno 3D',
+  'settings.terrain_3d_desc':
+    'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +
+    'siguen el terreno. Cambiarlo recarga la página.',
   'settings.altitude_curve': 'Escala de altitud',
   'settings.altitude_curve_desc':
     'Más bajo = enfoque en altitudes bajas, más alto = enfoque en altitudes ' +

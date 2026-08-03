@@ -8,6 +8,7 @@ import { fmtAltitude, fmtDistance, fmtSpeed, fmtVerticalRate } from '../core/uni
 import { getAcarsMessages, getAcarsSummary, subscribeAcars, type AcarsPhase, type AcarsSummary } from '../aircraft/acars-store';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { t, type StringKey } from '../core/i18n';
+import { elevationFtAt } from '../world/elevation';
 import type { AcarsMessage } from '../feed/acars';
 
 // Detail card pinned under the aircraft list. Re-renders every store
@@ -343,7 +344,15 @@ export function createAircraftDetail(
     setRow(classLabelEl, classEl, t('detail.class'), categoryLabel(a.category));
     renderChips(a);
 
-    altEl.textContent = a.onGround ? t('detail.on_ground') : fmtAltitude(a.altFt);
+    // With 3D terrain data present, append height above ground — only when
+    // the ground is meaningfully elevated (≥100 ft) so sea-level
+    // deployments don't show a redundant near-identical AGL.
+    const groundFt = elevationFtAt(a.lat, a.lon);
+    altEl.textContent = a.onGround
+      ? t('detail.on_ground')
+      : groundFt >= 100
+        ? `${fmtAltitude(a.altFt)} · ${t('detail.agl', { agl: fmtAltitude(Math.max(0, a.altFt - groundFt)) })}`
+        : fmtAltitude(a.altFt);
 
     if (a.verticalRateFpm === null) {
       vrateEl.innerHTML = '<span class="level">—</span>';

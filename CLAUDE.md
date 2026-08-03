@@ -121,7 +121,12 @@ All deploy-time config is environment variables. `entrypoint.sh` renders
 features get dummy upstreams so the generated nginx config is always valid.
 
 - Feature flags: `ENABLE_HISTORICAL`, `ENABLE_ACARS`, `ENABLE_VOICE` — all
-  default `false`.
+  default `false`. `ENABLE_TERRAIN` (default `true`) is the deploy-level
+  kill switch for 3D terrain; users also get a `terrain3d` settings toggle.
+  Elevation comes from AWS Open Data terrarium tiles via the nginx
+  `/tiles/terrain_rgb/` proxy; `world/elevation.ts` decodes and samples
+  them, and everything altitude-shaped flows through `toScene()` so
+  terrain follows the altitude-curve slider automatically.
 - Multi-feed: flat `FEEDN_*` env vars; the entrypoint synthesizes per-feed
   nginx proxy blocks. Slot 1 is always the local feed.
 - The voice scanner is **call-based** (one audio clip per radio transmission)
