@@ -21,7 +21,7 @@ const SELECTION_BACKFILL_MS = 24 * 60 * 60 * 1000;
 import { AircraftReconciler } from './aircraft/reconciler';
 import { resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings, updateSettings, type VrQuality } from './core/settings';
-import { subscribeXr } from './core/xr';
+import { getXrState, subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
 import { setWristMenuActions, XrWristMenu } from './world/xr-wrist-menu';
@@ -216,7 +216,11 @@ subscribeXr((s) => {
     labelRenderer.domElement.style.display = 'none';
     world.camera.near = VR_NEAR;
     world.camera.updateProjectionMatrix();
-    world.xrRoot.scale.setScalar(getSettings().vrScale);
+    // AR keeps its own (10x smaller) scale — the diorama shares a real
+    // room, VR fills an empty one (issue #6 hardware feedback).
+    world.xrRoot.scale.setScalar(
+      s.presentingMode === 'ar' ? getSettings().arScale : getSettings().vrScale,
+    );
     world.xrRoot.position.set(0, VR_OFFSET_Y, VR_OFFSET_Z);
     world.xrRoot.rotation.set(0, 0, 0);
     // AR (passthrough) hides the basemap + sky + fog so the room
@@ -247,7 +251,9 @@ subscribeXr((s) => {
 // wrist-menu display + persistence as the single source of truth.
 subscribeSettings((s) => {
   if (world.renderer.xr.isPresenting) {
-    world.xrRoot.scale.setScalar(s.vrScale);
+    world.xrRoot.scale.setScalar(
+      getXrState().presentingMode === 'ar' ? s.arScale : s.vrScale,
+    );
   }
   applyVrQuality(s.vrQuality);
 });

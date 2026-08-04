@@ -98,6 +98,15 @@ export interface Settings {
    */
   vrScale: number;
   /**
+   * Immersive-AR world scale — the passthrough sibling of vrScale, kept
+   * separate because the comfortable sizes differ by an order of
+   * magnitude: VR fills an empty void, AR shares a furnished room
+   * (issue #6: the diorama should start desk-sized, not room-sized).
+   * Driven by the same left-thumbstick gesture while an AR session is
+   * active; persisted independently.
+   */
+  arScale: number;
+  /**
    * Immersive-VR render quality (framebuffer supersampling). Applied via
    * renderer.xr.setFramebufferScaleFactor; takes effect on the next VR
    * entry, not mid-session. See VrQuality.
@@ -150,6 +159,9 @@ const DEFAULTS: Settings = {
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,
+  // 10x smaller than the VR tabletop default — hardware feedback on
+  // issue #6: at 0.01 the AR diorama dwarfs real furniture.
+  arScale: 0.001,
   vrQuality: 'balanced',
   xrMoveMode: 'scope',
   xrTurnStyle: 'snap',

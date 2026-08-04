@@ -26,6 +26,7 @@
 
 import { Vector3, type Group, type PerspectiveCamera, type WebGLRenderer } from 'three';
 import { getSettings, updateSettings } from '../core/settings';
+import { getXrState } from '../core/xr';
 
 // ── Tunables (real-world units / radians / seconds) ────────────────────
 
@@ -44,8 +45,15 @@ const SCALE_RATE_PER_S = 1.0;
  *  Real-space speed reads the same at any world scale. Deliberately
  *  modest for the first hardware round. */
 const MOVE_SPEED_M_PER_S = 2.0;
-/** Vertical (right stick Y) speed in free-fly. */
-const VERT_SPEED_M_PER_S = 1.5;
+/** Vertical (right stick Y) speed in free-fly. Slower than horizontal —
+ *  hardware feedback (issue #6): fast height changes read as accidents. */
+const VERT_SPEED_M_PER_S = 1.0;
+/** Free-fly right stick Y needs a much deeper deadzone than X: turning
+ *  sweeps the stick through diagonals, and any vertical response there
+ *  reads as unintended height drift (issue #6). Combined with the
+ *  dominant-axis check below, height only engages on a deliberate
+ *  mostly-vertical push. */
+const VERT_DEADZONE = 0.5;
 
 /** Snap-turn step (30°) — the standard comfort value. */
 const SNAP_TURN_STEP = (Math.PI * 30) / 180;
@@ -89,10 +97,13 @@ export function setupXrLocomotion(opts: {
   let bButtonWasPressed = false;
 
   function applyScale(stickY: number, dtS: number): void {
-    const cur = getSettings().vrScale;
+    // VR and AR keep independent scales (an AR diorama shares the room
+    // with real furniture); the gesture writes whichever is active.
+    const key = getXrState().presentingMode === 'ar' ? 'arScale' : 'vrScale';
+    const cur = getSettings()[key];
     // Push UP (negative axis) → grow scale; exponential keeps it symmetric.
     const next = clamp(cur * Math.exp(-stickY * SCALE_RATE_PER_S * dtS), SCALE_MIN, SCALE_MAX);
-    if (next !== cur) updateSettings({ vrScale: next });
+    if (next !== cur) updateSettings({ [key]: next });
   }
 
   function tick(_dtMs: number): void {
@@ -140,23 +151,28 @@ export function setupXrLocomotion(opts: {
           ? tmpPivot.setFromMatrixPosition(xrCam.matrixWorld)
           : (getOrbitPivot?.() ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld));
 
+        // Turn sense differs by model (issue #6 hardware feedback):
+        // scope is an orbit, push right → scene orbits left past you;
+        // free-fly is first-person, push right → YOU yaw right, which
+        // is the world rotating the other way.
+        const turnSign = (x > 0 ? -1 : 1) * (freefly ? -1 : 1);
         if (s.xrTurnStyle === 'smooth') {
           if (Math.abs(x) > DEADZONE) {
-            const dir = x > 0 ? -1 : 1; // push right → scene rotates left
-            snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * dir);
+            snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * turnSign);
           }
         } else {
           if (Math.abs(x) < DEADZONE) {
             snapTurnArmed = true;
           } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
-            snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * (x > 0 ? -1 : 1));
+            snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * turnSign);
             snapTurnArmed = false;
           }
         }
 
         // Free-fly vertical: push up (negative axis) → user rises →
-        // world sinks.
-        if (freefly && Math.abs(y) > DEADZONE) {
+        // world sinks. Deep deadzone + dominant-axis gate so sweeping
+        // through a diagonal mid-turn doesn't drift height (issue #6).
+        if (freefly && Math.abs(y) > VERT_DEADZONE && Math.abs(y) > Math.abs(x)) {
           xrRoot.position.y += y * VERT_SPEED_M_PER_S * dtS;
         }
 

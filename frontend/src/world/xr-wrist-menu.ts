@@ -48,7 +48,7 @@ import {
 // Aliased: `t` is the conventional local name for theme tokens in the draw
 // code below.
 import { t as tr } from '../core/i18n';
-import { getXrState } from '../core/xr';
+import { getXrState, subscribeXr } from '../core/xr';
 
 // Plane dimensions in real metres. Sized to feel like a credit card on
 // the inside of the wrist — readable at arm's length but not absurdly
@@ -275,6 +275,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   stereo: 'desktop side-by-side mode — meaningless inside a headset',
   stereoStrength: 'desktop side-by-side mode — meaningless inside a headset',
   vrScale: 'live-driven by the left thumbstick; a menu row would fight it',
+  arScale: 'live-driven by the left thumbstick in AR; a menu row would fight it',
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
 };
@@ -295,6 +296,7 @@ export class XrWristMenu {
   private readonly tmpDir = new Vector3();
   private readonly unsubSettings: () => void;
   private readonly unsubTheme: () => void;
+  private readonly unsubXr: () => void;
   /** Hover position as a layout slot (0..ROW_COUNT-1), not a row index. */
   private hoveredSlot: number | null = null;
   private page = 0;
@@ -332,8 +334,13 @@ export class XrWristMenu {
     this.mesh.renderOrder = 10;
 
     // Redraw on any state change so the displayed value tracks reality.
+    // XR state included: mode-gated rows (AR's Place scope) appear at
+    // session start, and without this the canvas kept its pre-session
+    // layout until an unrelated redraw — issue #6, "the scope [row]
+    // wasn't populated the first time, popped up when I hovered".
     this.unsubSettings = subscribeSettings(() => this.redraw());
     this.unsubTheme = subscribeTheme(() => this.redraw());
+    this.unsubXr = subscribeXr(() => this.redraw());
     this.redraw();
   }
 
@@ -429,6 +436,7 @@ export class XrWristMenu {
   dispose(): void {
     this.unsubSettings();
     this.unsubTheme();
+    this.unsubXr();
     if (this.attached) this.attached.remove(this.mesh);
     this.material.dispose();
     this.texture.dispose();
