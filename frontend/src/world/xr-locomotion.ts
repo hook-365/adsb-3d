@@ -144,14 +144,12 @@ export function setupXrLocomotion(opts: {
 
         if (!freefly || gripHeld) {
           // Scope: stick Y is scale. Free-fly: grip is the scale modifier.
-          // Zoom anchors on the selection (scope) or the headset
-          // (free-fly) so the thing you're looking at stays put.
-          if (Math.abs(y) > DEADZONE) {
-            const anchor = freefly
-              ? tmpScalePivot.setFromMatrixPosition(xrCam.matrixWorld)
-              : (getOrbitPivot?.() ?? null);
-            applyScale(y, dtS, anchor);
-          }
+          // Anchored on the selection (else the scope center) in BOTH
+          // modes — a headset anchor scales the world around your eyes,
+          // which reads as "changing 3D strength" instead of resizing
+          // the map (issue #6: scaling should apply to the rendered
+          // area, not the view).
+          if (Math.abs(y) > DEADZONE) applyScale(y, dtS, getOrbitPivot?.() ?? null);
         } else {
           // Free-fly translation. Forward follows the full gaze (fly
           // where you look); strafe is the horizontal right vector.
@@ -226,7 +224,6 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 const tmpPivot = new Vector3();
-const tmpScalePivot = new Vector3();
 const tmpFwd = new Vector3();
 const tmpRight = new Vector3();
 const tmpEye = new Vector3();
