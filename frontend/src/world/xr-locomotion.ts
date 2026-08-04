@@ -204,15 +204,15 @@ function moveUser(xrRoot: Group, dir: Vector3, meters: number): void {
   xrRoot.position.addScaledVector(dir, -meters);
 }
 
-/** Rotate xrRoot around a vertical axis through a world-space pivot.
- *  Points attached to the root rotate by +angle in the x→z sense. */
+/** Rigidly rotate the world (xrRoot) by +angle about the vertical axis
+ *  through a world-space pivot; the pivot's world position stays fixed. */
 function snapTurnWorld(xrRoot: Group, pivot: Vector3, angle: number): void {
   const px = xrRoot.position.x - pivot.x;
   const pz = xrRoot.position.z - pivot.z;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  xrRoot.position.x = pivot.x + px * cos - pz * sin;
-  xrRoot.position.z = pivot.z + px * sin + pz * cos;
+  xrRoot.position.x = pivot.x + px * cos + pz * sin;
+  xrRoot.position.z = pivot.z - px * sin + pz * cos;
   xrRoot.rotation.y += angle;
 }
 
@@ -231,7 +231,7 @@ export function faceWorldPoint(
   tmpToPoint.copy(worldPoint).sub(tmpEye);
   const gazeBearing = Math.atan2(-(e[10] ?? 0), -(e[8] ?? 0));
   const pointBearing = Math.atan2(tmpToPoint.z, tmpToPoint.x);
-  let angle = gazeBearing - pointBearing;
+  let angle = pointBearing - gazeBearing;
   while (angle > Math.PI) angle -= 2 * Math.PI;
   while (angle < -Math.PI) angle += 2 * Math.PI;
   snapTurnWorld(xrRoot, tmpEye, angle);
