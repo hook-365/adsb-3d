@@ -112,6 +112,7 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
   const tmpDir = new Vector3();
 
   const groups: Group[] = [];
+  const grips: Group[] = [];
 
   const handleSelectStart = (controller: Group): void => {
     // Give the UI layer first refusal — a press on the wrist menu must
@@ -138,9 +139,17 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
     const controller = renderer.xr.getController(i) as Group;
     controller.name = `xr-controller-${i}`;
 
+    // The cone marks the physical device, so it tracks gripSpace (the
+    // runtime's hand pose). The target ray originates offset from the
+    // grip on most controllers (Quest ~1-2 cm), which made a grip-parented
+    // cone sit visibly off the laser — issue #6's "selection cone is
+    // off-center" nitpick. Laser + raycast stay on targetRaySpace so aim
+    // is exactly what the runtime reports.
+    const grip = renderer.xr.getControllerGrip(i) as Group;
+    grip.name = `xr-controller-grip-${i}`;
     const cone = new Mesh(coneGeometry, coneMaterial);
     cone.name = 'xr-controller-cone';
-    controller.add(cone);
+    grip.add(cone);
 
     const laser = new Line(lineGeometry, lineMaterial);
     laser.name = 'xr-controller-laser';
@@ -163,7 +172,9 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
     });
 
     scene.add(controller);
+    scene.add(grip);
     groups.push(controller);
+    grips.push(grip);
   }
 
   const unsubscribeTheme = subscribeTheme((tokens) => {
@@ -175,7 +186,7 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
   return {
     dispose(): void {
       unsubscribeTheme();
-      for (const g of groups) {
+      for (const g of [...groups, ...grips]) {
         // removeEventListener: Three.js EventDispatcher needs the same
         // function reference. We didn't keep refs, so just remove the
         // group from the scene — the GC takes care of the listeners.
