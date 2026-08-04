@@ -881,6 +881,46 @@ body.stereo-on #status {
   display: none;
 }
 
+/* Exit-stereo buttons, one centered per eye half (25% / 75%), so both
+   eyes carry the same escape affordance — one-eyed chrome breaks the
+   fused image under crossed-eye or WayVR viewing (issue #6). */
+.stereo-exit {
+  display: none;
+  position: fixed;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 4px 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.stereo-exit:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+body.stereo-on .stereo-exit {
+  display: block;
+}
+/* During an immersive session the page is only a mirror view — no
+   pointer to click with, so these hide along with the rest of the chrome. */
+body.xr-on .stereo-exit {
+  display: none;
+}
+.stereo-exit-left {
+  left: 25%;
+}
+.stereo-exit-right {
+  left: 75%;
+}
+
 /* While an immersive WebXR session is presenting, the headset output is
    the show — the page only renders a mirror canvas. Hide every DOM
    overlay so that mirror reads as the unobstructed scene; the user

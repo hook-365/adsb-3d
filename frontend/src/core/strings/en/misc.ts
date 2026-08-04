@@ -21,6 +21,8 @@ export const miscStrings = {
   'misc.xr_on': 'on',
   'misc.xr_off': 'off',
   'misc.xr_hint': 'point + trigger',
+  // Side-by-side stereo exit button (main.ts), duplicated per eye half.
+  'misc.exit_stereo': 'Exit stereo',
   'misc.xr_movement': 'Movement',
   'misc.xr_move_scope': 'scope',
   'misc.xr_move_freefly': 'free-fly',

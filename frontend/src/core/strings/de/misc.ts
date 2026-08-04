@@ -19,6 +19,7 @@ export const miscStrings = {
   'misc.xr_on': 'an',
   'misc.xr_off': 'aus',
   'misc.xr_hint': 'Zeigen + Trigger',
+  'misc.exit_stereo': 'Stereo beenden',
   'misc.xr_movement': 'Bewegung',
   'misc.xr_move_scope': 'Scope',
   'misc.xr_move_freefly': 'Freiflug',

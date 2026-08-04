@@ -20,7 +20,7 @@ import { AircraftStore } from './aircraft/store';
 const SELECTION_BACKFILL_MS = 24 * 60 * 60 * 1000;
 import { AircraftReconciler } from './aircraft/reconciler';
 import { resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
-import { getSettings, subscribeSettings, type VrQuality } from './core/settings';
+import { getSettings, subscribeSettings, updateSettings, type VrQuality } from './core/settings';
 import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
@@ -97,6 +97,20 @@ function applyStereoMode(): void {
 }
 subscribeSettings(applyStereoMode);
 applyStereoMode();
+
+// Per-eye-half exit buttons (issue #6): stereo drops the footer and the
+// settings gear only appears in one eye, so each half needs its own way
+// back to mono — especially under WayVR / crossed-eye viewing where
+// hunting for one-eyed chrome breaks the fused image. Shown via the
+// body.stereo-on class, one centered in each half.
+for (const side of ['left', 'right'] as const) {
+  const exitBtn = document.createElement('button');
+  exitBtn.type = 'button';
+  exitBtn.className = `stereo-exit stereo-exit-${side}`;
+  exitBtn.textContent = t('misc.exit_stereo');
+  exitBtn.addEventListener('click', () => updateSettings({ stereo: false }));
+  document.body.appendChild(exitBtn);
+}
 
 // Theme bridge: Settings owns persistence, theme module owns application.
 // Apply once on boot to honor a stored preference, then re-apply on change.
@@ -634,19 +648,25 @@ function tick(frameTime: number): void {
   reconciler.updateLabelLOD();
   aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
 
-  // Update the XR billboard only while an immersive session is active.
-  // Outside of XR the CSS2D label + #panel-detail already cover the same
-  // information, and creating Canvas updates per frame would be wasted
-  // work. Skip when nothing is selected too.
-  if (world.renderer.xr.isPresenting && xrSelectedHex) {
+  // Update the XR billboard while an immersive session is active — and in
+  // side-by-side stereo, where it's the only per-aircraft text that renders
+  // correctly in both eyes (CSS2D labels are a single DOM overlay and get
+  // hidden; issue #6 asked for UI presence in both halves). In plain
+  // desktop view the CSS2D label + #panel-detail already cover the same
+  // information, so skip the per-frame canvas work there.
+  const stereoDesktop = !world.renderer.xr.isPresenting && getSettings().stereo;
+  if ((world.renderer.xr.isPresenting || stereoDesktop) && xrSelectedHex) {
     const a = store.snapshot.get(xrSelectedHex);
     const pos = reconciler.positionOf(xrSelectedHex);
     // The wrist menu's Labels row maps to aircraftLabels; in a headset the
     // billboard IS the label, so the toggle governs it (issue #6, VR#7 —
     // CSS2D labels are hidden in XR, making the toggle appear dead).
     xrBillboard.update(getSettings().aircraftLabels ? (a ?? null) : null, pos);
-    xrBillboard.keepReadable(world.renderer.xr.getCamera());
-  } else if (world.renderer.xr.isPresenting) {
+    // Angular-size floor measures from the eye actually in use.
+    xrBillboard.keepReadable(
+      world.renderer.xr.isPresenting ? world.renderer.xr.getCamera() : world.camera,
+    );
+  } else {
     xrBillboard.hide();
   }
 

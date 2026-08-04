@@ -20,6 +20,7 @@ export const miscStrings = {
   'misc.xr_on': 'sí',
   'misc.xr_off': 'no',
   'misc.xr_hint': 'apuntar + gatillo',
+  'misc.exit_stereo': 'Salir del estéreo',
   'misc.xr_movement': 'Movimiento',
   'misc.xr_move_scope': 'radar',
   'misc.xr_move_freefly': 'vuelo libre',
