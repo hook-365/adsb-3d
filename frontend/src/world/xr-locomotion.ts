@@ -30,9 +30,12 @@ import { getXrState } from '../core/xr';
 
 // ── Tunables (real-world units / radians / seconds) ────────────────────
 
-/** Min/max for vrScale. 0.001 fits the continental US on a desk;
- *  1.0 is "stand inside the radar volume at 1:1 metre-to-NM". */
-const SCALE_MIN = 0.001;
+/** Min/max for vrScale/arScale. 0.0002 shrinks the scope to roughly a
+ *  foot across — hardware feedback (issue #6) asked for room below the
+ *  AR default (0.001, which was also the old floor and therefore
+ *  unshrinkable). 1.0 is "stand inside the radar volume at 1:1
+ *  metre-to-NM". */
+const SCALE_MIN = 0.0002;
 const SCALE_MAX = 1.0;
 
 /** Thumbstick deadzone: ignore noise inside this radius. */
@@ -96,14 +99,29 @@ export function setupXrLocomotion(opts: {
   let aButtonWasPressed = false;
   let bButtonWasPressed = false;
 
-  function applyScale(stickY: number, dtS: number): void {
+  function applyScale(stickY: number, dtS: number, fixedPoint: Vector3 | null): void {
     // VR and AR keep independent scales (an AR diorama shares the room
     // with real furniture); the gesture writes whichever is active.
     const key = getXrState().presentingMode === 'ar' ? 'arScale' : 'vrScale';
     const cur = getSettings()[key];
     // Push UP (negative axis) → grow scale; exponential keeps it symmetric.
     const next = clamp(cur * Math.exp(-stickY * SCALE_RATE_PER_S * dtS), SCALE_MIN, SCALE_MAX);
-    if (next !== cur) updateSettings({ [key]: next });
+    if (next === cur) return;
+    // main.ts applies the new xrRoot.scale synchronously inside this call.
+    updateSettings({ [key]: next });
+    // Scaling xrRoot alone expands about the ROOT origin, which drags
+    // everything else across the room — "zoom while orbiting translates
+    // you and you lose your place" (issue #6). Compensate position so
+    // `fixedPoint` (selected aircraft, or the headset in free-fly) keeps
+    // its world position: w' = k·q + pos', want w' = w ⇒
+    // pos' = w − r·(w − pos), r = next/cur. Null = scope center (the
+    // root origin), where the correction is a no-op by construction.
+    if (fixedPoint) {
+      const r = next / cur;
+      xrRoot.position.x = fixedPoint.x - r * (fixedPoint.x - xrRoot.position.x);
+      xrRoot.position.y = fixedPoint.y - r * (fixedPoint.y - xrRoot.position.y);
+      xrRoot.position.z = fixedPoint.z - r * (fixedPoint.z - xrRoot.position.z);
+    }
   }
 
   function tick(_dtMs: number): void {
@@ -126,7 +144,14 @@ export function setupXrLocomotion(opts: {
 
         if (!freefly || gripHeld) {
           // Scope: stick Y is scale. Free-fly: grip is the scale modifier.
-          if (Math.abs(y) > DEADZONE) applyScale(y, dtS);
+          // Zoom anchors on the selection (scope) or the headset
+          // (free-fly) so the thing you're looking at stays put.
+          if (Math.abs(y) > DEADZONE) {
+            const anchor = freefly
+              ? tmpScalePivot.setFromMatrixPosition(xrCam.matrixWorld)
+              : (getOrbitPivot?.() ?? null);
+            applyScale(y, dtS, anchor);
+          }
         } else {
           // Free-fly translation. Forward follows the full gaze (fly
           // where you look); strafe is the horizontal right vector.
@@ -201,6 +226,7 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 const tmpPivot = new Vector3();
+const tmpScalePivot = new Vector3();
 const tmpFwd = new Vector3();
 const tmpRight = new Vector3();
 const tmpEye = new Vector3();
