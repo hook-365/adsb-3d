@@ -24,7 +24,8 @@ import { getSettings, subscribeSettings, updateSettings, type VrQuality } from '
 import { subscribeXr } from './core/xr';
 import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
-import { XrWristMenu } from './world/xr-wrist-menu';
+import { setWristMenuActions, XrWristMenu } from './world/xr-wrist-menu';
+import { XrArPlace } from './world/xr-ar-place';
 import { faceWorldPoint, setupXrLocomotion } from './world/xr-locomotion';
 import { distanceFromHomeNm } from './core/coords';
 import { getActiveFeed, getFeeds, getFeedMode } from './feed/feeds';
@@ -134,6 +135,22 @@ subscribeSettings((s) => {
 // them eagerly at boot is fine.
 const xrBillboard = new XrBillboard(world.xrRoot);
 const xrWristMenu = new XrWristMenu();
+// AR place mode (issue #6): armed from the wrist menu, a gaze reticle
+// tracks real surfaces via hit-test and the next trigger drops the
+// scope there. The menu row displays state it can't observe through
+// settings, hence the explicit refresh after toggling.
+const xrArPlace = new XrArPlace({
+  renderer: world.renderer,
+  scene: world.scene,
+  xrRoot: world.xrRoot,
+});
+setWristMenuActions({
+  toggleArPlace: () => {
+    xrArPlace.toggle();
+    xrWristMenu.refresh();
+  },
+  arPlaceActive: () => xrArPlace.isActive(),
+});
 const xrControllers = setupXrControllers({
   renderer: world.renderer,
   scene: world.scene,
@@ -149,8 +166,18 @@ const xrControllers = setupXrControllers({
   // let both controllers try — better to risk a stray menu hit than
   // to drop the very first press on a slow-reporting runtime.)
   onSelectIntercept: (controller) => {
-    if (xrControllers.getControllerByHandedness('left') === controller) return false;
-    return xrWristMenu.trySelect(controller);
+    // Menu first — while place mode is armed, its own wrist-menu row must
+    // stay reachable so the user can disarm without placing.
+    if (xrControllers.getControllerByHandedness('left') !== controller) {
+      if (xrWristMenu.trySelect(controller)) return true;
+    }
+    // Place mode swallows every other trigger: places when the reticle
+    // has a surface, otherwise just guards against a stray deselect.
+    if (xrArPlace.handleSelect()) {
+      xrWristMenu.refresh();
+      return true;
+    }
+    return false;
   },
   // Attach the menu to whichever physical controller turns out to be
   // the left hand. If handedness is 'none' (some 3DOF controllers
@@ -209,6 +236,8 @@ subscribeXr((s) => {
     // menu Mesh holds a stale parent ref. Detach explicitly so the
     // next 'connected' / onHandednessKnown re-attaches cleanly.
     xrWristMenu.detach();
+    // A hit-test source doesn't survive its session; disarm place mode.
+    xrArPlace.stop();
   }
 });
 
@@ -604,7 +633,10 @@ let lastFrame = performance.now();
 let frames = 0;
 let fpsAccumMs = 0;
 
-function tick(frameTime: number): void {
+// three's setAnimationLoop passes the XRFrame as the second argument
+// while a session is presenting — the hit-test API (AR place mode) only
+// exists on the frame object.
+function tick(frameTime: number, xrFrame?: XRFrame): void {
   const dt = frameTime - lastFrame;
   lastFrame = frameTime;
   frames++;
@@ -678,6 +710,8 @@ function tick(frameTime: number): void {
     xrWristMenu.updateHover(right);
     // Thumbstick + button input (scale / snap-turn / recenter).
     xrLocomotion.tick(dt);
+    // AR place-mode reticle follows the gaze hit point.
+    if (xrFrame) xrArPlace.tick(xrFrame);
   }
 
   if (world.renderer.xr.isPresenting) {

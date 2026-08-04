@@ -22,6 +22,7 @@ export const miscStrings = {
   'misc.xr_off': 'off',
   'misc.xr_hint': 'point + trigger',
   'misc.xr_page': 'Page',
+  'misc.xr_place': 'Place scope',
   'misc.xr_ground_icons': 'Ground icons',
   'misc.xr_acars': 'ACARS',
   'misc.xr_label_density': 'Label density',

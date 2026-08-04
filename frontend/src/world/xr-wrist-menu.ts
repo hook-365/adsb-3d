@@ -48,6 +48,7 @@ import {
 // Aliased: `t` is the conventional local name for theme tokens in the draw
 // code below.
 import { t as tr } from '../core/i18n';
+import { getXrState } from '../core/xr';
 
 // Plane dimensions in real metres. Sized to feel like a credit card on
 // the inside of the wrist — readable at arm's length but not absurdly
@@ -68,11 +69,32 @@ const HEADER_PX = 28;
 const ROW_HEIGHT_PX = (CANVAS_H - HEADER_PX) / ROW_COUNT;
 
 interface MenuRow {
-  /** The Settings key this row drives (doubles as the parity-test id). */
-  id: keyof Settings;
+  /**
+   * The Settings key this row drives (doubles as the parity-test id).
+   * `__`-prefixed ids are action rows, not settings — the parity test
+   * skips them.
+   */
+  id: keyof Settings | `__${string}`;
   label: () => string;
   value: () => string;
   activate: () => void;
+  /** Omitted = always shown. Action rows use this to gate by session mode. */
+  visible?: () => boolean;
+}
+
+/**
+ * Actions main.ts wires in (they need the renderer / scene, which this
+ * module deliberately doesn't import). Rows referencing an action hide
+ * themselves until it's wired.
+ */
+export interface WristMenuActions {
+  /** Arm/disarm AR place mode (world/xr-ar-place.ts). */
+  toggleArPlace: () => void;
+  arPlaceActive: () => boolean;
+}
+let menuActions: WristMenuActions | null = null;
+export function setWristMenuActions(a: WristMenuActions): void {
+  menuActions = a;
 }
 
 // ── row factories ─────────────────────────────────────────────────────
@@ -211,6 +233,15 @@ const PAGES: MenuRow[][] = [
       (v) => (v === 0 ? tr('misc.xr_density_all') : String(v)),
     ),
     toggleRow('acarsMessages', () => tr('misc.xr_acars')),
+    {
+      // AR-only action row: arm hit-test placement, then any trigger
+      // drops the scope on the reticle (issue #6 "place it on a table").
+      id: '__arPlace',
+      label: () => tr('misc.xr_place'),
+      value: () => (menuActions?.arPlaceActive() ? tr('misc.xr_hint') : tr('misc.xr_off')),
+      activate: () => menuActions?.toggleArPlace(),
+      visible: () => menuActions !== null && getXrState().presentingMode === 'ar',
+    },
   ],
   [
     cycleRow('altitudeUnit', () => tr('misc.xr_alt_unit'), [
@@ -229,8 +260,10 @@ const PAGES: MenuRow[][] = [
   ],
 ];
 
-/** Settings keys the wrist menu drives — one entry per PAGES row. */
-export const WRIST_MENU_KEYS: readonly (keyof Settings)[] = PAGES.flat().map((r) => r.id);
+/** Settings keys the wrist menu drives — action rows (`__` ids) excluded. */
+export const WRIST_MENU_KEYS: readonly (keyof Settings)[] = PAGES.flat()
+  .map((r) => r.id)
+  .filter((id): id is keyof Settings => !id.startsWith('__'));
 
 /**
  * Settings keys the wrist menu deliberately omits, with the reason.
@@ -404,8 +437,16 @@ export class XrWristMenu {
 
   // ── internals ──────────────────────────────────────────────────────
 
+  /**
+   * Force a redraw. Needed after external state a row displays changes
+   * without a settings/theme event — e.g. toggling AR place mode.
+   */
+  refresh(): void {
+    this.redraw();
+  }
+
   private contentRows(): MenuRow[] {
-    return PAGES[this.page] ?? [];
+    return (PAGES[this.page] ?? []).filter((r) => r.visible?.() ?? true);
   }
 
   /**

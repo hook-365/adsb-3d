@@ -21,6 +21,7 @@ export const miscStrings = {
   'misc.xr_off': 'no',
   'misc.xr_hint': 'apuntar + gatillo',
   'misc.xr_page': 'Página',
+  'misc.xr_place': 'Colocar radar',
   'misc.xr_ground_icons': 'Iconos de suelo',
   'misc.xr_acars': 'ACARS',
   'misc.xr_label_density': 'Densidad de etiquetas',

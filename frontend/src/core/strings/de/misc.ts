@@ -20,6 +20,7 @@ export const miscStrings = {
   'misc.xr_off': 'aus',
   'misc.xr_hint': 'Zeigen + Trigger',
   'misc.xr_page': 'Seite',
+  'misc.xr_place': 'Scope platzieren',
   'misc.xr_ground_icons': 'Bodensymbole',
   'misc.xr_acars': 'ACARS',
   'misc.xr_label_density': 'Label-Dichte',

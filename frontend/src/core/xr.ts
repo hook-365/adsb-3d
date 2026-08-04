@@ -250,10 +250,16 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
   // outright (a silent dead end on headsets we can't test). As optional,
   // the session still starts and three.js falls back to a 'local' space.
   const sessionMode = mode === 'vr' ? 'immersive-vr' : 'immersive-ar';
+  // AR additionally asks for hit-test (optional, same reasoning as
+  // local-floor) so place mode (world/xr-ar-place.ts) can put the scope
+  // on a real surface. Runtimes that won't grant it still start the
+  // session; place mode degrades to a no-op.
+  const optionalFeatures =
+    mode === 'ar' ? ['local-floor', 'hit-test'] : ['local-floor'];
   try {
-    xrLog(`requestSession(${sessionMode}) with optionalFeatures: ['local-floor']`);
+    xrLog(`requestSession(${sessionMode}) with optionalFeatures:`, optionalFeatures);
     const session = await xr.requestSession(sessionMode, {
-      optionalFeatures: ['local-floor'],
+      optionalFeatures,
     });
     xrLog('requestSession resolved — session granted', {
       // Logs which features the runtime actually granted, so a missing
