@@ -1,4 +1,11 @@
-import { getSettings, getDefaultSettings, updateSettings, type Settings } from '../core/settings';
+import {
+  BASEMAP_VALUES,
+  getSettings,
+  getDefaultSettings,
+  updateSettings,
+  type Basemap,
+  type Settings,
+} from '../core/settings';
 import { t } from '../core/i18n';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
@@ -58,6 +65,23 @@ interface ButtonRow {
   ) => () => void;
 }
 type SettingsRow = ToggleRow | ChoiceRow | RangeRow | ButtonRow;
+
+// Full display labels per basemap. Record<Basemap, …> so extending
+// BASEMAP_VALUES without labelling the new entry here fails to compile
+// (the wrist menu keeps its own terse map the same way).
+const BASEMAP_LABELS: Record<Basemap, string> = {
+  dark: t('settings.basemap_carto_dark'),
+  carto_voyager: t('settings.basemap_carto_voyager'),
+  osm: t('settings.basemap_osm'),
+  topo: t('settings.basemap_topo'),
+  hillshade: t('settings.basemap_hillshade'),
+  satellite: t('settings.basemap_satellite'),
+  sectional: t('settings.basemap_sectional'),
+  sectional_hybrid: t('settings.basemap_sectional_hybrid'),
+  helicopter: t('settings.basemap_helicopter'),
+  ifr_low: t('settings.basemap_ifr_low'),
+  ifr_high: t('settings.basemap_ifr_high'),
+};
 
 interface SettingsSection {
   heading: string;
@@ -139,21 +163,10 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'basemap',
         label: t('settings.basemap'),
         description: t('settings.basemap_desc'),
-        options: [
-          { value: 'dark', label: t('settings.basemap_carto_dark') },
-          { value: 'carto_voyager', label: t('settings.basemap_carto_voyager') },
-          { value: 'osm', label: t('settings.basemap_osm') },
-          { value: 'topo', label: t('settings.basemap_topo') },
-          { value: 'hillshade', label: t('settings.basemap_hillshade') },
-          { value: 'satellite', label: t('settings.basemap_satellite') },
-          // US-only aeronautical charts (FAA, via vfrmap.com). Coverage
-          // outside CONUS/AK/HI will be blank.
-          { value: 'sectional', label: t('settings.basemap_sectional') },
-          { value: 'sectional_hybrid', label: t('settings.basemap_sectional_hybrid') },
-          { value: 'helicopter', label: t('settings.basemap_helicopter') },
-          { value: 'ifr_low', label: t('settings.basemap_ifr_low') },
-          { value: 'ifr_high', label: t('settings.basemap_ifr_high') },
-        ],
+        // Canonical order from BASEMAP_VALUES. The FAA charts at the tail
+        // (sectional onward) are US-only; coverage outside CONUS/AK/HI is
+        // blank.
+        options: BASEMAP_VALUES.map((v) => ({ value: v, label: BASEMAP_LABELS[v] })),
       },
       {
         kind: 'toggle',

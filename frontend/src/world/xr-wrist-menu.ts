@@ -4,10 +4,18 @@
 // without leaving the headset.
 //
 // The right controller's laser hovers and the trigger activates rows.
-// Each row is either a cycler (theme, basemap) or a toggle (range
-// rings, labels, altitude lines). The menu redraws on hover state
-// change and on every settings/theme change so it always shows the
-// current value.
+// Rows are generated from the declarative PAGES spec below — each is a
+// toggle (flip a boolean setting), a cycler (step through a choice
+// setting's options), or a stepper (quantized range setting). The last
+// slot on every page is a pager that advances to the next page.
+//
+// Settings parity (issue #6): every key in core/settings.ts must appear
+// in PAGES or carry a reason in WRIST_MENU_EXCLUDED — the drift-guard
+// test (tests-unit/xr-wrist-menu.test.ts) fails otherwise, so a new
+// setting can't silently miss the in-headset UI.
+//
+// The menu redraws on hover state change and on every settings/theme
+// change so it always shows the current value.
 //
 // Lives in *real metres* (outside xrRoot scaling) because it's anchored
 // to the controller, which itself tracks the headset's room frame.
@@ -24,6 +32,7 @@ import {
   Vector3,
 } from 'three';
 import {
+  BASEMAP_VALUES,
   getSettings,
   subscribeSettings,
   updateSettings,
@@ -50,103 +59,196 @@ const MENU_H_M = 0.15;
 const CANVAS_W = 512;
 const CANVAS_H = 384;
 
-// Derived from ROWS.length below via a getter-style constant — keep in
-// sync when adding rows so row heights shrink to fit the fixed canvas.
+// Fixed layout: 6 content slots + the pager in the bottom slot. Pages
+// must not exceed CONTENT_SLOTS rows (asserted by the drift-guard test).
 const ROW_COUNT = 7;
+const CONTENT_SLOTS = ROW_COUNT - 1;
+const PAGER_SLOT = ROW_COUNT - 1;
 const HEADER_PX = 28;
 const ROW_HEIGHT_PX = (CANVAS_H - HEADER_PX) / ROW_COUNT;
 
-const BASEMAP_OPTIONS: ReadonlyArray<{ value: Basemap; label: string }> = [
-  { value: 'dark', label: tr('misc.xr_basemap_dark') },
-  { value: 'carto_voyager', label: tr('misc.xr_basemap_voyager') },
-  { value: 'hillshade', label: tr('misc.xr_basemap_hillshade') },
-  { value: 'topo', label: tr('misc.xr_basemap_topo') },
-  { value: 'satellite', label: tr('misc.xr_basemap_satellite') },
-  { value: 'osm', label: tr('misc.xr_basemap_osm') },
-  { value: 'sectional', label: tr('misc.xr_basemap_sectional') },
-  { value: 'sectional_hybrid', label: tr('misc.xr_basemap_sectional_hybrid') },
-  { value: 'helicopter', label: tr('misc.xr_basemap_helicopter') },
-  { value: 'ifr_low', label: tr('misc.xr_basemap_ifr_low') },
-  { value: 'ifr_high', label: tr('misc.xr_basemap_ifr_high') },
-];
-
 interface MenuRow {
-  id: string;
+  /** The Settings key this row drives (doubles as the parity-test id). */
+  id: keyof Settings;
   label: () => string;
   value: () => string;
   activate: () => void;
 }
 
-const ROWS: MenuRow[] = [
-  {
-    id: 'theme',
-    label: () => tr('misc.xr_theme'),
+// ── row factories ─────────────────────────────────────────────────────
+// All labels are lazy thunks: the module must stay import-safe in the
+// node test environment, and tr() at module scope would also freeze the
+// locale before boot resolves it.
+
+type BooleanSettingKey = {
+  [K in keyof Settings]: Settings[K] extends boolean ? K : never;
+}[keyof Settings];
+
+function toggleRow(key: BooleanSettingKey, label: () => string): MenuRow {
+  return {
+    id: key,
+    label,
+    value: () => (getSettings()[key] ? tr('misc.xr_on') : tr('misc.xr_off')),
+    activate: () => updateSettings({ [key]: !getSettings()[key] } as Partial<Settings>),
+  };
+}
+
+function cycleRow<K extends keyof Settings>(
+  key: K,
+  label: () => string,
+  options: ReadonlyArray<{ value: Settings[K]; label: () => string }>,
+): MenuRow {
+  return {
+    id: key,
+    label,
     value: () => {
-      const sel = getTheme().selection;
-      const opt = THEME_OPTIONS.find((o) => o.value === sel);
-      return opt ? opt.label : String(sel);
+      const cur = getSettings()[key];
+      const opt = options.find((o) => o.value === cur);
+      return opt ? opt.label() : String(cur);
     },
     activate: () => {
-      const sel = getTheme().selection;
-      const idx = THEME_OPTIONS.findIndex((o) => o.value === sel);
-      const next = THEME_OPTIONS[(idx + 1) % THEME_OPTIONS.length];
-      if (!next) return;
-      setTheme(next.value);
-      // Persist through Settings (theme module doesn't own storage).
-      updateSettings({ theme: next.value });
+      const cur = getSettings()[key];
+      const idx = options.findIndex((o) => o.value === cur);
+      const next = options[(idx + 1) % options.length];
+      if (next) updateSettings({ [key]: next.value } as Partial<Settings>);
     },
-  },
-  {
-    id: 'basemap',
-    label: () => tr('misc.xr_basemap'),
-    value: () => {
-      const cur = getSettings().basemap;
-      const opt = BASEMAP_OPTIONS.find((o) => o.value === cur);
-      return opt ? opt.label : cur;
-    },
+  };
+}
+
+/** Quantized range: each press jumps to the next step above the current
+ *  value, wrapping to the first — a slider is unusable on a laser menu. */
+function stepRow(
+  key: 'labelDensity',
+  label: () => string,
+  steps: readonly number[],
+  format: (v: number) => string,
+): MenuRow {
+  return {
+    id: key,
+    label,
+    value: () => format(getSettings()[key]),
     activate: () => {
-      const cur = getSettings().basemap;
-      const idx = BASEMAP_OPTIONS.findIndex((o) => o.value === cur);
-      const next = BASEMAP_OPTIONS[(idx + 1) % BASEMAP_OPTIONS.length];
-      if (!next) return;
-      updateSettings({ basemap: next.value });
+      const cur = getSettings()[key];
+      const next = steps.find((s) => s > cur) ?? steps[0] ?? 0;
+      updateSettings({ [key]: next });
     },
+  };
+}
+
+// Terse per-value labels. Record<Basemap, …> so adding a basemap without
+// a wrist label is a compile error, mirroring the settings panel's map.
+const XR_BASEMAP_LABELS: Record<Basemap, () => string> = {
+  dark: () => tr('misc.xr_basemap_dark'),
+  carto_voyager: () => tr('misc.xr_basemap_voyager'),
+  osm: () => tr('misc.xr_basemap_osm'),
+  topo: () => tr('misc.xr_basemap_topo'),
+  hillshade: () => tr('misc.xr_basemap_hillshade'),
+  satellite: () => tr('misc.xr_basemap_satellite'),
+  sectional: () => tr('misc.xr_basemap_sectional'),
+  sectional_hybrid: () => tr('misc.xr_basemap_sectional_hybrid'),
+  helicopter: () => tr('misc.xr_basemap_helicopter'),
+  ifr_low: () => tr('misc.xr_basemap_ifr_low'),
+  ifr_high: () => tr('misc.xr_basemap_ifr_high'),
+};
+
+// Theme needs custom activation (setTheme applies, Settings persists),
+// so it can't come out of cycleRow.
+const themeRow: MenuRow = {
+  id: 'theme',
+  label: () => tr('misc.xr_theme'),
+  value: () => {
+    const sel = getTheme().selection;
+    const opt = THEME_OPTIONS.find((o) => o.value === sel);
+    return opt ? opt.label : String(sel);
   },
-  {
-    id: 'rangeRings',
-    label: () => tr('misc.xr_range_rings'),
-    value: () => (getSettings().rangeRings ? tr('misc.xr_on') : tr('misc.xr_off')),
-    activate: () => updateSettings({ rangeRings: !getSettings().rangeRings }),
+  activate: () => {
+    const sel = getTheme().selection;
+    const idx = THEME_OPTIONS.findIndex((o) => o.value === sel);
+    const next = THEME_OPTIONS[(idx + 1) % THEME_OPTIONS.length];
+    if (!next) return;
+    setTheme(next.value);
+    // Persist through Settings (theme module doesn't own storage).
+    updateSettings({ theme: next.value });
   },
-  {
-    id: 'aircraftLabels',
-    label: () => tr('misc.xr_labels'),
-    value: () => (getSettings().aircraftLabels ? tr('misc.xr_on') : tr('misc.xr_off')),
-    activate: () => updateSettings({ aircraftLabels: !getSettings().aircraftLabels }),
-  },
-  {
-    id: 'altitudeLines',
-    label: () => tr('misc.xr_alt_lines'),
-    value: () => (getSettings().altitudeLines ? tr('misc.xr_on') : tr('misc.xr_off')),
-    activate: () => updateSettings({ altitudeLines: !getSettings().altitudeLines }),
-  },
-  {
-    id: 'xrMoveMode',
-    label: () => tr('misc.xr_movement'),
-    value: () =>
-      getSettings().xrMoveMode === 'scope' ? tr('misc.xr_move_scope') : tr('misc.xr_move_freefly'),
-    activate: () =>
-      updateSettings({ xrMoveMode: getSettings().xrMoveMode === 'scope' ? 'freefly' : 'scope' }),
-  },
-  {
-    id: 'xrTurnStyle',
-    label: () => tr('misc.xr_turning'),
-    value: () =>
-      getSettings().xrTurnStyle === 'snap' ? tr('misc.xr_turn_snap') : tr('misc.xr_turn_smooth'),
-    activate: () =>
-      updateSettings({ xrTurnStyle: getSettings().xrTurnStyle === 'snap' ? 'smooth' : 'snap' }),
-  },
+};
+
+// ── pages ─────────────────────────────────────────────────────────────
+// Grouped deliberately: what you see / how VR behaves / units. Unit
+// values are aviation abbreviations and deliberately untranslated.
+
+const PAGES: MenuRow[][] = [
+  [
+    themeRow,
+    cycleRow(
+      'basemap',
+      () => tr('misc.xr_basemap'),
+      BASEMAP_VALUES.map((v) => ({ value: v, label: XR_BASEMAP_LABELS[v] })),
+    ),
+    toggleRow('rangeRings', () => tr('misc.xr_range_rings')),
+    toggleRow('aircraftLabels', () => tr('misc.xr_labels')),
+    toggleRow('altitudeLines', () => tr('misc.xr_alt_lines')),
+    toggleRow('groundSprites', () => tr('misc.xr_ground_icons')),
+  ],
+  [
+    cycleRow('xrMoveMode', () => tr('misc.xr_movement'), [
+      { value: 'scope', label: () => tr('misc.xr_move_scope') },
+      { value: 'freefly', label: () => tr('misc.xr_move_freefly') },
+    ]),
+    cycleRow('xrTurnStyle', () => tr('misc.xr_turning'), [
+      { value: 'snap', label: () => tr('misc.xr_turn_snap') },
+      { value: 'smooth', label: () => tr('misc.xr_turn_smooth') },
+    ]),
+    cycleRow('vrQuality', () => tr('misc.xr_quality'), [
+      { value: 'low', label: () => tr('misc.xr_q_low') },
+      { value: 'balanced', label: () => tr('misc.xr_q_balanced') },
+      { value: 'high', label: () => tr('misc.xr_q_high') },
+      { value: 'ultra', label: () => tr('misc.xr_q_ultra') },
+    ]),
+    stepRow(
+      'labelDensity',
+      () => tr('misc.xr_label_density'),
+      [0, 25, 50, 75, 100],
+      (v) => (v === 0 ? tr('misc.xr_density_all') : String(v)),
+    ),
+    toggleRow('acarsMessages', () => tr('misc.xr_acars')),
+  ],
+  [
+    cycleRow('altitudeUnit', () => tr('misc.xr_alt_unit'), [
+      { value: 'ft', label: () => 'ft' },
+      { value: 'm', label: () => 'm' },
+    ]),
+    cycleRow('speedUnit', () => tr('misc.xr_speed_unit'), [
+      { value: 'kt', label: () => 'kt' },
+      { value: 'mph', label: () => 'mph' },
+      { value: 'kmh', label: () => 'km/h' },
+    ]),
+    cycleRow('distanceUnit', () => tr('misc.xr_dist_unit'), [
+      { value: 'nm', label: () => 'NM' },
+      { value: 'km', label: () => 'km' },
+    ]),
+  ],
 ];
+
+/** Settings keys the wrist menu drives — one entry per PAGES row. */
+export const WRIST_MENU_KEYS: readonly (keyof Settings)[] = PAGES.flat().map((r) => r.id);
+
+/**
+ * Settings keys the wrist menu deliberately omits, with the reason.
+ * The parity drift-guard test requires every Settings key to be in
+ * WRIST_MENU_KEYS or here — add a reason, don't just drop a key.
+ */
+export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string>>> = {
+  language: 'changing it reloads the page, which would kill the XR session',
+  stereo: 'desktop side-by-side mode — meaningless inside a headset',
+  stereoStrength: 'desktop side-by-side mode — meaningless inside a headset',
+  vrScale: 'live-driven by the left thumbstick; a menu row would fight it',
+  terrain3d: 'changing it reloads the page, which would kill the XR session',
+  altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
+};
+
+/** Exported for the drift-guard test: no page may overflow its slots. */
+export const WRIST_MENU_PAGE_SIZES: readonly number[] = PAGES.map((p) => p.length);
+export const WRIST_MENU_MAX_PAGE_SIZE = CONTENT_SLOTS;
 
 export class XrWristMenu {
   /** Mesh used both for rendering and as the raycast pick root. */
@@ -160,7 +262,9 @@ export class XrWristMenu {
   private readonly tmpDir = new Vector3();
   private readonly unsubSettings: () => void;
   private readonly unsubTheme: () => void;
-  private hoveredRow: number | null = null;
+  /** Hover position as a layout slot (0..ROW_COUNT-1), not a row index. */
+  private hoveredSlot: number | null = null;
+  private page = 0;
   private attached: Object3D | null = null;
 
   constructor() {
@@ -237,7 +341,7 @@ export class XrWristMenu {
       this.attached = null;
     }
     this.mesh.visible = false;
-    this.hoveredRow = null;
+    this.hoveredSlot = null;
   }
 
   /**
@@ -247,7 +351,7 @@ export class XrWristMenu {
    */
   updateHover(pointer: Object3D | null): void {
     if (!pointer || !this.mesh.visible) {
-      this.setHoveredRow(null);
+      this.setHoveredSlot(null);
       return;
     }
     this.tmpOrigin.setFromMatrixPosition(pointer.matrixWorld);
@@ -256,10 +360,10 @@ export class XrWristMenu {
     const hits = this.raycaster.intersectObject(this.mesh, false);
     const first = hits[0];
     if (!first || !first.uv) {
-      this.setHoveredRow(null);
+      this.setHoveredSlot(null);
       return;
     }
-    this.setHoveredRow(this.rowFromUV(first.uv.y));
+    this.setHoveredSlot(this.slotFromUV(first.uv.y));
   }
 
   /**
@@ -275,9 +379,14 @@ export class XrWristMenu {
     const hits = this.raycaster.intersectObject(this.mesh, false);
     const first = hits[0];
     if (!first || !first.uv) return false;
-    const rowIdx = this.rowFromUV(first.uv.y);
-    if (rowIdx === null) return false;
-    const row = ROWS[rowIdx];
+    const slot = this.slotFromUV(first.uv.y);
+    if (slot === null) return false;
+    if (slot === PAGER_SLOT) {
+      this.page = (this.page + 1) % PAGES.length;
+      this.redraw();
+      return true;
+    }
+    const row = this.contentRows()[slot];
     if (!row) return false;
     row.activate();
     // Activate triggers a settings/theme change → subscriber redraws.
@@ -295,21 +404,28 @@ export class XrWristMenu {
 
   // ── internals ──────────────────────────────────────────────────────
 
-  /**
-   * uv.y is 0 at the bottom of the plane and 1 at the top. The header
-   * occupies the top HEADER_PX strip; rows fill the rest top-to-bottom.
-   */
-  private rowFromUV(uvY: number): number | null {
-    const pxFromTop = (1 - uvY) * CANVAS_H;
-    if (pxFromTop < HEADER_PX) return null;
-    const row = Math.floor((pxFromTop - HEADER_PX) / ROW_HEIGHT_PX);
-    if (row < 0 || row >= ROWS.length) return null;
-    return row;
+  private contentRows(): MenuRow[] {
+    return PAGES[this.page] ?? [];
   }
 
-  private setHoveredRow(row: number | null): void {
-    if (row === this.hoveredRow) return;
-    this.hoveredRow = row;
+  /**
+   * uv.y is 0 at the bottom of the plane and 1 at the top. The header
+   * occupies the top HEADER_PX strip; content rows fill slots from the
+   * top and the pager is pinned to the bottom slot on every page (so
+   * "next page" never moves under the laser between pages).
+   */
+  private slotFromUV(uvY: number): number | null {
+    const pxFromTop = (1 - uvY) * CANVAS_H;
+    if (pxFromTop < HEADER_PX) return null;
+    const slot = Math.floor((pxFromTop - HEADER_PX) / ROW_HEIGHT_PX);
+    if (slot < 0 || slot >= ROW_COUNT) return null;
+    if (slot === PAGER_SLOT) return slot;
+    return slot < this.contentRows().length ? slot : null;
+  }
+
+  private setHoveredSlot(slot: number | null): void {
+    if (slot === this.hoveredSlot) return;
+    this.hoveredSlot = slot;
     this.redraw();
   }
 
@@ -346,13 +462,14 @@ export class XrWristMenu {
     ctx.lineTo(CANVAS_W - 16, HEADER_PX);
     ctx.stroke();
 
-    // Rows
-    ctx.textAlign = 'left';
-    for (let i = 0; i < ROWS.length; i++) {
-      const row = ROWS[i];
-      if (!row) continue;
-      const y = HEADER_PX + i * ROW_HEIGHT_PX;
-      const hovered = i === this.hoveredRow;
+    // Content rows + the pager pinned to the bottom slot.
+    const rows = this.contentRows();
+    for (let slot = 0; slot < ROW_COUNT; slot++) {
+      const isPager = slot === PAGER_SLOT;
+      const row = isPager ? null : rows[slot];
+      if (!isPager && !row) continue;
+      const y = HEADER_PX + slot * ROW_HEIGHT_PX;
+      const hovered = slot === this.hoveredSlot;
 
       if (hovered) {
         ctx.fillStyle = withAlpha(t.accent, 0.22);
@@ -360,18 +477,21 @@ export class XrWristMenu {
         ctx.fill();
       }
 
+      const label = isPager ? tr('misc.xr_page') : row!.label();
+      const value = isPager ? `${this.page + 1}/${PAGES.length} ▸` : row!.value();
+
       // Label (left side)
-      ctx.fillStyle = hovered ? t.accent : t.fg;
+      ctx.fillStyle = hovered ? t.accent : isPager ? t.fgSoft : t.fg;
       ctx.font = '22px ui-sans-serif, system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      ctx.fillText(row.label(), 24, y + ROW_HEIGHT_PX / 2);
+      ctx.fillText(label, 24, y + ROW_HEIGHT_PX / 2);
 
       // Value (right side)
       ctx.fillStyle = hovered ? t.accent : t.fgSoft;
       ctx.font = '20px ui-monospace, "JetBrains Mono", Menlo, monospace';
       ctx.textAlign = 'right';
-      ctx.fillText(row.value(), CANVAS_W - 24, y + ROW_HEIGHT_PX / 2);
+      ctx.fillText(value, CANVAS_W - 24, y + ROW_HEIGHT_PX / 2);
     }
 
     this.texture.needsUpdate = true;

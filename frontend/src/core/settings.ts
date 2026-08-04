@@ -35,19 +35,28 @@ export type XrTurnStyle = 'snap' | 'smooth';
  * import-cycle-free; i18n.ts consumes settings, never the reverse.
  */
 export type LanguageSelection = 'auto' | 'en' | 'de' | 'es';
-export type Basemap =
-  | 'dark'
-  | 'carto_voyager'
-  | 'hillshade'
-  | 'topo'
-  | 'satellite'
-  | 'osm'
+/**
+ * Canonical basemap list, in display order. The settings panel dropdown
+ * and the VR wrist-menu cycler both render from this array (each with
+ * its own Record<Basemap, label> map, so a new entry is a compile error
+ * until both UIs label it) — previously the two hardcoded diverging
+ * copies.
+ */
+export const BASEMAP_VALUES = [
+  'dark',
+  'carto_voyager',
+  'osm',
+  'topo',
+  'hillshade',
+  'satellite',
   // US-only aeronautical charts (FAA, served via VFRMap).
-  | 'sectional'
-  | 'sectional_hybrid'
-  | 'helicopter'
-  | 'ifr_low'
-  | 'ifr_high';
+  'sectional',
+  'sectional_hybrid',
+  'helicopter',
+  'ifr_low',
+  'ifr_high',
+] as const;
+export type Basemap = (typeof BASEMAP_VALUES)[number];
 
 export interface Settings {
   /** Render the per-aircraft tar1090 ground icon at the foot of the altitude line. */
