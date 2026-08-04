@@ -22,6 +22,12 @@ interface ChoiceRow {
   label: string;
   description?: string;
   options: { value: string; label: string }[];
+  /**
+   * Optional, mirrors ButtonRow.subscribe: lets the description react to
+   * external state (e.g. VR quality showing the measured resolution of
+   * the last headset session).
+   */
+  subscribe?: (update: (s: { description?: string }) => void) => () => void;
 }
 interface RangeRow {
   kind: 'range';
@@ -257,6 +263,20 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           { value: 'high', label: t('settings.vr_quality_high') },
           { value: 'ultra', label: t('settings.vr_quality_ultra') },
         ],
+        // Append the measured per-eye resolution once a session has run —
+        // the runtime may clamp the scale we ask for, so this is the only
+        // way to see whether a higher preset actually changes anything.
+        subscribe: (update) =>
+          subscribeXr((s) => {
+            update({
+              description: s.layerResolution
+                ? `${t('settings.vr_quality_desc')} ${t('settings.vr_quality_measured', {
+                    w: s.layerResolution.perEyeWidth,
+                    h: s.layerResolution.height,
+                  })}`
+                : t('settings.vr_quality_desc'),
+            });
+          }),
       },
       {
         kind: 'choice',
@@ -426,6 +446,12 @@ export function mountSettingsPanel(): void {
           updateSettings({ [row.key]: select.value } as Partial<Settings>);
         });
         rowEl.appendChild(select);
+        if (row.subscribe) {
+          const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
+          row.subscribe((s) => {
+            if (s.description !== undefined && descEl) descEl.textContent = s.description;
+          });
+        }
       } else if (row.kind === 'button') {
         // Action row — a button on the right, sized like the other inputs.
         // Initial state from the row config; subscribe() (if provided) can

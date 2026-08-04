@@ -43,6 +43,15 @@ export interface XrState {
    * leaves a visible, actionable trail instead of vanishing.
    */
   lastError: string | null;
+  /**
+   * Measured per-eye render resolution of the most recent XR session, or
+   * null before the first one. The runtime is allowed to clamp the
+   * framebuffer scale we request (issue #6 — "could my headset go
+   * higher?"), so the only honest answer is what the layer actually
+   * allocated. Kept after session end: the settings panel shows it as
+   * "last session rendered …".
+   */
+  layerResolution: { perEyeWidth: number; height: number } | null;
 }
 
 type XrListener = (state: XrState) => void;
@@ -82,6 +91,7 @@ let state: XrState = {
   presentingMode: null,
   unavailableReason: 'Checking WebXR support…',
   lastError: null,
+  layerResolution: null,
 };
 const listeners = new Set<XrListener>();
 let currentSession: XRSession | null = null;
@@ -262,6 +272,7 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
     await renderer.xr.setSession(session);
     xrLog(`setSession resolved — ${mode.toUpperCase()} session is live`);
     setState({ presenting: true, presentingMode: mode, lastError: null });
+    measureLayerResolution(session);
   } catch (err) {
     // Surface the failure instead of letting it vanish — the settings
     // panel renders lastError so the actual runtime message is visible
@@ -271,6 +282,70 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
     setState({ lastError: `Could not start ${mode.toUpperCase()} session — ${message}` });
     throw err;
   }
+}
+
+/**
+ * Read the session's actual allocated layer size and publish it. The
+ * runtime may clamp the framebuffer scale main.ts requests, so the
+ * requested vrQuality preset and the real resolution can diverge —
+ * this is the ground truth for "would a higher preset do anything?".
+ *
+ * updateRenderState() is deferred to the next XR animation frame, so
+ * the layer isn't readable right after setSession resolves; one
+ * requestAnimationFrame hop gets the applied state. Registering an
+ * extra rAF callback doesn't disturb three's own loop.
+ */
+function measureLayerResolution(session: XRSession): void {
+  session.requestAnimationFrame(() => {
+    try {
+      // Static method is newer than some type libs; feature-detect.
+      const nativeScale = (
+        XRWebGLLayer as typeof XRWebGLLayer & {
+          getNativeFramebufferScaleFactor?: (s: XRSession) => number;
+        }
+      ).getNativeFramebufferScaleFactor?.(session);
+      const rs = session.renderState;
+      const base = rs.baseLayer;
+      if (base) {
+        // XRWebGLLayer is one double-wide framebuffer shared by both eyes.
+        xrLog('render layer (XRWebGLLayer)', {
+          framebufferWidth: base.framebufferWidth,
+          framebufferHeight: base.framebufferHeight,
+          nativeFramebufferScaleFactor: nativeScale,
+        });
+        setState({
+          layerResolution: {
+            perEyeWidth: Math.round(base.framebufferWidth / 2),
+            height: base.framebufferHeight,
+          },
+        });
+        return;
+      }
+      // WebXR Layers path (three uses an XRProjectionLayer texture array
+      // where supported) — textureWidth is already per eye. The lib types
+      // model layers as bare XRLayer, so the projection fields need a cast.
+      const layers = rs.layers as
+        | readonly { textureWidth?: number; textureHeight?: number }[]
+        | undefined;
+      const proj = layers?.find((l) => typeof l.textureWidth === 'number');
+      if (proj?.textureWidth && proj.textureHeight) {
+        xrLog('render layer (XRProjectionLayer)', {
+          textureWidth: proj.textureWidth,
+          textureHeight: proj.textureHeight,
+          nativeFramebufferScaleFactor: nativeScale,
+        });
+        setState({
+          layerResolution: { perEyeWidth: proj.textureWidth, height: proj.textureHeight },
+        });
+        return;
+      }
+      xrWarn('render layer size unavailable — renderState has no readable layer', {
+        nativeFramebufferScaleFactor: nativeScale,
+      });
+    } catch (err) {
+      xrWarn('render layer probe failed', err);
+    }
+  });
 }
 
 /**

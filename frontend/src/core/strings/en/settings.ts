@@ -64,6 +64,7 @@ export const settingsStrings = {
   'settings.vr_quality_balanced': 'Balanced',
   'settings.vr_quality_high': 'High',
   'settings.vr_quality_ultra': 'Ultra (sharpest)',
+  'settings.vr_quality_measured': 'Last session rendered {w}×{h} px per eye.',
   'settings.stereo': 'Side-by-side stereo',
   'settings.stereo_desc': 'Split the view into left/right eye halves for Google Cardboard or a phone VR headset. Ignored while an immersive WebXR session is active.',
   'settings.stereo_strength': 'Stereo strength',

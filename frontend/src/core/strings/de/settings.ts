@@ -63,6 +63,7 @@ export const settingsStrings = {
   'settings.vr_quality_balanced': 'Ausgewogen',
   'settings.vr_quality_high': 'Hoch',
   'settings.vr_quality_ultra': 'Ultra (am schärfsten)',
+  'settings.vr_quality_measured': 'Letzte Sitzung renderte {w}×{h} px pro Auge.',
   'settings.stereo': 'Side-by-Side-Stereo',
   'settings.stereo_desc': 'Teilt die Ansicht in linke und rechte Augenhälfte für Google Cardboard oder ein Smartphone-VR-Headset. Wird während einer aktiven immersiven WebXR-Sitzung ignoriert.',
   'settings.stereo_strength': 'Stereo-Stärke',

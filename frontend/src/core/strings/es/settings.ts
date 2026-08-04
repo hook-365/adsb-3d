@@ -63,6 +63,7 @@ export const settingsStrings = {
   'settings.vr_quality_balanced': 'Equilibrada',
   'settings.vr_quality_high': 'Alta',
   'settings.vr_quality_ultra': 'Ultra (máxima nitidez)',
+  'settings.vr_quality_measured': 'La última sesión renderizó {w}×{h} px por ojo.',
   'settings.stereo': 'Estéreo lado a lado',
   'settings.stereo_desc': 'Dividir la vista en mitades para ojo izquierdo/derecho, para Google Cardboard o un visor RV de teléfono. Se ignora mientras hay una sesión WebXR inmersiva activa.',
   'settings.stereo_strength': 'Intensidad del estéreo',
