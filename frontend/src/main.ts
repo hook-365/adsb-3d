@@ -8,7 +8,7 @@ import { applyDomStrings, t } from './core/i18n';
 // panel code reads or clones it. Dynamic strings go through t() at their
 // call sites instead.
 applyDomStrings();
-import { Vector3 } from 'three';
+import { Vector2, Vector3 } from 'three';
 import { StereoEffect } from 'three/examples/jsm/effects/StereoEffect.js';
 import { AircraftStore } from './aircraft/store';
 
@@ -18,7 +18,7 @@ import { AircraftStore } from './aircraft/store';
 // has so we never block on truly old data. The per-hex cap survives the
 // aircraft dropping out and re-entering scope within the session.
 const SELECTION_BACKFILL_MS = 24 * 60 * 60 * 1000;
-import { AircraftReconciler } from './aircraft/reconciler';
+import { AircraftReconciler, setLineResolution } from './aircraft/reconciler';
 import { resolveAcarsPending, subscribeAcars } from './aircraft/acars-store';
 import { getSettings, subscribeSettings, updateSettings, type VrQuality } from './core/settings';
 import { getXrState, subscribeXr } from './core/xr';
@@ -315,6 +315,26 @@ const initialSelectedHex = readSelectedHex();
 
 const store = new AircraftStore();
 const reconciler = new AircraftReconciler(store, world.aircraftRoot, world.camera);
+
+// Fat-line materials (altitude lines, trails) need the drawing-buffer
+// size for their px→clip conversion. Keep it synced across resizes and
+// XR sessions; the XR branch uses the measured per-eye layer size, which
+// lands on XrState one frame after the session starts.
+const lineResSize = new Vector2();
+function syncLineResolution(): void {
+  const xs = getXrState();
+  if (xs.presenting && xs.layerResolution) {
+    setLineResolution(xs.layerResolution.perEyeWidth, xs.layerResolution.height);
+  } else {
+    world.renderer.getDrawingBufferSize(lineResSize);
+    setLineResolution(lineResSize.x, lineResSize.y);
+  }
+}
+// Runs after scene.ts's own resize handler (registered first), so the
+// drawing-buffer size is already updated when we read it.
+window.addEventListener('resize', syncLineResolution);
+subscribeXr(syncLineResolution);
+syncLineResolution();
 
 // ACARS messages from acarshub frequently arrive without an ICAO hex —
 // just flight/reg. Each store snapshot, walk pending unresolved messages

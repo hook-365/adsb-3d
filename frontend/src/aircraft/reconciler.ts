@@ -1,15 +1,12 @@
 import {
   BufferAttribute,
-  BufferGeometry,
   Color,
   ConeGeometry,
   DoubleSide,
   Frustum,
   Group,
-  Line,
-  LineBasicMaterial,
-  LineDashedMaterial,
-  LineSegments,
+  InstancedInterleavedBuffer,
+  InterleavedBufferAttribute,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -22,6 +19,9 @@ import {
   Vector3
 } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
@@ -59,10 +59,43 @@ CONE_GEOMETRY_GROUND.rotateX(-Math.PI / 2);
 // below are mutated in place by the module-level theme subscriber further
 // down so a theme change recolors every aircraft on the next paint.
 const themeThree = () => getTheme().tokens.three;
-const LINE_MAT_DEFAULT = new LineBasicMaterial({
+
+// All altitude-line / trail rendering uses fat lines (examples/jsm/lines):
+// WebGL ignores LineBasicMaterial.linewidth, and 1px GL lines shimmer
+// hard against a headset's supersampled buffer (issue #6). LineMaterial
+// draws screen-space quads with a real pixel width, at the price of two
+// obligations handled below: every material's `resolution` uniform must
+// track the drawing-buffer size, and the geometry is instanced (one
+// segment per instance) rather than a plain vertex stream.
+const LINE_MATERIALS: LineMaterial[] = [];
+function lineMaterial(params: ConstructorParameters<typeof LineMaterial>[0]): LineMaterial {
+  const m = new LineMaterial(params);
+  LINE_MATERIALS.push(m);
+  return m;
+}
+
+/**
+ * Feed every LineMaterial the current drawing-buffer size (their px→clip
+ * conversion needs it) and scale line width with vertical resolution so
+ * thickness reads the same on a 900px window and a 2640px eye buffer.
+ * main.ts calls this at boot, on resize, and when an XR session's
+ * measured layer resolution lands.
+ */
+export function setLineResolution(width: number, height: number): void {
+  const base = Math.min(5, Math.max(1.6, (2 * height) / 1100));
+  for (const m of LINE_MATERIALS) m.resolution.set(width, height);
+  LINE_MAT_DEFAULT.linewidth = base;
+  TRAIL_MAT_SOLID.linewidth = base;
+  TRAIL_MAT_DASHED.linewidth = base;
+  TRAIL_MAT_SOLID_SELECTED.linewidth = base * 1.5;
+  TRAIL_MAT_DASHED_SELECTED.linewidth = base * 1.5;
+}
+
+const LINE_MAT_DEFAULT = lineMaterial({
   color: new Color(themeThree().trailDefault),
   transparent: true,
   opacity: 0.35,
+  linewidth: 2,
 });
 
 // Stale-data dimming: aircraft we haven't heard from recently fade toward
@@ -93,49 +126,70 @@ const TRAIL_GAP_THRESHOLD_MS = 30_000;
 // saturate at this size and never grow.
 const INITIAL_TRAIL_CAPACITY_VERTS = (TRAIL_CAPACITY - 1) * 2;
 const DYNAMIC_DRAW_USAGE = 35048;
-const TRAIL_MAT_SOLID = new LineBasicMaterial({
+const TRAIL_MAT_SOLID = lineMaterial({
   vertexColors: true,
   transparent: true,
   opacity: 0.55,
+  linewidth: 2,
 });
-const TRAIL_MAT_DASHED = new LineDashedMaterial({
+const TRAIL_MAT_DASHED = lineMaterial({
   vertexColors: true,
   transparent: true,
   opacity: 0.45,
+  dashed: true,
   dashSize: 0.6,
   gapSize: 0.4,
+  linewidth: 2,
 });
-// Brighter / fully-opaque variants used for the currently selected aircraft.
+// Brighter / thicker variants used for the currently selected aircraft.
 // Same materials shared across all aircraft (only one is "selected" at a time
-// — the reconciler swaps the material reference on the LineSegments object).
-const TRAIL_MAT_SOLID_SELECTED = new LineBasicMaterial({
+// — the reconciler swaps the material reference on the trail object).
+const TRAIL_MAT_SOLID_SELECTED = lineMaterial({
   vertexColors: true,
   transparent: false,
   opacity: 1.0,
-  linewidth: 2,
+  linewidth: 3,
 });
-const TRAIL_MAT_DASHED_SELECTED = new LineDashedMaterial({
+const TRAIL_MAT_DASHED_SELECTED = lineMaterial({
   vertexColors: true,
   transparent: false,
   opacity: 1.0,
+  dashed: true,
   dashSize: 0.6,
   gapSize: 0.4,
-  linewidth: 2,
+  linewidth: 3,
 });
 
 // Aircraft colors (cone / trail / icon) come from the tar1090 ColorByAlt
 // palette in core/altitude-color.ts — shared so the footer legend matches.
 
+// One side (solid or dashed) of an aircraft's trail: the raw arrays the
+// refresh loops write into, plus the interleaved buffers whose needsUpdate
+// flags push them to the GPU. Layout note: a fat-line segment instance is
+// 6 contiguous position floats (start xyz, end xyz) — exactly the paired-
+// vertex layout the old LineSegments code wrote, so vertex index * 3 is
+// still the write offset and the append/grow logic carries over intact.
+// distArr holds [0, segmentLength] per instance for the dash shader; the
+// solid side leaves it zeroed (only USE_DASH reads it).
+interface TrailSide {
+  posArr: Float32Array;
+  colArr: Float32Array;
+  distArr: Float32Array;
+  posBuf: InstancedInterleavedBuffer;
+  colBuf: InstancedInterleavedBuffer;
+  distBuf: InstancedInterleavedBuffer;
+}
+
 interface RenderEntry {
   group: Group;
   cone: Mesh;
-  altLine: Line;
-  trailSolid: LineSegments;
-  trailDashed: LineSegments;
-  solidPos: BufferAttribute;
-  solidCol: BufferAttribute;
-  dashedPos: BufferAttribute;
-  dashedCol: BufferAttribute;
+  altLine: LineSegments2;
+  altArr: Float32Array;
+  altBuf: InstancedInterleavedBuffer;
+  trailSolid: LineSegments2;
+  trailDashed: LineSegments2;
+  solid: TrailSide;
+  dashed: TrailSide;
   material: MeshStandardMaterial;
   iconMesh: Mesh;
   iconMaterial: MeshBasicMaterial;
@@ -256,50 +310,68 @@ const tmpPos = new Vector3();
 const tmpGround = new Vector3();
 const tmpTrail = new Vector3();
 
-function buildTrailLine(material: LineBasicMaterial | LineDashedMaterial): {
-  line: LineSegments;
-  pos: BufferAttribute;
-  col: BufferAttribute;
+// Fat-line pick raycasting needs raycaster.camera and is meaningless for
+// trails (picking targets the cone proxies) — hard no-op so the XR
+// controllers' plain raycaster.set() path never trips over them.
+const NOOP_RAYCAST = (): void => {};
+
+/** Allocate one side's arrays + interleaved buffers and bind them to the
+ *  geometry's instanced attributes. `verts` is paired-vertex capacity
+ *  (2 per segment), matching the old BufferAttribute sizing. */
+function bindTrailAttributes(geom: LineSegmentsGeometry, verts: number): TrailSide {
+  const segs = verts / 2;
+  const posArr = new Float32Array(segs * 6);
+  const colArr = new Float32Array(segs * 6);
+  const distArr = new Float32Array(segs * 2);
+  const posBuf = new InstancedInterleavedBuffer(posArr, 6, 1);
+  posBuf.setUsage(DYNAMIC_DRAW_USAGE);
+  const colBuf = new InstancedInterleavedBuffer(colArr, 6, 1);
+  colBuf.setUsage(DYNAMIC_DRAW_USAGE);
+  const distBuf = new InstancedInterleavedBuffer(distArr, 2, 1);
+  distBuf.setUsage(DYNAMIC_DRAW_USAGE);
+  geom.setAttribute('instanceStart', new InterleavedBufferAttribute(posBuf, 3, 0));
+  geom.setAttribute('instanceEnd', new InterleavedBufferAttribute(posBuf, 3, 3));
+  geom.setAttribute('instanceColorStart', new InterleavedBufferAttribute(colBuf, 3, 0));
+  geom.setAttribute('instanceColorEnd', new InterleavedBufferAttribute(colBuf, 3, 3));
+  geom.setAttribute('instanceDistanceStart', new InterleavedBufferAttribute(distBuf, 1, 0));
+  geom.setAttribute('instanceDistanceEnd', new InterleavedBufferAttribute(distBuf, 1, 1));
+  return { posArr, colArr, distArr, posBuf, colBuf, distBuf };
+}
+
+function buildTrailLine(material: LineMaterial): {
+  line: LineSegments2;
+  side: TrailSide;
 } {
-  const geom = new BufferGeometry();
-  const pos = new BufferAttribute(new Float32Array(INITIAL_TRAIL_CAPACITY_VERTS * 3), 3);
-  pos.setUsage(DYNAMIC_DRAW_USAGE);
-  const col = new BufferAttribute(new Float32Array(INITIAL_TRAIL_CAPACITY_VERTS * 3), 3);
-  col.setUsage(DYNAMIC_DRAW_USAGE);
-  geom.setAttribute('position', pos);
-  geom.setAttribute('color', col);
-  geom.setDrawRange(0, 0);
-  const line = new LineSegments(geom, material);
+  const geom = new LineSegmentsGeometry();
+  const side = bindTrailAttributes(geom, INITIAL_TRAIL_CAPACITY_VERTS);
+  // Instanced draw count is the fat-line equivalent of setDrawRange.
+  geom.instanceCount = 0;
+  const line = new LineSegments2(geom, material);
+  line.raycast = NOOP_RAYCAST;
   // frustumCulled=false skips three.js's per-frame frustum test against the
   // bounding sphere — trails span large bounding volumes anyway and the
   // alternative (computing the sphere over a growable buffer with unused
   // tail) is both wrong and expensive.
   line.frustumCulled = false;
-  return { line, pos, col };
+  return { line, side };
 }
 
-// Replace one side's (pos, col) BufferAttributes on the trail geometry
-// with larger allocations when `requiredVerts` exceeds current capacity.
-// Doubles the buffer size to amortize the cost of subsequent growths.
-// Three.js doesn't have a native resize for BufferAttribute, so we
-// allocate fresh Float32Arrays and re-bind via setAttribute. refreshTrail
-// rewrites the entire trail after a grow, so we don't bother copying old
-// vertex data — it would only be partially valid anyway with the dashed/
-// solid side split potentially shifting.
+// Replace one side's arrays/buffers with larger allocations when
+// `requiredVerts` exceeds current capacity. Doubles the buffer size to
+// amortize subsequent growths. Interleaved buffers have no native
+// resize, so we allocate fresh and re-bind via setAttribute (new
+// attribute objects → new GPU buffers). refreshTrail rewrites the
+// entire trail after a grow, so old contents aren't copied — they'd
+// only be partially valid anyway with the dashed/solid split shifting.
 function growTrailBuffer(
-  line: LineSegments,
+  line: LineSegments2,
   currentVerts: number,
   requiredVerts: number,
-): { pos: BufferAttribute; col: BufferAttribute; verts: number } | null {
+): { side: TrailSide; verts: number } | null {
   if (requiredVerts <= currentVerts) return null;
   const newVerts = Math.max(currentVerts * 2, requiredVerts);
-  const pos = new BufferAttribute(new Float32Array(newVerts * 3), 3);
-  pos.setUsage(DYNAMIC_DRAW_USAGE);
-  const col = new BufferAttribute(new Float32Array(newVerts * 3), 3);
-  col.setUsage(DYNAMIC_DRAW_USAGE);
-  line.geometry.setAttribute('position', pos);
-  line.geometry.setAttribute('color', col);
-  return { pos, col, verts: newVerts };
+  const side = bindTrailAttributes(line.geometry as LineSegmentsGeometry, newVerts);
+  return { side, verts: newVerts };
 }
 
 function buildEntry(a: Aircraft): RenderEntry {
@@ -352,9 +424,19 @@ function buildEntry(a: Aircraft): RenderEntry {
   iconMesh.visible = getSettings().groundSprites;
   const iconRotates = shapeRotates(shapeName);
 
-  const altGeom = new BufferGeometry();
-  altGeom.setAttribute('position', new BufferAttribute(new Float32Array(6), 3));
-  const altLine = new Line(altGeom, LINE_MAT_DEFAULT);
+  // Altitude line: one fat-line segment (aircraft → ground anchor).
+  // Persistent 6-float buffer updated in place by applyTransform — the
+  // stock LineGeometry.setPositions would reallocate per update.
+  const altGeom = new LineSegmentsGeometry();
+  const altArr = new Float32Array(6);
+  const altBuf = new InstancedInterleavedBuffer(altArr, 6, 1);
+  altBuf.setUsage(DYNAMIC_DRAW_USAGE);
+  altGeom.setAttribute('instanceStart', new InterleavedBufferAttribute(altBuf, 3, 0));
+  altGeom.setAttribute('instanceEnd', new InterleavedBufferAttribute(altBuf, 3, 3));
+  altGeom.instanceCount = 1;
+  const altLine = new LineSegments2(altGeom, LINE_MAT_DEFAULT);
+  altLine.raycast = NOOP_RAYCAST;
+  altLine.frustumCulled = false;
   altLine.userData = { kind: 'altitude-line', hex: a.hex };
   altLine.visible = getSettings().altitudeLines;
 
@@ -424,12 +506,12 @@ function buildEntry(a: Aircraft): RenderEntry {
     group,
     cone,
     altLine,
+    altArr,
+    altBuf,
     trailSolid: solid.line,
     trailDashed: dashed.line,
-    solidPos: solid.pos,
-    solidCol: solid.col,
-    dashedPos: dashed.pos,
-    dashedCol: dashed.col,
+    solid: solid.side,
+    dashed: dashed.side,
     material,
     iconMesh,
     iconMaterial,
@@ -516,10 +598,14 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
     entry.lastTrackDeg = a.trackDeg;
   }
 
-  const altPos = entry.altLine.geometry.getAttribute('position') as BufferAttribute;
-  altPos.setXYZ(0, tmpPos.x, tmpPos.y, tmpPos.z);
-  altPos.setXYZ(1, tmpGround.x, tmpGround.y, tmpGround.z);
-  altPos.needsUpdate = true;
+  const altArr = entry.altArr;
+  altArr[0] = tmpPos.x;
+  altArr[1] = tmpPos.y;
+  altArr[2] = tmpPos.z;
+  altArr[3] = tmpGround.x;
+  altArr[4] = tmpGround.y;
+  altArr[5] = tmpGround.z;
+  entry.altBuf.needsUpdate = true;
 
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
   entry.cone.scale.setScalar(s);
@@ -592,8 +678,8 @@ function refreshColor(entry: RenderEntry, a: Aircraft): void {
 function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): void {
   const points = store.trails(a.hex);
   if (!points || points.length < 2) {
-    entry.trailSolid.geometry.setDrawRange(0, 0);
-    entry.trailDashed.geometry.setDrawRange(0, 0);
+    entry.trailSolid.geometry.instanceCount = 0;
+    entry.trailDashed.geometry.instanceCount = 0;
     entry.lastTrailLength = 0;
     entry.lastSolidIdx = 0;
     entry.lastDashedIdx = 0;
@@ -667,13 +753,13 @@ function tryAppendTrailTail(entry: RenderEntry, points: readonly { lat: number; 
     const cur = altitudeColorCached(p.altFt, false);
     const dt = p.ms - prevMs;
     const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
-    const pos = dashed ? entry.dashedPos : entry.solidPos;
-    const col = dashed ? entry.dashedCol : entry.solidCol;
+    const side = dashed ? entry.dashed : entry.solid;
     const idx = dashed ? dashedIdx : solidIdx;
-    pos.setXYZ(idx, prevX, prevY, prevZ);
-    col.setXYZ(idx, prevR, prevG, prevB);
-    pos.setXYZ(idx + 1, tmpTrail.x, tmpTrail.y, tmpTrail.z);
-    col.setXYZ(idx + 1, cur.r, cur.g, cur.b);
+    writeTrailSegment(
+      side, idx, dashed,
+      prevX, prevY, prevZ, prevR, prevG, prevB,
+      tmpTrail.x, tmpTrail.y, tmpTrail.z, cur.r, cur.g, cur.b,
+    );
     if (dashed) dashedIdx += 2; else solidIdx += 2;
     prevX = tmpTrail.x; prevY = tmpTrail.y; prevZ = tmpTrail.z;
     prevR = cur.r; prevG = cur.g; prevB = cur.b;
@@ -691,14 +777,45 @@ function tryAppendTrailTail(entry: RenderEntry, points: readonly { lat: number; 
   entry.lastTrailLastB = prevB;
   entry.lastTrailLastMs = prevMs;
 
-  entry.solidPos.needsUpdate = true;
-  entry.solidCol.needsUpdate = true;
-  entry.dashedPos.needsUpdate = true;
-  entry.dashedCol.needsUpdate = true;
-  entry.trailSolid.geometry.setDrawRange(0, solidIdx);
-  entry.trailDashed.geometry.setDrawRange(0, dashedIdx);
-  if (dashedIdx > 0) entry.trailDashed.computeLineDistances();
+  markTrailUpdated(entry, solidIdx, dashedIdx);
   return true;
+}
+
+/** Write one segment instance (paired-vertex index `idx`, always even).
+ *  Dashed segments also get their [0, length] dash distances — computed
+ *  inline instead of via computeLineDistances(), which reallocates its
+ *  buffer on every call. */
+function writeTrailSegment(
+  side: TrailSide, idx: number, dashed: boolean,
+  x0: number, y0: number, z0: number, r0: number, g0: number, b0: number,
+  x1: number, y1: number, z1: number, r1: number, g1: number, b1: number,
+): void {
+  const o = idx * 3;
+  const pos = side.posArr;
+  const col = side.colArr;
+  pos[o] = x0; pos[o + 1] = y0; pos[o + 2] = z0;
+  pos[o + 3] = x1; pos[o + 4] = y1; pos[o + 5] = z1;
+  col[o] = r0; col[o + 1] = g0; col[o + 2] = b0;
+  col[o + 3] = r1; col[o + 4] = g1; col[o + 5] = b1;
+  if (dashed) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const dz = z1 - z0;
+    side.distArr[idx] = 0;
+    side.distArr[idx + 1] = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+}
+
+/** Push both sides to the GPU and set the instanced draw counts (the
+ *  fat-line equivalent of setDrawRange). */
+function markTrailUpdated(entry: RenderEntry, solidIdx: number, dashedIdx: number): void {
+  entry.solid.posBuf.needsUpdate = true;
+  entry.solid.colBuf.needsUpdate = true;
+  entry.dashed.posBuf.needsUpdate = true;
+  entry.dashed.colBuf.needsUpdate = true;
+  entry.dashed.distBuf.needsUpdate = true;
+  entry.trailSolid.geometry.instanceCount = solidIdx / 2;
+  entry.trailDashed.geometry.instanceCount = dashedIdx / 2;
 }
 
 function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lon: number; altFt: number; ms: number }[], n: number, firstMs: number): void {
@@ -721,14 +838,12 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
   }
   const grownSolid = growTrailBuffer(entry.trailSolid, entry.solidCapacityVerts, neededSolidVerts);
   if (grownSolid) {
-    entry.solidPos = grownSolid.pos;
-    entry.solidCol = grownSolid.col;
+    entry.solid = grownSolid.side;
     entry.solidCapacityVerts = grownSolid.verts;
   }
   const grownDashed = growTrailBuffer(entry.trailDashed, entry.dashedCapacityVerts, neededDashedVerts);
   if (grownDashed) {
-    entry.dashedPos = grownDashed.pos;
-    entry.dashedCol = grownDashed.col;
+    entry.dashed = grownDashed.side;
     entry.dashedCapacityVerts = grownDashed.verts;
   }
 
@@ -758,13 +873,13 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
     const dt = p.ms - prevMs;
     const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
 
-    const pos = dashed ? entry.dashedPos : entry.solidPos;
-    const col = dashed ? entry.dashedCol : entry.solidCol;
+    const side = dashed ? entry.dashed : entry.solid;
     const idx = dashed ? dashedIdx : solidIdx;
-    pos.setXYZ(idx, prevX, prevY, prevZ);
-    col.setXYZ(idx, prevR, prevG, prevB);
-    pos.setXYZ(idx + 1, tmpTrail.x, tmpTrail.y, tmpTrail.z);
-    col.setXYZ(idx + 1, cur.r, cur.g, cur.b);
+    writeTrailSegment(
+      side, idx, dashed,
+      prevX, prevY, prevZ, prevR, prevG, prevB,
+      tmpTrail.x, tmpTrail.y, tmpTrail.z, cur.r, cur.g, cur.b,
+    );
     if (dashed) dashedIdx += 2; else solidIdx += 2;
 
     prevX = tmpTrail.x; prevY = tmpTrail.y; prevZ = tmpTrail.z;
@@ -784,19 +899,10 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
   entry.lastTrailLastB = prevB;
   entry.lastTrailLastMs = prevMs;
 
-  entry.solidPos.needsUpdate = true;
-  entry.solidCol.needsUpdate = true;
-  entry.trailSolid.geometry.setDrawRange(0, solidIdx);
-
-  entry.dashedPos.needsUpdate = true;
-  entry.dashedCol.needsUpdate = true;
-  entry.trailDashed.geometry.setDrawRange(0, dashedIdx);
-  if (dashedIdx > 0) {
-    entry.trailDashed.computeLineDistances();
-  }
+  markTrailUpdated(entry, solidIdx, dashedIdx);
   // No computeBoundingSphere here: line.frustumCulled is false so the
   // sphere is never read, and our growable buffer has zeroed tail bytes
-  // that would corrupt it anyway. setDrawRange is the only thing the
+  // that would corrupt it anyway. instanceCount is the only thing the
   // renderer needs to know about what to draw.
 }
 
