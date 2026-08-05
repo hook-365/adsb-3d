@@ -1959,6 +1959,13 @@ body.xr-on .acars-browser {
   }
 }
 
+/* The panel is a height-capped flex column that scrolls — children must
+   not flex-shrink or the browser squeezes them (the photo flattens into
+   a letterboxed strip) instead of letting overflow-y do its job. */
+#panel-detail > * {
+  flex-shrink: 0;
+}
+
 #panel-detail header {
   display: flex;
   align-items: center;
