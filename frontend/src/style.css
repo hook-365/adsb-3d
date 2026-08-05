@@ -1951,11 +1951,36 @@ body.xr-on .acars-browser {
     border-right: none;
     border-bottom: none;
   }
-  /* The visible slice should be the useful slice: flex order sends the
-     photo below the telemetry, so a glance gets data and a scroll gets
-     the glamour shot at full size. */
-  #panel-detail .photo {
-    order: 9;
+  /* The photo docks beside the airframe grid (aircraft-detail.ts moves
+     the element under this breakpoint), filling the panel's only dead
+     space instead of pushing telemetry down. Photo-less planes give the
+     column back via :has(). */
+  #panel-detail .airframe {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42%;
+    column-gap: 10px;
+    align-items: start;
+  }
+  #panel-detail .airframe h3 {
+    grid-column: 1 / -1;
+  }
+  #panel-detail .airframe .grid {
+    grid-column: 1 / -1;
+  }
+  #panel-detail .airframe:has(.photo:not([hidden])) .grid {
+    grid-column: 1;
+  }
+  #panel-detail .airframe .photo {
+    grid-column: 2;
+    grid-row: 2;
+    aspect-ratio: 4 / 3;
+  }
+  #panel-detail .airframe .photo .photo-credit {
+    font-size: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 8px);
   }
 }
 

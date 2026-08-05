@@ -94,6 +94,23 @@ export function createAircraftDetail(
   const closeBtn = document.getElementById('detail-close') as HTMLButtonElement;
   const shareBtn = document.getElementById('detail-share') as HTMLButtonElement;
   const photoLink = document.getElementById('detail-photo') as HTMLAnchorElement;
+
+  // On phones the photo docks inside the airframe section, filling the
+  // dead column right of the label/value grid; desktop keeps it as the
+  // full-width hero under the header. DOM moves with the breakpoint so
+  // each layout styles a structure that actually matches it.
+  const airframeSection = document.getElementById('detail-airframe');
+  const photoDesktopAnchor = document.getElementById('detail-phase-row');
+  const sheetQuery = window.matchMedia('(max-width: 600px)');
+  function placePhoto(): void {
+    if (!airframeSection || !photoDesktopAnchor) return;
+    if (sheetQuery.matches) airframeSection.appendChild(photoLink);
+    else if (photoLink.parentElement !== photoDesktopAnchor.parentElement) {
+      photoDesktopAnchor.parentElement?.insertBefore(photoLink, photoDesktopAnchor);
+    }
+  }
+  placePhoto();
+  sheetQuery.addEventListener('change', placePhoto);
   const photoImg = document.getElementById('detail-photo-img') as HTMLImageElement;
   const photoCredit = document.getElementById('detail-photo-credit')!;
   const routeEl = document.getElementById('detail-route') as HTMLElement;
