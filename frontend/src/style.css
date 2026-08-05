@@ -1973,7 +1973,6 @@ body.xr-on .acars-browser {
   #panel-detail .airframe .photo {
     grid-column: 2;
     grid-row: 2;
-    aspect-ratio: 4 / 3;
   }
   #panel-detail .airframe .photo .photo-credit {
     font-size: 8px;
@@ -2113,7 +2112,6 @@ body.xr-on .acars-browser {
   display: block;
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
   border-radius: 4px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.4);
@@ -2121,11 +2119,13 @@ body.xr-on .acars-browser {
   text-decoration: none;
 }
 
+/* Natural aspect, never cropped: planespotters thumbs come in every
+   shape, and a fixed 16:9 + cover box chopped tails and noses. The
+   whole aircraft beats a uniform card height. */
 #panel-detail .photo img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
 }
 
 #panel-detail .photo .photo-credit {
