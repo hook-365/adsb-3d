@@ -40,6 +40,7 @@ export const staticStrings = {
   'static.detail_share_aria': 'Teilbaren Link zu diesem Flugzeug kopieren',
   'static.detail_share_title': 'Share-Link kopieren',
   'static.clear_selection_aria': 'Auswahl aufheben',
+  'static.detail_sheet_aria': 'Flugzeugdetails auf- oder zuklappen',
   'static.airframe_heading': 'Zelle',
   'static.detail_type': 'Typ',
   'static.detail_reg': 'Reg.',

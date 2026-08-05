@@ -1927,6 +1927,66 @@ body.xr-on .acars-browser {
   overflow-y: auto;
 }
 
+/* Bottom-sheet handle: hidden on desktop, shown by the mobile block
+   below. The ::before bar is the visual; the button itself is a taller
+   touch target. */
+#panel-detail .sheet-handle {
+  display: none;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 20px;
+  margin: -4px 0 -6px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  touch-action: none;
+}
+#panel-detail .sheet-handle::before {
+  content: '';
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+
+/* On phones the fixed card became a full-screen takeover (it grew to
+   max-height with the viewport-wide width) — the map disappeared and
+   the floating chrome z-fought the card header. Recast it as a bottom
+   sheet: anchored over the footer, ~40% tall so the selected aircraft
+   stays visible above it, drag handle to expand for the full dossier.
+   dvh (with vh fallback) tracks the collapsing mobile URL bar. */
+@media (max-width: 600px) {
+  #panel-detail {
+    left: 0;
+    right: 0;
+    bottom: var(--footer-h, 48px);
+    width: 100%;
+    max-height: 42vh;
+    max-height: 42dvh;
+    border-radius: 14px 14px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    transition: max-height 0.22s ease;
+  }
+  #panel-detail.sheet-expanded {
+    max-height: calc(100vh - 64px - var(--footer-h, 48px));
+    max-height: calc(100dvh - 64px - var(--footer-h, 48px));
+  }
+  #panel-detail .sheet-handle {
+    display: flex;
+    flex-shrink: 0;
+  }
+  /* Banner-sized photo so telemetry makes the collapsed cut. */
+  #panel-detail .photo img {
+    max-height: 96px;
+    object-fit: cover;
+  }
+}
+
 #panel-detail header {
   display: flex;
   align-items: center;

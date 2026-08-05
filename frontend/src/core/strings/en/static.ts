@@ -41,6 +41,7 @@ export const staticStrings = {
   'static.detail_share_aria': 'Copy a shareable link to this aircraft',
   'static.detail_share_title': 'Copy share link',
   'static.clear_selection_aria': 'Clear selection',
+  'static.detail_sheet_aria': 'Expand or collapse aircraft details',
   'static.airframe_heading': 'Airframe',
   'static.detail_type': 'Type',
   'static.detail_reg': 'Reg.',

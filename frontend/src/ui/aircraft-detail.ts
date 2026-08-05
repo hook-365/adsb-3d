@@ -88,6 +88,34 @@ export function createAircraftDetail(
   options: AircraftDetailOptions
 ): AircraftDetailHandle {
   const root = document.getElementById('panel-detail') as HTMLElement;
+
+  // Mobile bottom-sheet expansion. Listeners live on the handle only —
+  // putting swipe detection on the whole panel would fight the content's
+  // own scrolling. Desktop never shows the handle, and a stray
+  // sheet-expanded class is inert there (no matching CSS outside the
+  // mobile breakpoint).
+  const sheetHandle = document.getElementById('detail-sheet-handle');
+  let sheetTouchY: number | null = null;
+  sheetHandle?.addEventListener('click', () => root.classList.toggle('sheet-expanded'));
+  sheetHandle?.addEventListener(
+    'touchstart',
+    (e) => {
+      sheetTouchY = e.touches[0]?.clientY ?? null;
+    },
+    { passive: true },
+  );
+  sheetHandle?.addEventListener(
+    'touchend',
+    (e) => {
+      if (sheetTouchY === null) return;
+      const dy = (e.changedTouches[0]?.clientY ?? sheetTouchY) - sheetTouchY;
+      // Deliberate swipes only; small wobbles fall through to the click.
+      if (dy < -30) root.classList.add('sheet-expanded');
+      else if (dy > 30) root.classList.remove('sheet-expanded');
+      sheetTouchY = null;
+    },
+    { passive: true },
+  );
   const callsignEl = document.getElementById('detail-callsign')!;
   const hexEl = document.getElementById('detail-hex')!;
   const closeBtn = document.getElementById('detail-close') as HTMLButtonElement;
@@ -312,6 +340,9 @@ export function createAircraftDetail(
   function render(): void {
     if (!selectedHex) {
       root.hidden = true;
+      // Next selection starts as a collapsed sheet (mobile) — an
+      // expanded leftover would eat the map again on open.
+      root.classList.remove('sheet-expanded');
       return;
     }
     const a = store.snapshot.get(selectedHex);
