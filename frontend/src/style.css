@@ -1982,6 +1982,38 @@ body.xr-on .acars-browser {
     text-overflow: ellipsis;
     max-width: calc(100% - 8px);
   }
+  /* Compaction: inside a 45dvh window every vertical crumb counts.
+     Tighter flex gap + section margins + dl row gap compound to ~80px
+     across a full airliner card. */
+  #panel-detail {
+    gap: 6px;
+    padding: 8px 14px 10px;
+  }
+  /* Full airport names collapse from a 3-line wrap to one truncated
+     line each — the codes bar above already tells the story. */
+  #panel-detail .route-names span {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #panel-detail .autopilot,
+  #panel-detail .airframe,
+  #panel-detail .acars {
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+  #panel-detail .autopilot h3,
+  #panel-detail .airframe h3,
+  #panel-detail .acars h3 {
+    margin-bottom: 4px;
+  }
+  #panel-detail .grid {
+    /* max-content: the label column hugs its longest word per locale
+       instead of a fixed 56px, and rows sit almost flush. */
+    grid-template-columns: max-content 1fr;
+    gap: 1.5px 10px;
+  }
 }
 
 /* The panel is a height-capped flex column that scrolls — children must
