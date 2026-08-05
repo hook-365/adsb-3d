@@ -1974,6 +1974,13 @@ body.xr-on .acars-browser {
     grid-column: 2;
     grid-row: 2;
   }
+  /* dd values are nowrap globally (desktop numbers stay tidy), but in
+     the docked two-column layout long types/operators would run
+     underneath the photo — let them wrap inside their column here. */
+  #panel-detail .airframe dd {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   #panel-detail .airframe .photo .photo-credit {
     font-size: 8px;
     white-space: nowrap;
