@@ -89,33 +89,50 @@ export function createAircraftDetail(
 ): AircraftDetailHandle {
   const root = document.getElementById('panel-detail') as HTMLElement;
 
-  // Mobile bottom-sheet expansion. Listeners live on the handle only —
-  // putting swipe detection on the whole panel would fight the content's
-  // own scrolling. Desktop never shows the handle, and a stray
-  // sheet-expanded class is inert there (no matching CSS outside the
-  // mobile breakpoint).
+  // Mobile bottom-sheet handle: real finger-follow dragging via pointer
+  // capture (touch-action: none in CSS keeps the browser from stealing
+  // the gesture for scroll), with a plain tap toggling between states.
+  // Listeners live on the handle only — drag detection on the whole
+  // panel would fight the content's own scrolling. Desktop never shows
+  // the handle, and a stray sheet-expanded class is inert there (no
+  // matching CSS outside the mobile breakpoint).
   const sheetHandle = document.getElementById('detail-sheet-handle');
-  let sheetTouchY: number | null = null;
-  sheetHandle?.addEventListener('click', () => root.classList.toggle('sheet-expanded'));
-  sheetHandle?.addEventListener(
-    'touchstart',
-    (e) => {
-      sheetTouchY = e.touches[0]?.clientY ?? null;
-    },
-    { passive: true },
-  );
-  sheetHandle?.addEventListener(
-    'touchend',
-    (e) => {
-      if (sheetTouchY === null) return;
-      const dy = (e.changedTouches[0]?.clientY ?? sheetTouchY) - sheetTouchY;
-      // Deliberate swipes only; small wobbles fall through to the click.
-      if (dy < -30) root.classList.add('sheet-expanded');
-      else if (dy > 30) root.classList.remove('sheet-expanded');
-      sheetTouchY = null;
-    },
-    { passive: true },
-  );
+  let sheetDragY: number | null = null;
+  let sheetDragH = 0;
+  sheetHandle?.addEventListener('pointerdown', (e) => {
+    sheetDragY = e.clientY;
+    sheetDragH = root.getBoundingClientRect().height;
+    sheetHandle.setPointerCapture(e.pointerId);
+    root.classList.add('sheet-dragging');
+  });
+  sheetHandle?.addEventListener('pointermove', (e) => {
+    if (sheetDragY === null) return;
+    // The CSS caps still clamp this, so overshoot is harmless.
+    root.style.maxHeight = `${sheetDragH + (sheetDragY - e.clientY)}px`;
+  });
+  const endSheetDrag = (e: PointerEvent): void => {
+    if (sheetDragY === null) return;
+    const dy = sheetDragY - e.clientY; // positive = dragged up
+    sheetDragY = null;
+    root.style.maxHeight = '';
+    root.classList.remove('sheet-dragging');
+    if (Math.abs(dy) <= 6) root.classList.toggle('sheet-expanded');
+    else if (dy > 30) root.classList.add('sheet-expanded');
+    else if (dy < -30) root.classList.remove('sheet-expanded');
+  };
+  sheetHandle?.addEventListener('pointerup', endSheetDrag);
+  sheetHandle?.addEventListener('pointercancel', endSheetDrag);
+
+  // Hide the handle when it would be a lie: content that already fits
+  // the collapsed sheet has nothing to expand into. Re-checked from
+  // render(), which also fires as async photo/route data changes the
+  // content height.
+  function updateSheetHandle(): void {
+    if (!sheetHandle) return;
+    const expandable =
+      root.classList.contains('sheet-expanded') || root.scrollHeight > root.clientHeight + 4;
+    sheetHandle.classList.toggle('sheet-inert', !expandable);
+  }
   const callsignEl = document.getElementById('detail-callsign')!;
   const hexEl = document.getElementById('detail-hex')!;
   const closeBtn = document.getElementById('detail-close') as HTMLButtonElement;
@@ -353,6 +370,7 @@ export function createAircraftDetail(
       return;
     }
     root.hidden = false;
+    updateSheetHandle();
 
     callsignEl.textContent = a.callsign ?? a.registration ?? a.hex.toUpperCase();
     hexEl.textContent = a.hex.toUpperCase();

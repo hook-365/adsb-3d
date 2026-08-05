@@ -1951,6 +1951,18 @@ body.xr-on .acars-browser {
   border-radius: 2px;
   background: color-mix(in srgb, var(--fg) 30%, transparent);
 }
+/* An affordance that does nothing is worse than none: when the content
+   already fits the collapsed sheet (small GA planes with no photo or
+   route), the handle hides — set from aircraft-detail.ts. Beats the
+   media block's display:flex on specificity. */
+#panel-detail .sheet-handle.sheet-inert {
+  display: none;
+}
+/* While a finger is on the handle the sheet tracks it 1:1; the snap
+   transition only plays on release. */
+#panel-detail.sheet-dragging {
+  transition: none;
+}
 
 /* On phones the fixed card became a full-screen takeover (it grew to
    max-height with the viewport-wide width) — the map disappeared and
@@ -1963,7 +1975,10 @@ body.xr-on .acars-browser {
     left: 0;
     right: 0;
     bottom: var(--footer-h, 48px);
-    width: 100%;
+    /* No explicit width: left+right pin the border box to the viewport.
+       width:100% here overflows by the (content-box) padding and shoves
+       the close × off-screen. */
+    width: auto;
     max-height: 42vh;
     max-height: 42dvh;
     border-radius: 14px 14px 0 0;
