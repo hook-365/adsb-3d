@@ -675,8 +675,36 @@ function refreshColor(entry: RenderEntry, a: Aircraft): void {
   entry.iconMaterial.color.copy(c);
 }
 
-function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): void {
-  const points = store.trails(a.hex);
+// XR trail budget (issue #6: busy scenes run poorly on the headset at
+// EVERY quality preset — so the bottleneck is vertex/draw load, not
+// fill rate, and trails are the dominant vertex source: each fat-line
+// segment is an instanced quad, rendered once per eye). While
+// presenting, trails keep every 2nd point up to the most recent 300 —
+// the shape survives, the vertex count drops 2-10x on long trails.
+const XR_TRAIL_STRIDE = 2;
+const XR_TRAIL_MAX_POINTS = 300;
+type TrailPoint = { lat: number; lon: number; altFt: number; ms: number };
+function decimateTrailForXr(points: readonly TrailPoint[]): TrailPoint[] {
+  // Anchored at the tail so the live end is always exact; the stride
+  // phase shifts on every append, which is fine because XR mode always
+  // rebuilds in full (the append fast path assumes undecimated indices).
+  const out: TrailPoint[] = [];
+  for (let i = points.length - 1; i >= 0 && out.length < XR_TRAIL_MAX_POINTS; i -= XR_TRAIL_STRIDE) {
+    out.push(points[i]!);
+  }
+  return out.reverse();
+}
+
+function refreshTrail(
+  entry: RenderEntry,
+  store: AircraftStore,
+  a: Aircraft,
+  xrMode: boolean,
+): void {
+  let points: readonly TrailPoint[] | undefined = store.trails(a.hex);
+  if (points && points.length >= 2 && xrMode) {
+    points = decimateTrailForXr(points);
+  }
   if (!points || points.length < 2) {
     entry.trailSolid.geometry.instanceCount = 0;
     entry.trailDashed.geometry.instanceCount = 0;
@@ -695,7 +723,9 @@ function refreshTrail(entry: RenderEntry, store: AircraftStore, a: Aircraft): vo
   // only the newly-arrived segments to the existing buffer slots. This is
   // the common case post-Phase-1 since refreshTrail only fires when the
   // store's trailRev advances and the typical mutation is appendTrail.
+  // Not in XR: decimation re-phases the whole array on every append.
   if (
+    !xrMode &&
     entry.lastTrailLength >= 2 &&
     n > entry.lastTrailLength &&
     firstMs === entry.lastTrailFirstMs &&
@@ -917,6 +947,9 @@ export class AircraftReconciler {
   private readonly entries = new Map<string, RenderEntry>();
   private readonly camPos = new Vector3();
   private selectedHex: string | null = null;
+  // XR performance mode: trails render decimated + capped while a
+  // headset session is presenting (see decimateTrailForXr).
+  private xrMode = false;
   // Last camera position seen by updateLabelLOD. NaN sentinel forces the
   // first call to run the full pass.
   private lastCamX = Number.NaN;
@@ -1002,6 +1035,22 @@ export class AircraftReconciler {
     const entry = this.entries.get(hex.toLowerCase());
     if (!entry) return;
     entry.pingStartMs = performance.now();
+  }
+
+  /**
+   * XR performance mode (issue #6): while a headset session presents,
+   * trails render decimated (every 2nd point, most recent 300) — the
+   * headset is vertex-bound long before it's fill-bound. Toggling
+   * invalidates every trail rev so the next syncFrame rebuilds them
+   * for the new mode.
+   */
+  setXrMode(on: boolean): void {
+    if (on === this.xrMode) return;
+    this.xrMode = on;
+    for (const entry of this.entries.values()) {
+      entry.lastTrailRev = -1;
+      entry.lastTrailFirstMs = Number.NaN;
+    }
   }
 
   /** World-space position of an aircraft, or null if it isn't currently rendered. */
@@ -1221,7 +1270,7 @@ export class AircraftReconciler {
       }
       const trailRev = this.store.getTrailRev(a.hex);
       if (trailRev !== entry.lastTrailRev) {
-        refreshTrail(entry, this.store, a);
+        refreshTrail(entry, this.store, a, this.xrMode);
         entry.lastTrailRev = trailRev;
       }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY

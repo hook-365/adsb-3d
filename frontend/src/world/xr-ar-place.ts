@@ -67,6 +67,21 @@ export class XrArPlace {
     return this.active;
   }
 
+  /**
+   * True when the current session granted hit-test, i.e. place mode can
+   * actually work. Used to decide whether AR may disable free-fly
+   * translation (placement exists) or must keep it (manual positioning
+   * is the only option).
+   */
+  isSupported(): boolean {
+    const session = this.renderer.xr.getSession() as
+      | (XRSession & { enabledFeatures?: readonly string[] })
+      | null;
+    if (!session) return false;
+    if (session.enabledFeatures) return session.enabledFeatures.includes('hit-test');
+    return typeof session.requestHitTestSource === 'function';
+  }
+
   /** Arm or disarm place mode (wrist-menu row). */
   toggle(): void {
     if (this.active) this.stop();

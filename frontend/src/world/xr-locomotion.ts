@@ -91,8 +91,16 @@ export function setupXrLocomotion(opts: {
   getOrbitPivot?: () => Vector3 | null;
   /** B/Y rising edge — main.ts advances the selection to the next aircraft. */
   onCycleAircraft?: () => void;
+  /**
+   * Gate for free-fly. Hardware feedback (issue #6): free-fly
+   * translation moves xrRoot, which slides an AR-placed scope off its
+   * real-world surface. main.ts returns false in AR sessions where
+   * hit-test placement exists; AR devices without hit-test keep
+   * free-fly as their only way to position the map manually.
+   */
+  freeflyAllowed?: () => boolean;
 }): XrLocomotion {
-  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft } = opts;
+  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft, freeflyAllowed } = opts;
 
   // Edge-trigger state: snap-turn, A and B fire once per press.
   let snapTurnArmed = true;
@@ -129,7 +137,7 @@ export function setupXrLocomotion(opts: {
     if (!session) return;
     const dtS = Math.min(_dtMs, 100) / 1000; // clamp huge frame stalls
     const s = getSettings();
-    const freefly = s.xrMoveMode === 'freefly';
+    const freefly = s.xrMoveMode === 'freefly' && (freeflyAllowed?.() ?? true);
     const xrCam = renderer.xr.getCamera();
 
     for (const src of session.inputSources) {

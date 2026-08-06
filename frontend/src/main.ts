@@ -282,6 +282,11 @@ const xrLocomotion = setupXrLocomotion({
   renderer: world.renderer,
   camera: world.camera,
   xrRoot: world.xrRoot,
+  // In AR with hit-test, free-fly translation would slide a placed
+  // scope off its real surface (issue #6) — force scope-style movement
+  // there. AR devices without hit-test keep free-fly (their only way
+  // to position the map manually). VR is unaffected.
+  freeflyAllowed: () => getXrState().presentingMode !== 'ar' || !xrArPlace.isSupported(),
   // Orbit the selected aircraft when one is picked (matches the desktop
   // follow-cam), else fall back to the scope center. positionOf returns a
   // fresh Vector3 in xrRoot-local space; localToWorld maps it into the
@@ -335,6 +340,11 @@ function syncLineResolution(): void {
 window.addEventListener('resize', syncLineResolution);
 subscribeXr(syncLineResolution);
 syncLineResolution();
+
+// Headsets are vertex-bound before they're fill-bound (issue #6: busy
+// scenes chug at every quality preset), so presenting flips the
+// reconciler into decimated-trail mode.
+subscribeXr((s) => reconciler.setXrMode(s.presenting));
 
 // ACARS messages from acarshub frequently arrive without an ICAO hex —
 // just flight/reg. Each store snapshot, walk pending unresolved messages
@@ -656,6 +666,9 @@ if (initialSelectedHex) {
 }
 
 let lastFrame = performance.now();
+// XR perf telemetry accumulators (see the presenting branch in tick).
+let xrPerfMs = 0;
+let xrPerfFrames = 0;
 let frames = 0;
 let fpsAccumMs = 0;
 
@@ -738,6 +751,24 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     xrLocomotion.tick(dt);
     // AR place-mode reticle follows the gaze hit point.
     if (xrFrame) xrArPlace.tick(xrFrame);
+    // Perf telemetry (issue #6: "runs poorly at every quality"):
+    // frame time + draw stats every 5 s, visible via the remote-
+    // inspected headset console. Quality-independent slowness means
+    // vertex/draw-call bound — drawCalls is the number to watch.
+    xrPerfMs += dt;
+    xrPerfFrames++;
+    if (xrPerfMs >= 5000) {
+      const render = world.renderer.info.render;
+      console.info('[xr] perf', {
+        avgFrameMs: Math.round((xrPerfMs / xrPerfFrames) * 10) / 10,
+        fps: Math.round(1000 / (xrPerfMs / xrPerfFrames)),
+        drawCalls: render.calls,
+        triangles: render.triangles,
+        aircraft: reconciler.count,
+      });
+      xrPerfMs = 0;
+      xrPerfFrames = 0;
+    }
   }
 
   if (world.renderer.xr.isPresenting) {
