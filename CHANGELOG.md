@@ -8,6 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-05
+
+### Fixed
+
+- **AR free-fly no longer dislocates a placed scope.** In AR sessions
+  that granted hit-test, movement is locked to scope style (scale and
+  orbit); free-fly translation would slide the map off its real-world
+  surface. Headsets without hit-test keep free-fly as their only
+  manual-placement tool.
+- **Headset performance in busy airspace.** Slowness at every quality
+  preset means geometry-bound, not fill-bound: while presenting, trails
+  now render at half point density capped to the most recent 300
+  points. An `[xr] perf` console line (frame time, fps, draw calls)
+  logs every 5 s in-session to guide further tuning.
+
 ## [0.6.0] - 2026-08-05
 
 The VR/AR release, hardware-tested end to end on a Quest 3 by
