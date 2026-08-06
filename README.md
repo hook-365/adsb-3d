@@ -7,7 +7,8 @@
 Real-time 3D visualization of ADS-B aircraft, with historical playback,
 3D airway-density heatmaps, and optional ACARS message decoding. One
 Docker image: it serves the viewer and reverse-proxies your existing
-ADS-B feeder.
+ADS-B feeder. Runs on your desktop, your phone, and, with a headset,
+your coffee table.
 
 Works with anything that publishes readsb's `aircraft.json` — tar1090,
 ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
@@ -20,20 +21,6 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 ![ADS-B 3D live view](Live.png)
 
-## VR & AR
-
-Put the airspace on your desk. With a WebXR headset the scope becomes a
-walkable diorama: orbit a selected aircraft, free-fly through the
-traffic, change settings from a wrist menu, or enter AR and drop the map
-onto real furniture with a glance and a trigger pull.
-
-https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
-
-Demo recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit), who
-hardware-tested every iteration of these features. The
-[full-length demo](https://github.com/hook-365/adsb-3d/releases/download/v0.6.0/ADS-B-3D-VR-AR-demo.mp4)
-is attached to the v0.6.0 release.
-
 ## Built with the community
 
 This project is better because people showed up:
@@ -43,7 +30,7 @@ This project is better because people showed up:
   testing with annotated videos, the bug isolation that cracked the AR
   rendering freeze, the control-scheme design that became free-fly mode,
   the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the vertical scale slider,
-  and the VR/AR demo video above.
+  and the VR/AR demo video below.
 - **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
   full-stack Docker integration test suite and CI workflow ([#9](https://github.com/hook-365/adsb-3d/issues/9)), and
   caught a bug that silently broke retention on every fresh install.
@@ -55,6 +42,22 @@ This project is better because people showed up:
 
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
+
+## What's new
+
+- **v0.6.0: much more complete VR & AR support.** AR place mode (look
+  at a surface, pull the trigger, the scope parks there), a wrist menu
+  with full settings parity, and free-fly locomotion, all
+  hardware-tested on a Quest 3. See [VR & AR](#vr--ar) for the demo.
+- **A round of VR/AR bug fixes** from that testing: orbit and turn
+  math, thin-line shimmer (real thick-line rendering), controller cone
+  alignment, and an honest render-resolution readout.
+- **Mobile redesign of the aircraft detail card**: a bottom sheet that
+  keeps the map visible, with the photo docked beside the airframe data
+  at its natural aspect ratio.
+
+Full history in [CHANGELOG.md](CHANGELOG.md) and on the
+[releases page](https://github.com/hook-365/adsb-3d/releases).
 
 ## What you get
 
@@ -106,14 +109,12 @@ detail (pattern traffic spreads out) or high-altitude detail (flight
 levels spread out) — terrain and aircraft stay consistent at any
 position.
 
-**VR / AR (experimental)** — "Enter VR" opens an immersive WebXR
-session for any connected headset, with laser-pointer controllers, an
-in-VR wrist menu for settings, and thumbstick locomotion with comfort
-options (scope vs free-fly movement, snap vs smooth turning, B/Y
-cycles through aircraft). "Enter AR" opens a passthrough session on
-devices that support `immersive-ar`. Built without a real headset on
-hand, so issue reports are welcome. Side-by-side stereo (Cardboard) is
-still there for anything without WebXR.
+**VR / AR** — immersive WebXR sessions with laser-pointer controllers,
+a wrist menu with full settings parity, comfort locomotion (scope or
+free-fly, snap or smooth turning), and AR placement of the scope onto
+real furniture. Hardware-tested on a Quest 3; see
+[VR & AR](#vr--ar) below for the demo video. Side-by-side stereo
+(Cardboard) is still there for anything without WebXR.
 
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
@@ -160,6 +161,20 @@ For historical playback, ACARS, or the voice scanner, copy
 `.env.example` to `.env` and start from `docker-compose.example.yml`
 in the repo root. Both have track-service, ACARS, and TimescaleDB
 ready to uncomment; the `ENABLE_*` flags below switch each on.
+
+## VR & AR
+
+Put the airspace on your desk. With a WebXR headset the scope becomes a
+walkable diorama: orbit a selected aircraft, free-fly through the
+traffic, change settings from a wrist menu, or enter AR and drop the map
+onto real furniture with a glance and a trigger pull.
+
+https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
+
+Demo recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit), who
+hardware-tested every iteration of these features. The
+[full-length demo](https://github.com/hook-365/adsb-3d/releases/download/v0.6.0/ADS-B-3D-VR-AR-demo.mp4)
+is attached to the v0.6.0 release.
 
 ## Reverse proxy
 
@@ -306,44 +321,6 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 - **[VFRMap](https://vfrmap.com)** — hosting for FAA Sectional / Helicopter
   / IFR Low / IFR High chart tiles, kept in sync with the FAA 56-day cycle.
   Free non-commercial service; please don't abuse it.
-
-## Recent changes
-
-The full history lives in [CHANGELOG.md](CHANGELOG.md).
-
-- **v0.6.0** (2026-08-05): The sky lands on your desk. AR place mode
-  (look at a surface, pull the trigger, the scope parks there), a paged
-  wrist menu with full settings parity, free-fly tuned by real Quest 3
-  feedback, resolution-true fat lines, per-eye stereo controls, and a
-  mobile bottom-sheet redesign of the aircraft detail card.
-- **v0.5.3** (2026-08-03): Flat mode grounds at the home field's
-  elevation instead of sea level, so high-elevation stations read right
-  with terrain off too. Docs now state all altitudes are feet MSL.
-- **v0.5.2** (2026-08-03): Terrain polish — ground icons drape over the
-  hills shadow-style instead of being sliced by them, the emergency ring
-  rides the terrain, and high-elevation feeds no longer flash aircraft
-  at sea level while elevation tiles load.
-- **v0.5.1** (2026-08-03): The integration test suite + CI from #9
-  (thanks @ValkyrieUK), the fresh-install retention-policy fix, and
-  polite 5 s polling of remote feeders (local feeders keep 1 s;
-  `FEEDER_POLL_SECONDS` overrides).
-- **v0.5.0** (2026-08-03): The community-issues release: localization
-  (English/German/Spanish), the altitude scale slider, opt-in 3D
-  terrain with draped rings and AGL readout, VR comfort options, and
-  the fix for the AR rendering freeze.
-- **v0.4.0** (2026-05-28): Performance + UX push for high-density
-  feeds. Virtualized aircraft list, click-to-extend trails with 24 h
-  backfill, search filters the scene as well as the list, lazy-loaded
-  feature modules, and a long list of reconciler / trail / bundle
-  optimizations.
-- **v0.3.0** (2026-05-27): WebXR for real headsets (experimental), with
-  controllers, an in-VR wrist menu, locomotion, and AR passthrough.
-- **v0.2.0** (2026-05-27): Five color themes (auto-follows system
-  light/dark) and FAA aeronautical chart basemaps (US only).
-- **v0.1.1** (2026-05-22): `HIDE_TOWER=true` now hides the home marker
-  on the map as well as the HUD coordinates.
-- **v0.1.0** (2026-05-21): First public release of the TypeScript /
-  Three.js rewrite. See the [Upgrading](#upgrading) section.
 
 ## License
 
