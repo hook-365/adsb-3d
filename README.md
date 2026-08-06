@@ -27,8 +27,7 @@ walkable diorama: orbit a selected aircraft, free-fly through the
 traffic, change settings from a wrist menu, or enter AR and drop the map
 onto real furniture with a glance and a trigger pull.
 
-<!-- DEMO-VIDEO-PLACEHOLDER: in the GitHub web editor, delete this line
-     and drag adsb3d-demo-clip.mp4 here to embed the inline player. -->
+https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
 
 Demo recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit), who
 hardware-tested every iteration of these features. The
