@@ -20,6 +20,21 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 ![ADS-B 3D live view](Live.png)
 
+## VR & AR
+
+Put the airspace on your desk. With a WebXR headset the scope becomes a
+walkable diorama: orbit a selected aircraft, free-fly through the
+traffic, change settings from a wrist menu, or enter AR and drop the map
+onto real furniture with a glance and a trigger pull.
+
+<!-- DEMO-VIDEO-PLACEHOLDER: in the GitHub web editor, delete this line
+     and drag adsb3d-demo-clip.mp4 here to embed the inline player. -->
+
+Demo recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit), who
+hardware-tested every iteration of these features. The
+[full-length demo](https://github.com/hook-365/adsb-3d/releases/download/v0.6.0/ADS-B-3D-VR-AR-demo.mp4)
+is attached to the v0.6.0 release.
+
 ## Built with the community
 
 This project is better because people showed up:
@@ -28,7 +43,8 @@ This project is better because people showed up:
   became the entire hardware QA department for it: two rounds of Quest 3
   testing with annotated videos, the bug isolation that cracked the AR
   rendering freeze, the control-scheme design that became free-fly mode,
-  and the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the vertical scale slider.
+  the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the vertical scale slider,
+  and the VR/AR demo video above.
 - **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
   full-stack Docker integration test suite and CI workflow ([#9](https://github.com/hook-365/adsb-3d/issues/9)), and
   caught a bug that silently broke retention on every fresh install.
@@ -296,6 +312,11 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 The full history lives in [CHANGELOG.md](CHANGELOG.md).
 
+- **v0.6.0** (2026-08-05): The sky lands on your desk. AR place mode
+  (look at a surface, pull the trigger, the scope parks there), a paged
+  wrist menu with full settings parity, free-fly tuned by real Quest 3
+  feedback, resolution-true fat lines, per-eye stereo controls, and a
+  mobile bottom-sheet redesign of the aircraft detail card.
 - **v0.5.3** (2026-08-03): Flat mode grounds at the home field's
   elevation instead of sea level, so high-elevation stations read right
   with terrain off too. Docs now state all altitudes are feet MSL.

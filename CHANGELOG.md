@@ -8,7 +8,56 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.5.3] - 2026-08-03
+## [0.6.0] - 2026-08-05
+
+The VR/AR release, hardware-tested end to end on a Quest 3 by
+[@tyzbit](https://github.com/tyzbit), who also recorded the demo video
+now embedded in the README.
+
+### Added
+
+- **AR place mode.** AR sessions request WebXR hit-test; a wrist-menu
+  "Place scope" row arms a gaze reticle that tracks real surfaces, and
+  the next trigger pull parks the scope there (tables, beds, desks).
+- **Paged, parity-guarded wrist menu.** Rows generate from a
+  declarative spec (display / VR behavior / units, 14 settings) with a
+  pager pinned to the bottom slot. A drift-guard test forces every
+  Settings key onto the menu or into a documented exclusion list.
+- **Per-eye stereo controls.** Side-by-side stereo now renders the
+  selected-aircraft billboard in both eyes and adds an "Exit stereo"
+  button per eye half for WayVR / crossed-eye viewing.
+- **Fat lines.** Altitude lines and trails render as real thick lines
+  (LineSegments2), width scaled to render resolution, killing the 1px
+  shimmer on supersampled headset buffers.
+- **Measured render-resolution readout.** The VR quality row shows the
+  actual per-eye pixels the runtime granted last session, so "would a
+  higher preset help" is answerable (spoiler: ultra outruns the panel).
+- **Separate AR world scale.** AR spawns 10x smaller than VR (a
+  diorama sharing a furnished room), persisted independently, driven by
+  the same thumbstick gesture, shrinkable to about a foot across.
+- **Mobile bottom sheet.** On phones the aircraft detail card is a
+  fixed-height sheet over the footer: map always visible, content
+  scrolls inside, photo docked beside the airframe grid at its natural
+  aspect ratio, compacted spacing throughout.
+
+### Fixed
+
+- **Orbit rotation mirrored around the wrong point** (issue #6 VR#8):
+  the turn math rotated position and yaw in opposite directions,
+  composing into an orbit around the pivot's reflection. Free-fly
+  turning was corrupted by the same bug.
+- **Free-fly feel**: yaw sense flipped to first-person expectations,
+  vertical needs a deliberate mostly-vertical push (no more height
+  drift mid-turn), and thumbstick zoom anchors on the selection or
+  scope center instead of dragging the world sideways.
+- **AR left-thumbstick freeze**: a settings write recolored the sky AR
+  removes; the event system now isolates subscriber failures so one
+  bad listener can never kill the render loop.
+- **Controller cone off-center**: the cone now tracks gripSpace (the
+  physical hand) while the laser stays on the aim ray.
+- **Wrist menu missing its AR-only row at session start** (it only
+  redrew on hover), and the recenter button teleporting to the desktop
+  camera's position instead of the headset's.
 
 ### Changed
 
