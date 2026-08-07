@@ -37,6 +37,7 @@ import { createAircraftDetail } from './ui/aircraft-detail';
 import { attachPanelToggle } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
+import { mountShapeChip } from './ui/shape-chip';
 import { mountAltitudeLegend } from './ui/altitude-legend';
 import { mountHud, refreshSubtitle } from './ui/hud';
 // ACARS browser modal is loaded dynamically on first open click — most
@@ -52,7 +53,7 @@ import { attachPicking } from './interaction/picking';
 import { setHome } from './core/config';
 import { groundSceneY } from './world/elevation';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
-import { setSearchQuery } from './core/filter';
+import { getSearchQuery, setSearchQuery } from './core/filter';
 import { initSession } from './app/session';
 import {
   getTimeContext,
@@ -68,6 +69,7 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 mountFeedSelector({ feeds: getFeeds(), active: getActiveFeed(), mode: getFeedMode() });
 mountSettingsPanel();
+mountShapeChip();
 mountTimeControls();
 mountAltitudeLegend();
 mountHud();
@@ -440,7 +442,18 @@ function autoCollapseListOnMobile(hex: string | null): void {
 // state. Kept in sync inside applySelection().
 let xrSelectedHex: string | null = null;
 
+// Share-link solo view (the boot block below seeds the search box with the
+// linked hex): remember the seeded value so the first deselect can dissolve
+// the solo view along with the selection that justified it. Only an
+// untouched seeded query is cleared — if the user has edited the search
+// since, it's theirs and it survives.
+let seededSearchHex: string | null = null;
+
 function applySelection(hex: string | null): void {
+  if (hex === null && seededSearchHex !== null) {
+    if (getSearchQuery() === seededSearchHex) aircraftList.clearSearch();
+    seededSearchHex = null;
+  }
   xrSelectedHex = hex;
   reconciler.setSelected(hex);
   aircraftDetail.setSelected(hex);
@@ -663,6 +676,7 @@ if (initialSelectedHex) {
     searchInput.value = initialSelectedHex;
   }
   setSearchQuery(initialSelectedHex);
+  seededSearchHex = initialSelectedHex;
 }
 
 let lastFrame = performance.now();

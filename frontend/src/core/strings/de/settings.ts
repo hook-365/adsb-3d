@@ -14,6 +14,11 @@ export const settingsStrings = {
 
   // Display section
   'settings.section_display': 'Darstellung',
+  'settings.aircraft_shape': 'Flugzeugform',
+  'settings.aircraft_shape_desc': 'Darstellung der Flugzeuge am Himmel: Kegel in Flugrichtung, Kugel oder eine 3D-Version der tar1090-Typsilhouette.',
+  'settings.shape_cone': 'Kegel',
+  'settings.shape_sphere': 'Kugel',
+  'settings.shape_silhouette': '3D-Silhouette',
   'settings.ground_sprites': 'Flugzeugsymbole am Boden',
   'settings.ground_sprites_desc': 'Zeigt die tar1090-Silhouette unter jedem Flugzeug.',
   'settings.altitude_lines': 'Höhenlinien',

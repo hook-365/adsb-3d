@@ -14,6 +14,11 @@ export const settingsStrings = {
 
   // Display section
   'settings.section_display': 'Visualización',
+  'settings.aircraft_shape': 'Forma de la aeronave',
+  'settings.aircraft_shape_desc': 'Cómo se dibujan las aeronaves en el cielo: un cono según el rumbo, una esfera o una versión 3D de la silueta de tipo de tar1090.',
+  'settings.shape_cone': 'Cono',
+  'settings.shape_sphere': 'Esfera',
+  'settings.shape_silhouette': 'Silueta 3D',
   'settings.ground_sprites': 'Iconos de aeronave en tierra',
   'settings.ground_sprites_desc': 'Mostrar la silueta de tar1090 debajo de cada aeronave.',
   'settings.altitude_lines': 'Líneas de altitud',

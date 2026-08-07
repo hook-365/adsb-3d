@@ -2,6 +2,7 @@ import {
   BASEMAP_VALUES,
   getSettings,
   getDefaultSettings,
+  subscribeSettings,
   updateSettings,
   type Basemap,
   type Settings,
@@ -118,6 +119,17 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
   {
     heading: t('settings.section_display'),
     rows: [
+      {
+        kind: 'choice',
+        key: 'aircraftShape',
+        label: t('settings.aircraft_shape'),
+        description: t('settings.aircraft_shape_desc'),
+        options: [
+          { value: 'cone', label: t('settings.shape_cone') },
+          { value: 'sphere', label: t('settings.shape_sphere') },
+          { value: 'silhouette', label: t('settings.shape_silhouette') },
+        ],
+      },
       {
         kind: 'toggle',
         key: 'groundSprites',
@@ -407,6 +419,13 @@ export function mountSettingsPanel(): void {
 
   // Build sections + rows once. Re-render only the input states on each
   // settings change, not the whole DOM.
+  //
+  // Settings can change from outside this panel (shape chip, VR wrist
+  // menu) — each input row registers a sync closure here, and one
+  // subscriber below re-reads the store into the DOM so the panel never
+  // shows stale values. Programmatic .value/.checked writes don't fire
+  // change/input events, so this can't loop back into updateSettings.
+  const inputSyncs: ((s: Readonly<Settings>) => void)[] = [];
   for (const section of SETTINGS_SCHEMA) {
     const sectionEl = document.createElement('section');
     const heading = document.createElement('h3');
@@ -444,6 +463,9 @@ export function mountSettingsPanel(): void {
         slider.className = 'settings-switch-slider';
         switchWrap.append(input, slider);
         rowEl.appendChild(switchWrap);
+        inputSyncs.push((s) => {
+          input.checked = Boolean(s[row.key]);
+        });
       } else if (row.kind === 'choice') {
         const select = document.createElement('select');
         select.className = 'settings-select';
@@ -459,6 +481,9 @@ export function mountSettingsPanel(): void {
           updateSettings({ [row.key]: select.value } as Partial<Settings>);
         });
         rowEl.appendChild(select);
+        inputSyncs.push((s) => {
+          select.value = String(s[row.key]);
+        });
         if (row.subscribe) {
           const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
           row.subscribe((s) => {
@@ -539,6 +564,12 @@ export function mountSettingsPanel(): void {
         });
         wrap.append(input, valueEl, resetBtn);
         rowEl.appendChild(wrap);
+        inputSyncs.push((s) => {
+          const v = Number(s[row.key]);
+          input.value = String(v);
+          valueEl.textContent = fmt(v);
+          syncReset(v);
+        });
       }
 
       sectionEl.appendChild(rowEl);
@@ -547,6 +578,11 @@ export function mountSettingsPanel(): void {
   }
 
   document.body.appendChild(panel);
+
+  // Unsubscribe handle intentionally discarded — page-lifetime singleton.
+  subscribeSettings((s) => {
+    for (const fn of inputSyncs) fn(s);
+  });
 
   function setOpen(open: boolean): void {
     panel.hidden = !open;

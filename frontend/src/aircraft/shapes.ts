@@ -9,7 +9,7 @@ import shapesDataJson from './shapes-data.json';
 // trimmed version of tar1090's getBaseMarker() — no halloween, no AIS,
 // no ATC mode, no square mania.
 
-interface ShapeDef {
+export interface ShapeDef {
   w: number;
   h: number;
   viewBox: string;
@@ -155,4 +155,10 @@ export function getShapeTexture(shapeName: string): CachedTexture | null {
 /** True if tar1090 marks this shape as non-rotatable (e.g. balloon, tower). */
 export function shapeRotates(shapeName: string): boolean {
   return !data.shapes[shapeName]?.noRotate;
+}
+
+/** Raw catalog entry for a shape, or null if unknown. Consumed by
+ *  shape-geometry.ts to extrude the SVG outline into a 3D marker. */
+export function getShapeDef(shapeName: string): ShapeDef | null {
+  return data.shapes[shapeName] ?? null;
 }

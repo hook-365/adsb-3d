@@ -36,6 +36,13 @@ export type XrTurnStyle = 'snap' | 'smooth';
  */
 export type LanguageSelection = 'auto' | 'en' | 'de' | 'es';
 /**
+ * In-air aircraft marker style. 'cone' = classic heading cone; 'sphere' =
+ * undirected orb (trails carry the heading); 'silhouette' = the aircraft's
+ * tar1090 type silhouette extruded into a flat 3D shape (see
+ * aircraft/shape-geometry.ts). Ground sprites are unaffected.
+ */
+export type AircraftShapeStyle = 'cone' | 'sphere' | 'silhouette';
+/**
  * Canonical basemap list, in display order. The settings panel dropdown
  * and the VR wrist-menu cycler both render from this array (each with
  * its own Record<Basemap, label> map, so a new entry is a compile error
@@ -59,6 +66,8 @@ export const BASEMAP_VALUES = [
 export type Basemap = (typeof BASEMAP_VALUES)[number];
 
 export interface Settings {
+  /** In-air marker style — see AircraftShapeStyle. */
+  aircraftShape: AircraftShapeStyle;
   /** Render the per-aircraft tar1090 ground icon at the foot of the altitude line. */
   groundSprites: boolean;
   /** Vertical line connecting each aircraft to its projection on the ground. */
@@ -150,6 +159,9 @@ export interface Settings {
 }
 
 const DEFAULTS: Settings = {
+  // Silhouette by default: the 3D type shapes are the product's best first
+  // impression, and the top-right chip / settings row are the opt-out.
+  aircraftShape: 'silhouette',
   groundSprites: true,
   altitudeLines: true,
   rangeRings: true,
@@ -165,7 +177,7 @@ const DEFAULTS: Settings = {
   vrQuality: 'balanced',
   xrMoveMode: 'scope',
   xrTurnStyle: 'snap',
-  basemap: 'dark',
+  basemap: 'carto_voyager',
   distanceUnit: 'nm',
   speedUnit: 'kt',
   altitudeUnit: 'ft',

@@ -1,5 +1,7 @@
 // German draft mirroring en/list.ts — pending native-speaker review.
 export const listStrings = {
+  'list.filtered_chip': 'gefiltert',
+  'list.filtered_chip_aria': 'Alle Filter zurücksetzen',
   'list.tag_emergency': 'Notfall',
   'list.tag_military': 'Militär',
   'list.tag_special_interest': 'Besonderes Interesse',

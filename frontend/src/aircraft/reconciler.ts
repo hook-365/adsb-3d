@@ -1,5 +1,6 @@
 import {
   BufferAttribute,
+  BufferGeometry,
   Color,
   ConeGeometry,
   DoubleSide,
@@ -37,7 +38,8 @@ subscribeElevation(() => {
   elevationRefreshPending = true;
 });
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
-import { getSettings, subscribeSettings } from '../core/settings';
+import { getSilhouetteGeometry, MARKER_FOOTPRINT_UNITS } from './shape-geometry';
+import { getSettings, subscribeSettings, type AircraftShapeStyle } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { passesFilter } from '../core/filter';
 import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
@@ -54,6 +56,38 @@ const CONE_GEOMETRY = new ConeGeometry(0.6, 2.4, 6);
 CONE_GEOMETRY.rotateX(-Math.PI / 2);
 const CONE_GEOMETRY_GROUND = new ConeGeometry(0.4, 1.4, 6);
 CONE_GEOMETRY_GROUND.rotateX(-Math.PI / 2);
+// 'sphere' marker style: an undirected orb (heading reads from the trail).
+// Sized so its screen footprint roughly matches the cone's.
+const SPHERE_MARKER_GEOMETRY = new SphereGeometry(0.85, 14, 10);
+
+// Marker geometry for the aircraftShape setting. All three styles share
+// geometry across aircraft (the silhouette via shape-geometry's per-shape
+// cache), so the entry's mesh only ever swaps geometry references.
+// baseScale carries the resolver's per-type scaling factor for the
+// silhouette style — applied via mesh scale in applyTransform so the
+// cached geometry stays per-shape, not per-type. rotates=false pins
+// noRotate silhouettes (balloons, obstruction towers) to identity yaw.
+interface MarkerBody {
+  geometry: BufferGeometry;
+  baseScale: number;
+  rotates: boolean;
+}
+function markerBodyFor(
+  style: AircraftShapeStyle,
+  onGround: boolean,
+  shapeName: string,
+  shapeScaling: number,
+): MarkerBody {
+  if (style === 'sphere') {
+    return { geometry: SPHERE_MARKER_GEOMETRY, baseScale: 1, rotates: true };
+  }
+  if (style === 'silhouette') {
+    const sil = getSilhouetteGeometry(shapeName);
+    if (sil) return { geometry: sil, baseScale: shapeScaling, rotates: shapeRotates(shapeName) };
+    // Unknown/unextrudable shape → cone fallback below.
+  }
+  return { geometry: onGround ? CONE_GEOMETRY_GROUND : CONE_GEOMETRY, baseScale: 1, rotates: true };
+}
 
 // Trail / ring colors come from the active theme. The shared materials
 // below are mutated in place by the module-level theme subscriber further
@@ -194,6 +228,14 @@ interface RenderEntry {
   iconMesh: Mesh;
   iconMaterial: MeshBasicMaterial;
   iconRotates: boolean;
+  // Resolved tar1090 shape identity, kept so the aircraftShape settings
+  // subscriber can rebuild the marker body without re-resolving the type.
+  shapeName: string;
+  shapeScaling: number;
+  // Marker-body scale multiplier and yaw eligibility for the current
+  // aircraftShape style — see markerBodyFor.
+  baseScale: number;
+  bodyRotates: boolean;
   emergencyRing: Mesh;
   pingRing: Mesh;
   pingMaterial: MeshBasicMaterial;
@@ -247,7 +289,9 @@ interface RenderEntry {
 // Ground-projected aircraft shape icon. Sized in scene units; per-aircraft
 // scaling stretches/shrinks based on the resolver's per-type scaling factor.
 // Y offset lifts it just above the world plane so it doesn't z-fight terrain.
-const ICON_BASE_SIZE = 5.5;
+// Shared with the silhouette marker geometry so the 3D shape and its
+// ground sprite have the same footprint (sprite = shadow).
+const ICON_BASE_SIZE = MARKER_FOOTPRINT_UNITS;
 const ICON_GROUND_Y = 0.05;
 
 const SELECTION_RING_GEOMETRY = new RingGeometry(2.0, 2.6, 64);
@@ -390,8 +434,6 @@ function buildEntry(a: Aircraft): RenderEntry {
     transparent: true,
   });
   material.emissive = headColor.clone().multiplyScalar(0.35);
-  const cone = new Mesh(a.onGround ? CONE_GEOMETRY_GROUND : CONE_GEOMETRY, material);
-  cone.userData = { kind: 'aircraft', hex: a.hex };
 
   // Resolve the tar1090 shape for this aircraft's type and stamp it onto a
   // ground-projected plane. Shape lookup uses ICAO type → description →
@@ -399,6 +441,12 @@ function buildEntry(a: Aircraft): RenderEntry {
   // rasterized once per shape (white fill, black stroke) and tinted at
   // render time via material.color.
   const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description);
+
+  // Marker body ("cone" naming kept everywhere — it's the historical style
+  // and the field name half the reconciler hangs off of).
+  const body = markerBodyFor(getSettings().aircraftShape, a.onGround, shapeName, scaling);
+  const cone = new Mesh(body.geometry, material);
+  cone.userData = { kind: 'aircraft', hex: a.hex };
   const iconCache = getShapeTexture(shapeName);
   const aspect = iconCache?.aspect ?? 1;
   const iconW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
@@ -516,6 +564,10 @@ function buildEntry(a: Aircraft): RenderEntry {
     iconMesh,
     iconMaterial,
     iconRotates,
+    shapeName,
+    shapeScaling: scaling,
+    baseScale: body.baseScale,
+    bodyRotates: body.rotates,
     emergencyRing,
     pingRing,
     pingMaterial,
@@ -588,7 +640,7 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   // quaternion math when heading hasn't changed since the last refresh —
   // a cruising aircraft holds a steady track for many position updates,
   // and the previous quaternion is still correct in that case.
-  if (a.trackDeg !== null && a.trackDeg !== entry.lastTrackDeg) {
+  if (a.trackDeg !== null && entry.bodyRotates && a.trackDeg !== entry.lastTrackDeg) {
     const yaw = -((a.trackDeg * Math.PI) / 180);
     const half = yaw / 2;
     const sinH = Math.sin(half);
@@ -608,7 +660,7 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   entry.altBuf.needsUpdate = true;
 
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
-  entry.cone.scale.setScalar(s);
+  entry.cone.scale.setScalar(s * entry.baseScale);
 
   // Ground icon position follows the aircraft's lat/lon foot regardless of
   // whether heading changed — its quaternion was either updated above or
@@ -965,6 +1017,7 @@ export class AircraftReconciler {
   private prevGroundSprites: boolean;
   private prevAltitudeLines: boolean;
   private prevAircraftLabels: boolean;
+  private prevAircraftShape: AircraftShapeStyle;
 
   // Frustum + matrix scratch space for updateLabelLOD. Allocating once at
   // construction (not per-frame) keeps the LOD pass allocation-free.
@@ -989,6 +1042,7 @@ export class AircraftReconciler {
     this.prevGroundSprites = s0.groundSprites;
     this.prevAltitudeLines = s0.altitudeLines;
     this.prevAircraftLabels = s0.aircraftLabels;
+    this.prevAircraftShape = s0.aircraftShape;
     // Settings can change for many reasons (theme, range rings, units...);
     // most of those are irrelevant to per-entry visibility. Walk the entry
     // map only when one of the three keys this loop actually cares about
@@ -1000,15 +1054,38 @@ export class AircraftReconciler {
       const gsChanged = s.groundSprites !== this.prevGroundSprites;
       const alChanged = s.altitudeLines !== this.prevAltitudeLines;
       const labChanged = s.aircraftLabels !== this.prevAircraftLabels;
-      if (!gsChanged && !alChanged && !labChanged) return;
-      for (const entry of this.entries.values()) {
+      const shapeChanged = s.aircraftShape !== this.prevAircraftShape;
+      if (!gsChanged && !alChanged && !labChanged && !shapeChanged) return;
+      for (const [hex, entry] of this.entries) {
         if (gsChanged) entry.iconMesh.visible = s.groundSprites;
         if (alChanged) entry.altLine.visible = s.altitudeLines;
         if (labChanged && !s.aircraftLabels) entry.label.visible = false;
+        if (shapeChanged) {
+          // Swap the marker body in place. Geometries are shared/cached,
+          // so this is a reference swap, not a rebuild. lastRev = -1
+          // forces a full refresh next frame (scale with the new
+          // baseScale, transforms); lastTrackDeg = NaN re-applies the
+          // yaw quaternion, which matters both for freshly-rotatable
+          // bodies and after the identity reset below.
+          const a = this.store.snapshot.get(hex);
+          const body = markerBodyFor(
+            s.aircraftShape,
+            a?.onGround ?? false,
+            entry.shapeName,
+            entry.shapeScaling,
+          );
+          entry.cone.geometry = body.geometry;
+          entry.baseScale = body.baseScale;
+          entry.bodyRotates = body.rotates;
+          if (!body.rotates) entry.cone.quaternion.identity();
+          entry.lastTrackDeg = Number.NaN;
+          entry.lastRev = -1;
+        }
       }
       this.prevGroundSprites = s.groundSprites;
       this.prevAltitudeLines = s.altitudeLines;
       this.prevAircraftLabels = s.aircraftLabels;
+      this.prevAircraftShape = s.aircraftShape;
     });
   }
 

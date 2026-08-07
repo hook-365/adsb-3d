@@ -244,6 +244,13 @@ const PAGES: MenuRow[][] = [
     },
   ],
   [
+    // Display page (page 1) is at its 6-slot cap, so the shape style
+    // lives here with the units.
+    cycleRow('aircraftShape', () => tr('misc.xr_shape'), [
+      { value: 'cone', label: () => tr('misc.xr_shape_cone') },
+      { value: 'sphere', label: () => tr('misc.xr_shape_sphere') },
+      { value: 'silhouette', label: () => tr('misc.xr_shape_silhouette') },
+    ]),
     cycleRow('altitudeUnit', () => tr('misc.xr_alt_unit'), [
       { value: 'ft', label: () => 'ft' },
       { value: 'm', label: () => 'm' },

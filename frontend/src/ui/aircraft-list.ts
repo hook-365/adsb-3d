@@ -2,7 +2,7 @@ import type { Aircraft } from '../core/types';
 import type { AircraftStore } from '../aircraft/store';
 import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact } from '../core/units';
-import { getFilter, setFilter, subscribeFilter, passesFilter, setSearchQuery, subscribeSearchQuery, type FilterKey } from '../core/filter';
+import { getFilter, setFilter, subscribeFilter, passesFilter, getSearchQuery, setSearchQuery, subscribeSearchQuery, type FilterKey } from '../core/filter';
 import { hasAcars, subscribeAcars } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
 import { t } from '../core/i18n';
@@ -24,6 +24,9 @@ interface SortState {
 export interface AircraftListHandle {
   setSelected(hex: string | null): void;
   onSelect(fn: (hex: string | null) => void): void;
+  /** Empty the search box and the filter singleton's query (main.ts uses
+   *  this to dissolve a share-link's solo view on deselect). */
+  clearSearch(): void;
 }
 
 // Compact bitmask for the per-row status chips (emergency/military/special/
@@ -123,6 +126,7 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   const list = document.getElementById('panel-list') as HTMLUListElement;
   const count = document.getElementById('panel-count') as HTMLElement;
   const search = document.getElementById('panel-search') as HTMLInputElement;
+  const searchClear = document.getElementById('panel-search-clear') as HTMLButtonElement;
   const colButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.panel-cols .col'));
 
   const filterButtons = Array.from(
@@ -428,14 +432,58 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
 
   store.subscribe(render);
 
+  // "Filtered" chip beside the aircraft count: visible whenever search text
+  // or a non-All status pill is hiding traffic, so the under-reported count
+  // explains itself. Clicking it resets both gates at once.
+  const filteredChip = document.createElement('button');
+  filteredChip.type = 'button';
+  filteredChip.id = 'panel-filtered-chip';
+  filteredChip.hidden = true;
+  filteredChip.textContent = `${t('list.filtered_chip')} ×`;
+  filteredChip.setAttribute('aria-label', t('list.filtered_chip_aria'));
+  filteredChip.title = t('list.filtered_chip_aria');
+  count.insertAdjacentElement('beforebegin', filteredChip);
+  filteredChip.addEventListener('click', () => {
+    clearSearch();
+    setFilter('all');
+  });
+
+  // Sync the two clear affordances (input ×, filtered chip) with the
+  // current filter state. Driven from the subscribe hooks below so state
+  // changes from anywhere — typing, share-link seeding in main.ts, pill
+  // clicks — update them without extra wiring.
+  function syncClearAffordances(): void {
+    const query = getSearchQuery();
+    searchClear.hidden = query === '';
+    filteredChip.hidden = query === '' && getFilter() === 'all';
+  }
+
+  function clearSearch(): void {
+    search.value = '';
+    setSearchQuery('');
+  }
+
   search.addEventListener('input', () => {
     setSearchQuery(search.value);
+  });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && search.value !== '') {
+      // Consume the key so document-level Escape handlers (settings panel,
+      // ACARS browser) don't also fire off a half-typed search clear.
+      e.stopPropagation();
+      clearSearch();
+    }
+  });
+  searchClear.addEventListener('click', () => {
+    clearSearch();
+    search.focus();
   });
 
   // setSearchQuery fans out to all listeners — the reconciler picks up the
   // new query on its next frame (it just reads passesFilter), and we
   // reindex+rescroll the list panel here.
   subscribeSearchQuery(() => {
+    syncClearAffordances();
     reindexAndPreserveScroll();
   });
 
@@ -469,9 +517,11 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   // Unsubscribe handles intentionally discarded — page-lifetime singleton.
   subscribeFilter((f) => {
     applyFilterIndicator(f);
+    syncClearAffordances();
     reindexAndPreserveScroll();
   });
   applyFilterIndicator(getFilter());
+  syncClearAffordances();
 
   // Re-render when an ACARS message arrives so the new "A" chip on the
   // affected aircraft appears immediately. We can't piggyback on the
@@ -518,6 +568,7 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
     },
     onSelect(fn) {
       selectListeners.add(fn);
-    }
+    },
+    clearSearch,
   };
 }

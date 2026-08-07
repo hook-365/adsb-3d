@@ -34,6 +34,7 @@
       </div>
     </header>
     <span id="settings-slot" class="settings-slot"></span>
+    <button id="shape-chip" class="shape-chip" type="button" aria-label="Aircraft shape" data-i18n-aria-label="static.shape_chip_aria">✈</button>
     <div id="voice-panel" class="voice-panel" hidden></div>
     <footer id="status">
       <div id="time-controls" class="time-controls" data-mode="live">
@@ -81,7 +82,10 @@
           <span data-i18n="static.aircraft_heading">Aircraft</span>
           <span id="panel-count" class="panel-count">0</span>
         </div>
-        <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" data-i18n-placeholder="static.list_search_placeholder" autocomplete="off" />
+        <div class="panel-search-wrap">
+          <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" data-i18n-placeholder="static.list_search_placeholder" autocomplete="off" />
+          <button type="button" id="panel-search-clear" class="search-clear" hidden aria-label="Clear search filter" data-i18n-aria-label="static.list_search_clear_aria">×</button>
+        </div>
         <div class="panel-filters" id="panel-filters" role="tablist" aria-label="Filter by status" data-i18n-aria-label="static.filter_by_status_aria">
           <button type="button" class="filter active" data-filter="all" data-i18n="static.filter_all">All</button>
           <button type="button" class="filter" data-filter="air" data-i18n="static.filter_air">Air</button>

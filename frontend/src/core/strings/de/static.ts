@@ -26,6 +26,8 @@ export const staticStrings = {
   'static.aircraft_list_aria': 'Flugzeugliste',
   'static.aircraft_heading': 'Flugzeuge',
   'static.list_search_placeholder': 'Filter: Rufzeichen / Reg. / Hex',
+  'static.list_search_clear_aria': 'Suchfilter löschen',
+  'static.shape_chip_aria': 'Flugzeugform',
   'static.filter_by_status_aria': 'Nach Status filtern',
   'static.filter_all': 'Alle',
   'static.filter_air': 'Luft',

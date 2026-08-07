@@ -26,6 +26,8 @@ export const staticStrings = {
   'static.aircraft_list_aria': 'Lista de aeronaves',
   'static.aircraft_heading': 'Aeronaves',
   'static.list_search_placeholder': 'filtrar indicativo / matrícula / hex',
+  'static.list_search_clear_aria': 'Borrar el filtro de búsqueda',
+  'static.shape_chip_aria': 'Forma de la aeronave',
   'static.filter_by_status_aria': 'Filtrar por estado',
   'static.filter_all': 'Todos',
   'static.filter_air': 'Aire',

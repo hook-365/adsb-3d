@@ -190,11 +190,11 @@ html, body {
    settings gear). Defaults hidden; main.ts unhides when voice config
    is present. */
 .voice-panel {
-  /* Top-right, sitting just left of the settings gear (settings is at
-     right:64 + 40 wide = 104 from right edge, then 8 gap = 112). */
+  /* Top-right, sitting just left of the shape chip (chip is at
+     right:112 + 40 wide = 152 from right edge, then 8 gap = 160). */
   position: fixed;
   top: 16px;
-  right: 112px;
+  right: 160px;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -211,10 +211,10 @@ html, body {
    in the top-right toggle row. */
 body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed)) .voice-panel,
 body:has(#voice-toggle[aria-expanded="true"]):has(.settings-button.open) .voice-panel {
-  right: 344px;
+  right: 392px;
 }
 body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed)):has(.settings-button.open) .voice-panel {
-  right: 672px;
+  right: 720px;
 }
 
 .voice-toggle {
@@ -533,6 +533,37 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
 
 .settings-button:hover,
 .settings-button.open {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* Aircraft-shape quick cycler — same 40x40 chrome as the settings gear,
+   one slot further left in the top-right chain (gear 64 + 40 + 8 = 112).
+   The glyph mirrors the current aircraftShape setting (set by
+   ui/shape-chip.ts). */
+.shape-chip {
+  position: fixed;
+  top: 16px;
+  right: 112px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: color-mix(in srgb, var(--panel-base) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.shape-chip:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
@@ -931,6 +962,7 @@ body.xr-on #aircraft-panel,
 body.xr-on #panel-detail,
 body.xr-on #panel-toggle,
 body.xr-on .settings-slot,
+body.xr-on .shape-chip,
 body.xr-on .settings-panel,
 body.xr-on .voice-panel,
 body.xr-on .acars-browser {
@@ -1673,6 +1705,11 @@ body.xr-on .acars-browser {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+.panel-search-wrap {
+  position: relative;
+  display: flex;
+}
+
 #panel-search {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
@@ -1680,12 +1717,58 @@ body.xr-on .acars-browser {
   color: var(--fg);
   font-family: inherit;
   font-size: 12px;
-  padding: 5px 8px;
+  padding: 5px 26px 5px 8px;
   outline: none;
+  flex: 1;
+  min-width: 0;
 }
 
 #panel-search:focus {
   border-color: var(--accent);
+}
+
+/* The custom clear button replaces the browser-native cancel affordance —
+   two ×s in one input would be worse than none. */
+#panel-search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-clear {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  color: var(--fg);
+}
+
+#panel-filtered-chip {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+#panel-filtered-chip:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .panel-cols {

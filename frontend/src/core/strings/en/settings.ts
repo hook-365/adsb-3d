@@ -15,6 +15,11 @@ export const settingsStrings = {
 
   // Display section
   'settings.section_display': 'Display',
+  'settings.aircraft_shape': 'Aircraft shape',
+  'settings.aircraft_shape_desc': 'How aircraft are drawn in the sky: a heading cone, a sphere, or a 3D version of the tar1090 type silhouette.',
+  'settings.shape_cone': 'Cone',
+  'settings.shape_sphere': 'Sphere',
+  'settings.shape_silhouette': '3D silhouette',
   'settings.ground_sprites': 'Ground aircraft icons',
   'settings.ground_sprites_desc': 'Show the tar1090 silhouette under each aircraft.',
   'settings.altitude_lines': 'Altitude lines',
