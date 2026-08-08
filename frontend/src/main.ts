@@ -419,6 +419,26 @@ const HOME_TARGET = new Vector3(0, 0, 0);
 let followHex: string | null = null;
 let returningHome = false;
 
+// Pan breaks follow: a deliberate pan is the user asking to look somewhere
+// else, so the pivot stops chasing the aircraft while the selection (and
+// card) stay. Orbit and zoom never move the target, so target displacement
+// over a gesture is the pan signature — and the follow lerp pauses during
+// the gesture so it can't pollute the measurement. Recenter or re-selecting
+// resumes the chase.
+let controlsInteracting = false;
+const targetAtGestureStart = new Vector3();
+controls.addEventListener('start', () => {
+  controlsInteracting = true;
+  targetAtGestureStart.copy(controls.target);
+});
+controls.addEventListener('end', () => {
+  controlsInteracting = false;
+  if (followHex) {
+    const dist = world.camera.position.distanceTo(controls.target);
+    if (controls.target.distanceTo(targetAtGestureStart) > dist * 0.02) followHex = null;
+  }
+});
+
 // On phones the aircraft list and detail panel both fight for the right
 // edge — when an aircraft is selected, the detail card's close × ends
 // up sitting over the list's sort headers / filter pills. Auto-collapse
@@ -533,6 +553,13 @@ attachPicking({
 });
 
 function recenterView(): void {
+  // With a selection active, recenter means "back to the aircraft" — it
+  // resumes the follow a pan broke rather than abandoning the selection.
+  // Without one, it stays the classic home-view reset.
+  if (xrSelectedHex) {
+    followHex = xrSelectedHex;
+    return;
+  }
   applySelection(null);
   aircraftList.setSelected(null);
   world.camera.position.set(0, 220, 280);
@@ -545,6 +572,8 @@ function recenterView(): void {
 // (Right-drag also pans, via OrbitControls.) Direction is relative to where
 // the camera looks; the step scales with zoom so it feels consistent.
 function panView(dx: number, dz: number): void {
+  // Keyboard pan is as deliberate as a drag — it breaks the follow too.
+  followHex = null;
   const forward = new Vector3().subVectors(controls.target, world.camera.position);
   forward.y = 0;
   if (forward.lengthSq() === 0) return;
@@ -709,7 +738,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     fpsAccumMs = 0;
   }
 
-  if (followHex) {
+  if (followHex && !controlsInteracting) {
     const pos = reconciler.positionOf(followHex);
     if (pos) controls.target.lerp(pos, FOLLOW_LERP);
   } else if (returningHome) {
@@ -811,3 +840,10 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
 // otherwise pump at 60 Hz while the headset wants 72/90/120. Falls
 // through to standard rAF when no XR session is active.
 world.renderer.setAnimationLoop(tick);
+
+// Dev-only silhouette-feature tuning harness; overlays the app so it
+// needs no boot restructuring, and the dynamic import keeps it out of
+// the production bundle. See aircraft/shape-lab.ts.
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('shapeLab')) {
+  void import('./aircraft/shape-lab').then((m) => m.mountShapeLab());
+}

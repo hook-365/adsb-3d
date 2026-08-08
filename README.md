@@ -45,13 +45,17 @@ and translations count just as much as code.
 
 ## What's new
 
+- **v0.7.0: aircraft that look like aircraft.** Every common silhouette
+  now has a real 3D body built from its own tar1090 drawing: a lofted
+  fuselage that follows the drawn width, engines with intake lips on
+  the drawn pods, tail fins, a proper T-tail on the C-17, and rotor
+  blades on helicopters at the angles the artist drew. Plus a
+  minimizable aircraft card and smarter camera following (pan to look
+  around, recenter to resume the chase).
 - **v0.6.0: much more complete VR & AR support.** AR place mode (look
   at a surface, pull the trigger, the scope parks there), a wrist menu
   with full settings parity, and free-fly locomotion, all
   hardware-tested on a Quest 3. See [VR & AR](#vr--ar) for the demo.
-- **A round of VR/AR bug fixes** from that testing: orbit and turn
-  math, thin-line shimmer (real thick-line rendering), controller cone
-  alignment, and an honest render-resolution readout.
 - **Mobile redesign of the aircraft detail card**: a bottom sheet that
   keeps the map visible, with the photo docked beside the airframe data
   at its natural aspect ratio.

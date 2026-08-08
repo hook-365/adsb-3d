@@ -8,6 +8,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-07
+
+### Added
+
+- **Procedural 3D aircraft detail.** Silhouette markers now build real
+  bodies from the tar1090 drawings: a lofted fuselage tube following
+  each silhouette's measured width profile (12 stations, generated from
+  the artwork itself), engine nacelles with intake lips sitting on the
+  drawn pods, swept tail fins, and helicopter rotor blades at each
+  drawing's actual blade angles. 70 of the 92 catalog shapes are
+  annotated; the rest keep the flat extrusion. Everything stays one
+  shared geometry per shape, within the VR triangle budget.
+- **A true T-tail for the C-17**: the drawn body-level stabilizer is
+  clipped out of the planform and rebuilt atop the fin.
+- **Camera follow polish.** Panning (drag or arrow keys) releases the
+  follow while keeping the selection; orbit and zoom stay locked on the
+  plane. Recenter with a plane selected resumes the chase instead of
+  resetting home.
+- **Minimizable aircraft card.** A minimize button collapses the detail
+  card to a floating pill (callsign, altitude, speed) so the map stays
+  usable while following; tap to restore. Localized in EN/DE/ES.
+
+### Fixed
+
+- **Late type data no longer leaves the wrong marker.** Shape
+  resolution re-runs when enrichment arrives, so a helicopter appears
+  as a helicopter without a page reload.
+- **Phone HUD overlaps**: the voice chip drops to its own row below the
+  header, and the new aircraft pill clears the bottom bar.
+
 ## [0.6.1] - 2026-08-05
 
 ### Fixed

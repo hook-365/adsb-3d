@@ -93,6 +93,29 @@ export function createAircraftDetail(
   const hexEl = document.getElementById('detail-hex')!;
   const closeBtn = document.getElementById('detail-close') as HTMLButtonElement;
   const shareBtn = document.getElementById('detail-share') as HTMLButtonElement;
+  const minimizeBtn = document.getElementById('detail-minimize') as HTMLButtonElement;
+  const pillEl = document.getElementById('detail-pill') as HTMLButtonElement;
+  const pillCallsignEl = document.getElementById('detail-pill-callsign')!;
+  const pillStatsEl = document.getElementById('detail-pill-stats')!;
+
+  // Minimized state: the full card collapses to a floating pill so the map
+  // stays visible and interactive while the aircraft remains selected (and
+  // followed). Mobile is the motivating case — the card covers the map —
+  // but the pill works everywhere. State resets on every selection change:
+  // picking a new aircraft deserves the full card.
+  let minimized = false;
+  function applyMinimized(): void {
+    root.classList.toggle('minimized', minimized);
+    pillEl.hidden = !minimized || !selectedHex;
+  }
+  minimizeBtn.addEventListener('click', () => {
+    minimized = true;
+    applyMinimized();
+  });
+  pillEl.addEventListener('click', () => {
+    minimized = false;
+    applyMinimized();
+  });
   const photoLink = document.getElementById('detail-photo') as HTMLAnchorElement;
 
   // On phones the photo docks inside the airframe section, filling the
@@ -330,6 +353,7 @@ export function createAircraftDetail(
   function render(): void {
     if (!selectedHex) {
       root.hidden = true;
+      pillEl.hidden = true;
       return;
     }
     const a = store.snapshot.get(selectedHex);
@@ -343,6 +367,10 @@ export function createAircraftDetail(
 
     callsignEl.textContent = a.callsign ?? a.registration ?? a.hex.toUpperCase();
     hexEl.textContent = a.hex.toUpperCase();
+    pillCallsignEl.textContent = callsignEl.textContent;
+    pillStatsEl.textContent = a.onGround
+      ? t('detail.on_ground')
+      : `${fmtAltitude(a.altFt)} · ${fmtSpeed(a.groundSpeedKt)}`;
 
     // Type: prefer the human description ("Boeing 737-800") and tuck the
     // ICAO designator on its own row when both are present. If we only have
@@ -563,6 +591,8 @@ export function createAircraftDetail(
       pendingPhotoHex = null;
       photoLink.hidden = true;
       photoImg.src = '';
+      minimized = false;
+      applyMinimized();
       render();
     }
   };

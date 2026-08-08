@@ -39,6 +39,9 @@ export const staticStrings = {
   'static.col_spd': 'Geschw.',
   'static.col_dist': 'Entf.',
   // Aircraft detail panel
+  'static.detail_minimize_aria': 'Panel minimieren',
+  'static.detail_minimize_title': 'Minimieren',
+  'static.detail_restore_aria': 'Flugzeug-Panel wiederherstellen',
   'static.detail_share_aria': 'Teilbaren Link zu diesem Flugzeug kopieren',
   'static.detail_share_title': 'Share-Link kopieren',
   'static.clear_selection_aria': 'Auswahl aufheben',

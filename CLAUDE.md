@@ -50,7 +50,11 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
 - `feed/` — data sources: `live`, `historical`, `history`, `acars`, `routes`,
   `feeds` (multi-feed switching), `voice-calls`, `normalize`.
 - `aircraft/` — `store`, `reconciler`, `shapes` (vendored tar1090 catalog),
-  `acars-store`.
+  `shape-geometry` (extrudes silhouettes + merges procedural 3D features),
+  `shape-features` (hand/auto-measured feature annotations per shape),
+  `fuselage-profiles.json` (generated width profiles; regenerate by
+  rasterizing silhouettes, do not hand-edit), `shape-lab` (dev-only tuning
+  harness, `npm run dev` + `?shapeLab=1`), `acars-store`.
 - `world/` — `scene`, `controls` (Three.js OrbitControls), `tiles` (basemap),
   `labels`, `heatmap` (3D airway-density).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
@@ -66,6 +70,25 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
 
 Settings persist to `localStorage` and are merged against `DEFAULTS` on load,
 so a payload from an older version never drops new keys.
+
+### Adding 3D detail to an aircraft shape
+
+Silhouette markers are the tar1090 planform extruded thin, plus procedural
+parts merged into one shared geometry per shape: a lofted fuselage tube
+(width profile from `fuselage-profiles.json`), engine nacelles, tail fin,
+rotors, and an optional `planformClip` band (used with a raised `tailplane`
+on T-tails, since every drawing already contains a body-level stabilizer).
+
+1. Add or edit the shape's entry in `aircraft/shape-features.ts`. All
+   fields are fractions of the shape's own viewBox; read positions off the
+   drawing (render it with a grid) so parts land on the drawn features.
+2. Eyeball in the dev harness (`?shapeLab=1`) or live.
+3. The drift-guard test (`tests-unit/shape-features.test.ts`, the one
+   vitest file that runs under jsdom) checks catalog existence, fraction
+   sanity, engine symmetry, and exact per-part triangle accounting.
+
+Unannotated shapes keep the plain extrusion. The reconciler is untouched by
+all of this: geometry stays one `BufferGeometry` per shape name.
 
 ### Adding a theme
 

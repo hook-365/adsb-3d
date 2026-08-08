@@ -109,6 +109,7 @@
           <span class="hex" id="detail-hex"></span>
         </div>
         <div class="detail-actions">
+          <button class="detail-minimize" id="detail-minimize" aria-label="Minimize panel" data-i18n-aria-label="static.detail_minimize_aria" title="Minimize" data-i18n-title="static.detail_minimize_title">–</button>
           <button class="detail-share" id="detail-share" aria-label="Copy a shareable link to this aircraft" data-i18n-aria-label="static.detail_share_aria" title="Copy share link" data-i18n-title="static.detail_share_title">🔗</button>
           <button class="close" id="detail-close" aria-label="Clear selection" data-i18n-aria-label="static.clear_selection_aria">×</button>
         </div>
@@ -164,6 +165,10 @@
         <ul id="detail-acars-list"></ul>
       </section>
     </section>
+    <button id="detail-pill" class="detail-pill" hidden aria-label="Restore aircraft panel" data-i18n-aria-label="static.detail_restore_aria">
+      <span class="pill-callsign" id="detail-pill-callsign"></span>
+      <span class="pill-stats" id="detail-pill-stats"></span>
+    </button>
     <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-label="ACARS message browser" data-i18n-aria-label="static.acars_browser_aria">
       <div class="acars-backdrop" id="acars-backdrop"></div>
       <section class="acars-panel">

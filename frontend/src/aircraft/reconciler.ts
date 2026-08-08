@@ -602,6 +602,39 @@ function buildEntry(a: Aircraft): RenderEntry {
   };
 }
 
+/**
+ * Re-resolve the marker shape when the aircraft's identity fields change.
+ * Type data often arrives after the aircraft does (DB enrichment a tick or
+ * two behind the first position), and without this a helicopter wears the
+ * fallback airliner shape until the page reloads. Runs inside the rev gate,
+ * so it costs one map lookup per data tick, and the swap itself follows the
+ * settings-change path: shared geometry reference swap, no rebuild.
+ */
+function refreshShape(entry: RenderEntry, a: Aircraft): void {
+  const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description);
+  if (shapeName === entry.shapeName && scaling === entry.shapeScaling) return;
+  entry.shapeName = shapeName;
+  entry.shapeScaling = scaling;
+  const body = markerBodyFor(getSettings().aircraftShape, a.onGround, shapeName, scaling);
+  entry.cone.geometry = body.geometry;
+  entry.baseScale = body.baseScale;
+  entry.bodyRotates = body.rotates;
+  if (!body.rotates) entry.cone.quaternion.identity();
+  entry.lastTrackDeg = Number.NaN;
+  // Ground sprite: new texture and a re-sized plane (aspect can change).
+  const iconCache = getShapeTexture(shapeName);
+  const aspect = iconCache?.aspect ?? 1;
+  const iconW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
+  const iconH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  const iconGeom = new PlaneGeometry(iconW, iconH, ICON_DRAPE_SEGMENTS, ICON_DRAPE_SEGMENTS);
+  iconGeom.rotateX(-Math.PI / 2);
+  entry.iconMesh.geometry.dispose();
+  entry.iconMesh.geometry = iconGeom;
+  entry.iconMaterial.map = iconCache?.texture ?? null;
+  entry.iconMaterial.needsUpdate = true;
+  entry.iconRotates = shapeRotates(shapeName);
+}
+
 function refreshLabel(entry: RenderEntry, a: Aircraft): void {
   const text = aircraftLabelText(a);
   if (text !== entry.lastLabelText) {
@@ -1318,6 +1351,7 @@ export class AircraftReconciler {
         applyTransform(entry, a);
       }
       if (rev !== entry.lastRev) {
+        refreshShape(entry, a);
         refreshColor(entry, a);
         applyTransform(entry, a);
         refreshLabel(entry, a);

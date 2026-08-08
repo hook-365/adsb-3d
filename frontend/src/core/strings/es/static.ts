@@ -39,6 +39,9 @@ export const staticStrings = {
   'static.col_spd': 'Vel',
   'static.col_dist': 'Dist',
   // Aircraft detail panel
+  'static.detail_minimize_aria': 'Minimizar panel',
+  'static.detail_minimize_title': 'Minimizar',
+  'static.detail_restore_aria': 'Restaurar panel de la aeronave',
   'static.detail_share_aria': 'Copiar un enlace para compartir esta aeronave',
   'static.detail_share_title': 'Copiar enlace para compartir',
   'static.clear_selection_aria': 'Quitar selección',

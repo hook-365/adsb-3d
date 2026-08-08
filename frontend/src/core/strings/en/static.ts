@@ -40,6 +40,9 @@ export const staticStrings = {
   'static.col_spd': 'Spd',
   'static.col_dist': 'Dist',
   // Aircraft detail panel
+  'static.detail_minimize_aria': 'Minimize panel',
+  'static.detail_minimize_title': 'Minimize',
+  'static.detail_restore_aria': 'Restore aircraft panel',
   'static.detail_share_aria': 'Copy a shareable link to this aircraft',
   'static.detail_share_title': 'Copy share link',
   'static.clear_selection_aria': 'Clear selection',

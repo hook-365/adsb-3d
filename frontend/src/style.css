@@ -205,6 +205,15 @@ html, body {
   transition: right 220ms ease;
 }
 
+@media (max-width: 600px) {
+  /* Phones don't have the horizontal room between the brand card and the
+     top-right buttons — drop the chip to its own row below them. */
+  .voice-panel {
+    top: 118px;
+    right: 8px;
+  }
+}
+
 /* When expanded, tuck the voice popover left of the settings popover and/or
    the aircraft list so it never sits behind them — mirrors how
    .settings-panel shifts beside the sidebar. The collapsed chip stays put
@@ -2159,7 +2168,8 @@ body.xr-on .acars-browser {
   gap: 6px;
 }
 
-#panel-detail .detail-share {
+#panel-detail .detail-share,
+#panel-detail .detail-minimize {
   background: none;
   border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   color: var(--muted);
@@ -2170,6 +2180,48 @@ body.xr-on .acars-browser {
   line-height: 1;
   cursor: pointer;
   padding: 0;
+}
+#panel-detail .detail-minimize {
+  font-size: 14px;
+}
+#panel-detail.minimized {
+  display: none;
+}
+/* Minimized card: a floating chip that keeps the selection visible while
+   freeing the map. Positioned above the time-controls bar; tapping it
+   restores the full card. */
+.detail-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  /* Kept above the #status bar; the mobile rule below clears its taller
+     stacked layout. */
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--panel-base) 88%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.detail-pill .pill-callsign {
+  font-weight: 600;
+  color: var(--accent);
+}
+.detail-pill .pill-stats {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .detail-pill {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 155px);
+  }
 }
 #panel-detail .detail-share:hover {
   color: var(--fg);
