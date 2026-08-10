@@ -264,6 +264,7 @@ const PAGES: MenuRow[][] = [
       { value: 'nm', label: () => 'NM' },
       { value: 'km', label: () => 'km' },
     ]),
+    toggleRow('historyTrails', () => tr('misc.xr_trails')),
   ],
 ];
 
@@ -285,6 +286,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   arScale: 'live-driven by the left thumbstick in AR; a menu row would fight it',
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
+  trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

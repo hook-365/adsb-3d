@@ -473,6 +473,7 @@ function buildEntry(a: Aircraft): RenderEntry {
   solid.line.userData = { kind: 'trail', hex: a.hex };
   const dashed = buildTrailLine(TRAIL_MAT_DASHED);
   dashed.line.userData = { kind: 'trail-dashed', hex: a.hex };
+  solid.line.visible = dashed.line.visible = getSettings().historyTrails;
 
   const labelEl = document.createElement('div');
   const label = new CSS2DObject(labelEl);
@@ -742,8 +743,17 @@ function refreshTrail(
   store: AircraftStore,
   a: Aircraft,
   xrMode: boolean,
+  trailLength: number,
 ): void {
   let points: readonly TrailPoint[] | undefined = store.trails(a.hex);
+  // User trail-length cap (settings.trailLength; 0 = full). Render-side
+  // slice so history keeps accumulating and a longer setting restores
+  // instantly. The selected aircraft is exempt — selection extends its
+  // trail to unlimited (extendTrailForSelection in main.ts) and that
+  // inspection feature outranks the clutter cap.
+  if (points && trailLength > 0 && !entry.isSelected && points.length > trailLength) {
+    points = points.slice(-trailLength);
+  }
   if (points && points.length >= 2 && xrMode) {
     points = decimateTrailForXr(points);
   }
@@ -765,9 +775,11 @@ function refreshTrail(
   // only the newly-arrived segments to the existing buffer slots. This is
   // the common case post-Phase-1 since refreshTrail only fires when the
   // store's trailRev advances and the typical mutation is appendTrail.
-  // Not in XR: decimation re-phases the whole array on every append.
+  // Not in XR and not under a length cap: both re-phase the array head
+  // on every append, which the append path can't represent.
   if (
     !xrMode &&
+    (trailLength === 0 || entry.isSelected) &&
     entry.lastTrailLength >= 2 &&
     n > entry.lastTrailLength &&
     firstMs === entry.lastTrailFirstMs &&
@@ -1008,6 +1020,8 @@ export class AircraftReconciler {
   private prevAltitudeLines: boolean;
   private prevAircraftLabels: boolean;
   private prevAircraftShape: AircraftShapeStyle;
+  private prevHistoryTrails: boolean;
+  private prevTrailLength: number;
 
   // Frustum + matrix scratch space for updateLabelLOD. Allocating once at
   // construction (not per-frame) keeps the LOD pass allocation-free.
@@ -1043,6 +1057,8 @@ export class AircraftReconciler {
     this.prevAltitudeLines = s0.altitudeLines;
     this.prevAircraftLabels = s0.aircraftLabels;
     this.prevAircraftShape = s0.aircraftShape;
+    this.prevHistoryTrails = s0.historyTrails;
+    this.prevTrailLength = s0.trailLength;
     // Settings can change for many reasons (theme, range rings, units...);
     // most of those are irrelevant to per-entry visibility. Walk the entry
     // map only when one of the three keys this loop actually cares about
@@ -1055,10 +1071,20 @@ export class AircraftReconciler {
       const alChanged = s.altitudeLines !== this.prevAltitudeLines;
       const labChanged = s.aircraftLabels !== this.prevAircraftLabels;
       const shapeChanged = s.aircraftShape !== this.prevAircraftShape;
-      if (!gsChanged && !alChanged && !labChanged && !shapeChanged) return;
+      const trailsChanged = s.historyTrails !== this.prevHistoryTrails;
+      const trailLenChanged = s.trailLength !== this.prevTrailLength;
+      if (!gsChanged && !alChanged && !labChanged && !shapeChanged && !trailsChanged && !trailLenChanged) return;
       if (gsChanged) this.iconPool.setVisible(s.groundSprites);
       if (alChanged) this.altArena.line.visible = s.altitudeLines;
       for (const [hex, entry] of this.entries) {
+        if (trailsChanged) {
+          entry.trailSolid.visible = s.historyTrails;
+          entry.trailDashed.visible = s.historyTrails;
+          // Rebuild on re-enable: refreshTrail was skipped while off, so
+          // the buffers may be arbitrarily stale.
+          if (s.historyTrails) entry.lastTrailRev = -1;
+        }
+        if (trailLenChanged) entry.lastTrailRev = -1;
         if (labChanged && !s.aircraftLabels) entry.label.visible = false;
         if (shapeChanged) {
           // Swap the marker body in place. Geometries are shared/cached,
@@ -1086,6 +1112,8 @@ export class AircraftReconciler {
       this.prevAltitudeLines = s.altitudeLines;
       this.prevAircraftLabels = s.aircraftLabels;
       this.prevAircraftShape = s.aircraftShape;
+      this.prevHistoryTrails = s.historyTrails;
+      this.prevTrailLength = s.trailLength;
     });
   }
 
@@ -1182,6 +1210,9 @@ export class AircraftReconciler {
   private applySelection(entry: RenderEntry, selected: boolean): void {
     entry.isSelected = selected;
     entry.selectionRing.visible = selected;
+    // The selected aircraft is exempt from the user trail-length cap, so
+    // selection flips need a trail rebuild to apply / lift the truncation.
+    if (getSettings().trailLength > 0) entry.lastTrailRev = -1;
     entry.material.emissiveIntensity = selected ? 1.6 : 1.0;
     entry.labelEl.classList.toggle('selected', selected);
     entry.trailSolid.material = selected ? TRAIL_MAT_SOLID_SELECTED : TRAIL_MAT_SOLID;
@@ -1304,6 +1335,10 @@ export class AircraftReconciler {
     const settingsNow = getSettings();
     const spritesOn = settingsNow.groundSprites;
     const altLinesOn = settingsNow.altitudeLines;
+    // Trails: refresh work is skipped entirely while disabled (the
+    // settings subscriber invalidates trail revs on re-enable).
+    const trailsOn = settingsNow.historyTrails;
+    const trailLen = settingsNow.trailLength;
     this.iconPool.begin();
     this.altArena.begin();
 
@@ -1374,8 +1409,8 @@ export class AircraftReconciler {
         entry.lastRev = rev;
       }
       const trailRev = this.store.getTrailRev(a.hex);
-      if (trailRev !== entry.lastTrailRev) {
-        refreshTrail(entry, this.store, a, this.xrMode);
+      if (trailsOn && trailRev !== entry.lastTrailRev) {
+        refreshTrail(entry, this.store, a, this.xrMode, trailLen);
         entry.lastTrailRev = trailRev;
       }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY

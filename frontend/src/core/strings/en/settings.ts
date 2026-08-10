@@ -5,21 +5,26 @@ export const settingsStrings = {
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
 
-  // Theme section
-  'settings.section_theme': 'Theme',
+  // Appearance section
+  'settings.section_appearance': 'Appearance',
   'settings.color_theme': 'Color theme',
   'settings.color_theme_desc': 'Palette for panels, accents, and the scene background. Auto follows your system light/dark preference.',
   'settings.language': 'Language',
   'settings.language_desc': "UI language. Auto follows your browser's locale. Changing this reloads the page.",
   'settings.language_auto': 'Auto',
 
-  // Display section
-  'settings.section_display': 'Display',
+  // Aircraft section
+  'settings.section_aircraft': 'Aircraft',
   'settings.aircraft_shape': 'Aircraft shape',
   'settings.aircraft_shape_desc': 'How aircraft are drawn in the sky: a heading cone, a sphere, or a 3D version of the tar1090 type silhouette.',
   'settings.shape_cone': 'Cone',
   'settings.shape_sphere': 'Sphere',
   'settings.shape_silhouette': '3D silhouette',
+  'settings.history_trails': 'History trails',
+  'settings.history_trails_desc': 'Colored position-history line behind each aircraft.',
+  'settings.trail_length': 'Trail length',
+  'settings.trail_length_desc': 'Max points drawn per trail. Full renders everything collected; the selected aircraft always shows its full trail.',
+  'settings.trail_length_full': 'full',
   'settings.ground_sprites': 'Ground aircraft icons',
   'settings.ground_sprites_desc': 'Show the tar1090 silhouette under each aircraft.',
   'settings.altitude_lines': 'Altitude lines',
@@ -33,6 +38,9 @@ export const settingsStrings = {
   'settings.label_density_all': 'all',
   'settings.range_rings': 'Range rings',
   'settings.range_rings_desc': 'Concentric distance rings every 50 NM.',
+
+  // Map section
+  'settings.section_map': 'Map',
   'settings.basemap': 'Basemap',
   'settings.basemap_desc': 'Map tile provider drawn beneath the scene.',
   'settings.basemap_carto_dark': 'Carto Dark',

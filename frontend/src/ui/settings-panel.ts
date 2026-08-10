@@ -84,14 +84,26 @@ const BASEMAP_LABELS: Record<Basemap, string> = {
   ifr_high: t('settings.basemap_ifr_high'),
 };
 
-interface SettingsSection {
+export interface SettingsSection {
+  /** Stable id — keys the persisted collapse state, never user-visible. */
+  id: string;
   heading: string;
   rows: SettingsRow[];
 }
 
-const SETTINGS_SCHEMA: SettingsSection[] = [
+// Settings keys that intentionally have no panel row. Mirrors the wrist
+// menu's WRIST_MENU_EXCLUDED convention; the drift-guard test
+// (tests-unit/settings-panel.test.ts) fails if a Settings key is neither
+// in the schema nor documented here.
+export const PANEL_EXCLUDED_KEYS: Record<string, string> = {
+  vrScale: 'written by VR thumbstick locomotion every frame; not a form control',
+  arScale: 'written by AR thumbstick locomotion every frame; not a form control',
+};
+
+export const SETTINGS_SCHEMA: SettingsSection[] = [
   {
-    heading: t('settings.section_theme'),
+    id: 'appearance',
+    heading: t('settings.section_appearance'),
     rows: [
       {
         kind: 'choice',
@@ -117,7 +129,8 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
   {
-    heading: t('settings.section_display'),
+    id: 'aircraft',
+    heading: t('settings.section_aircraft'),
     rows: [
       {
         kind: 'choice',
@@ -129,6 +142,22 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
           { value: 'sphere', label: t('settings.shape_sphere') },
           { value: 'silhouette', label: t('settings.shape_silhouette') },
         ],
+      },
+      {
+        kind: 'toggle',
+        key: 'historyTrails',
+        label: t('settings.history_trails'),
+        description: t('settings.history_trails_desc'),
+      },
+      {
+        kind: 'range',
+        key: 'trailLength',
+        label: t('settings.trail_length'),
+        description: t('settings.trail_length_desc'),
+        min: 0,
+        max: 600,
+        step: 50,
+        format: (v) => (v === 0 ? t('settings.trail_length_full') : `${v}`),
       },
       {
         kind: 'toggle',
@@ -149,12 +178,6 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.aircraft_labels_desc'),
       },
       {
-        kind: 'toggle',
-        key: 'acarsMessages',
-        label: t('settings.acars_messages'),
-        description: t('settings.acars_messages_desc'),
-      },
-      {
         kind: 'range',
         key: 'labelDensity',
         label: t('settings.label_density'),
@@ -166,10 +189,16 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
-        key: 'rangeRings',
-        label: t('settings.range_rings'),
-        description: t('settings.range_rings_desc'),
+        key: 'acarsMessages',
+        label: t('settings.acars_messages'),
+        description: t('settings.acars_messages_desc'),
       },
+    ],
+  },
+  {
+    id: 'map',
+    heading: t('settings.section_map'),
+    rows: [
       {
         kind: 'choice',
         key: 'basemap',
@@ -185,6 +214,12 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'terrain3d',
         label: t('settings.terrain_3d'),
         description: t('settings.terrain_3d_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'rangeRings',
+        label: t('settings.range_rings'),
+        description: t('settings.range_rings_desc'),
       },
       {
         kind: 'range',
@@ -204,6 +239,7 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
   {
+    id: 'xr',
     heading: t('settings.section_stereo_vr'),
     rows: [
       {
@@ -341,6 +377,7 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
   {
+    id: 'units',
     heading: t('settings.section_units'),
     rows: [
       {
@@ -374,6 +411,28 @@ const SETTINGS_SCHEMA: SettingsSection[] = [
     ],
   },
 ];
+
+// Collapsed/expanded state per section, persisted so the panel reopens the
+// way the user left it. Deliberately NOT part of Settings: it's panel
+// chrome, not a preference the wrist menu or URL state should ever see.
+const SECTIONS_KEY = 'adsb3d_settings_sections_v1';
+const DEFAULT_OPEN_SECTIONS = ['aircraft'];
+function loadOpenSections(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(SECTIONS_KEY);
+    if (!raw) return new Set(DEFAULT_OPEN_SECTIONS);
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set(DEFAULT_OPEN_SECTIONS);
+  }
+}
+function saveOpenSections(open: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(SECTIONS_KEY, JSON.stringify([...open]));
+  } catch {
+    // Private-mode storage failures just lose the collapse memory.
+  }
+}
 
 const GEAR_SVG = `
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -426,11 +485,38 @@ export function mountSettingsPanel(): void {
   // shows stale values. Programmatic .value/.checked writes don't fire
   // change/input events, so this can't loop back into updateSettings.
   const inputSyncs: ((s: Readonly<Settings>) => void)[] = [];
+  const openSections = loadOpenSections();
   for (const section of SETTINGS_SCHEMA) {
     const sectionEl = document.createElement('section');
-    const heading = document.createElement('h3');
-    heading.textContent = section.heading;
-    sectionEl.appendChild(heading);
+    sectionEl.className = 'settings-section';
+
+    // Collapsible header (voice-panel's aria-expanded convention). The
+    // whole heading row is the toggle; body rows live in a wrapper whose
+    // `hidden` mirrors the persisted open set.
+    const sectionToggle = document.createElement('button');
+    sectionToggle.type = 'button';
+    sectionToggle.className = 'settings-section-toggle';
+    const chevron = document.createElement('span');
+    chevron.className = 'settings-section-chevron';
+    chevron.textContent = '▸';
+    const headingText = document.createElement('span');
+    headingText.textContent = section.heading;
+    sectionToggle.append(chevron, headingText);
+
+    const body = document.createElement('div');
+    body.className = 'settings-section-body';
+    const initiallyOpen = openSections.has(section.id);
+    sectionToggle.setAttribute('aria-expanded', String(initiallyOpen));
+    body.hidden = !initiallyOpen;
+    sectionToggle.addEventListener('click', () => {
+      const nowOpen = body.hidden;
+      body.hidden = !nowOpen;
+      sectionToggle.setAttribute('aria-expanded', String(nowOpen));
+      if (nowOpen) openSections.add(section.id);
+      else openSections.delete(section.id);
+      saveOpenSections(openSections);
+    });
+    sectionEl.append(sectionToggle, body);
 
     for (const row of section.rows) {
       const rowEl = document.createElement('label');
@@ -572,7 +658,7 @@ export function mountSettingsPanel(): void {
         });
       }
 
-      sectionEl.appendChild(rowEl);
+      body.appendChild(rowEl);
     }
     panel.appendChild(sectionEl);
   }

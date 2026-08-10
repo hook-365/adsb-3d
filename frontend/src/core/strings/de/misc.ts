@@ -23,6 +23,7 @@ export const miscStrings = {
   'misc.xr_page': 'Seite',
   'misc.xr_place': 'Scope platzieren',
   'misc.xr_ground_icons': 'Bodensymbole',
+  'misc.xr_trails': 'Spuren',
   'misc.xr_shape': 'Flugzeugform',
   'misc.xr_shape_cone': 'Kegel',
   'misc.xr_shape_sphere': 'Kugel',

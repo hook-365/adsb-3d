@@ -8,6 +8,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-10
+
+### Added
+
+- **History trails controls.** Trails can finally be turned off, and a
+  new trail-length slider caps the rendered points per aircraft (50-600,
+  or "full"). Render-side only — history keeps collecting, so re-enabling
+  or lengthening restores instantly. The selected aircraft always shows
+  its full trail. The trails toggle is also on wrist-menu page 3 in VR.
+
+### Changed
+
+- **Settings panel reorganized into collapsible sections.** The flat
+  22-row scroll is now five groups — Appearance, Aircraft, Map,
+  VR & Stereo, Units — each click-to-expand with the open/closed state
+  remembered across sessions. Aircraft chrome (shape, trails, ground
+  icons, altitude lines, labels) now lives together in one section, and
+  map layers (basemap, 3D terrain, range rings, altitude curve) in
+  another. A new drift-guard test ensures every setting has a panel row
+  or a documented exclusion, so no future setting ships without UI.
+
+### Fixed
+
+- The WebXR e2e spec asserted `requiredFeatures` on session requests;
+  the app has always requested `local-floor` as optional.
+
 ## [0.7.4] - 2026-08-10
 
 ### Changed

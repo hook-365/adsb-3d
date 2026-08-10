@@ -72,6 +72,16 @@ export interface Settings {
   groundSprites: boolean;
   /** Vertical line connecting each aircraft to its projection on the ground. */
   altitudeLines: boolean;
+  /** Render per-aircraft position history trails. */
+  historyTrails: boolean;
+  /**
+   * Max rendered trail points per aircraft. 0 = full (whatever the feed's
+   * own cap collected — unlimited on the local feed), matching the
+   * labelDensity 0-sentinel convention. Render-side only: history keeps
+   * being collected at the feed cap, so raising this back restores the
+   * longer trail instantly. The selected aircraft always renders full.
+   */
+  trailLength: number;
   /** Concentric range rings every 50 NM out to RANGE_NM. */
   rangeRings: boolean;
   /** CSS labels above aircraft cones (callsign / reg / hex). */
@@ -164,6 +174,8 @@ const DEFAULTS: Settings = {
   aircraftShape: 'silhouette',
   groundSprites: true,
   altitudeLines: true,
+  historyTrails: true,
+  trailLength: 0,
   rangeRings: true,
   aircraftLabels: true,
   labelDensity: 0,

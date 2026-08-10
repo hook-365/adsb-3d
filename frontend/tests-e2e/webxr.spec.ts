@@ -15,7 +15,17 @@
 // we want to mock for a smoke test. The headset itself is the only
 // place to verify the in-VR visuals.
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+// The settings panel's sections are collapsible (only "Aircraft" opens by
+// default), so tests must expand "Stereo / VR" before reaching the Enter
+// VR / Enter AR buttons. Idempotent: only clicks when collapsed.
+async function openXrSection(page: Page): Promise<void> {
+  const toggle = page.locator('.settings-section-toggle:has-text("Stereo / VR")');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+}
 
 // /config.js is normally rendered by entrypoint.sh from env vars at
 // container start. For tests we serve a minimal stub via route
@@ -86,6 +96,7 @@ test.describe('WebXR integration', () => {
     await page.locator('.settings-button').click();
     const settingsPanel = page.locator('.settings-panel');
     await expect(settingsPanel).toBeVisible();
+    await openXrSection(page);
 
     // Locate by the data-id we wired in settings-panel.ts. Both rows
     // live under the "Stereo / VR" section.
@@ -131,6 +142,7 @@ test.describe('WebXR integration', () => {
     // Wait until the async support probe has flipped the button into
     // its "Enter VR" (enabled) state.
     await page.locator('.settings-button').click();
+    await openXrSection(page);
     const vrBtn = page.locator('button.settings-action:has-text("Enter VR")').first();
     await expect(vrBtn).toBeEnabled({ timeout: 2000 });
 
@@ -138,11 +150,14 @@ test.describe('WebXR integration', () => {
     await page.waitForTimeout(200);
 
     const calls = await page.evaluate(
-      () => (window as unknown as { __xrCalls: Array<{ mode: string; init: { requiredFeatures?: string[] } }> }).__xrCalls,
+      () => (window as unknown as { __xrCalls: Array<{ mode: string; init: { optionalFeatures?: string[] } }> }).__xrCalls,
     );
     expect(calls.length).toBeGreaterThanOrEqual(1);
     expect(calls[0].mode).toBe('immersive-vr');
-    expect(calls[0].init.requiredFeatures).toContain('local-floor');
+    // core/xr.ts requests local-floor as an OPTIONAL feature (a session
+    // must still start on hardware without it); this asserted
+    // requiredFeatures for a while, which the app has never sent.
+    expect(calls[0].init.optionalFeatures).toContain('local-floor');
   });
 
   test('Enter AR requests an immersive-ar session', async ({ page }) => {
@@ -165,6 +180,7 @@ test.describe('WebXR integration', () => {
     await page.goto('/');
     await expect(page.locator('#scene')).toBeVisible();
     await page.locator('.settings-button').click();
+    await openXrSection(page);
     const arBtn = page.locator('button.settings-action:has-text("Enter AR")').first();
     await expect(arBtn).toBeEnabled({ timeout: 2000 });
 

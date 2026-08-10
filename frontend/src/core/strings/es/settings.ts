@@ -5,7 +5,7 @@ export const settingsStrings = {
   'settings.close': 'Cerrar ajustes',
 
   // Theme section
-  'settings.section_theme': 'Tema',
+  'settings.section_appearance': 'Apariencia',
   'settings.color_theme': 'Tema de color',
   'settings.color_theme_desc': 'Paleta para paneles, acentos y el fondo de la escena. Auto sigue la preferencia claro/oscuro del sistema.',
   'settings.language': 'Idioma',
@@ -13,12 +13,17 @@ export const settingsStrings = {
   'settings.language_auto': 'Auto',
 
   // Display section
-  'settings.section_display': 'Visualización',
+  'settings.section_aircraft': 'Aeronaves',
   'settings.aircraft_shape': 'Forma de la aeronave',
   'settings.aircraft_shape_desc': 'Cómo se dibujan las aeronaves en el cielo: un cono según el rumbo, una esfera o una versión 3D de la silueta de tipo de tar1090.',
   'settings.shape_cone': 'Cono',
   'settings.shape_sphere': 'Esfera',
   'settings.shape_silhouette': 'Silueta 3D',
+  'settings.history_trails': 'Estelas de trayectoria',
+  'settings.history_trails_desc': 'Línea coloreada con el historial de posiciones tras cada aeronave.',
+  'settings.trail_length': 'Longitud de estela',
+  'settings.trail_length_desc': 'Puntos máximos dibujados por estela. «Completa» dibuja todo lo registrado; la aeronave seleccionada siempre muestra su estela completa.',
+  'settings.trail_length_full': 'completa',
   'settings.ground_sprites': 'Iconos de aeronave en tierra',
   'settings.ground_sprites_desc': 'Mostrar la silueta de tar1090 debajo de cada aeronave.',
   'settings.altitude_lines': 'Líneas de altitud',
@@ -32,6 +37,7 @@ export const settingsStrings = {
   'settings.label_density_all': 'todas',
   'settings.range_rings': 'Anillos de distancia',
   'settings.range_rings_desc': 'Anillos concéntricos de distancia cada 50 NM.',
+  'settings.section_map': 'Mapa',
   'settings.basemap': 'Mapa base',
   'settings.basemap_desc': 'Proveedor de teselas del mapa dibujado bajo la escena.',
   'settings.basemap_carto_dark': 'Carto Dark',

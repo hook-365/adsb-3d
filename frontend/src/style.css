@@ -655,20 +655,50 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 }
 
 .settings-panel section {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .settings-panel section:first-of-type {
   margin-top: 0;
 }
 
-.settings-panel h3 {
-  margin: 0 0 8px;
+/* Collapsible section header: carries the old h3 heading look on a
+   full-width button, with a chevron that rotates when expanded. */
+.settings-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 0 6px;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
   font-size: 10px;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-section-toggle:hover {
+  color: var(--fg);
+}
+
+.settings-section-chevron {
+  display: inline-block;
+  transition: transform 160ms ease;
+  font-size: 9px;
+}
+
+.settings-section-toggle[aria-expanded='true'] .settings-section-chevron {
+  transform: rotate(90deg);
+}
+
+.settings-section-body {
+  padding-left: 2px;
 }
 
 .settings-row {

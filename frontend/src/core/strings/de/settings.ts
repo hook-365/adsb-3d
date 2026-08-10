@@ -5,7 +5,7 @@ export const settingsStrings = {
   'settings.close': 'Einstellungen schließen',
 
   // Theme section
-  'settings.section_theme': 'Design',
+  'settings.section_appearance': 'Erscheinungsbild',
   'settings.color_theme': 'Farbschema',
   'settings.color_theme_desc': 'Palette für Panels, Akzente und den Szenenhintergrund. Auto folgt der Hell/Dunkel-Einstellung des Systems.',
   'settings.language': 'Sprache',
@@ -13,12 +13,17 @@ export const settingsStrings = {
   'settings.language_auto': 'Auto',
 
   // Display section
-  'settings.section_display': 'Darstellung',
+  'settings.section_aircraft': 'Flugzeuge',
   'settings.aircraft_shape': 'Flugzeugform',
   'settings.aircraft_shape_desc': 'Darstellung der Flugzeuge am Himmel: Kegel in Flugrichtung, Kugel oder eine 3D-Version der tar1090-Typsilhouette.',
   'settings.shape_cone': 'Kegel',
   'settings.shape_sphere': 'Kugel',
   'settings.shape_silhouette': '3D-Silhouette',
+  'settings.history_trails': 'Flugspuren',
+  'settings.history_trails_desc': 'Farbige Positionsverlaufslinie hinter jedem Flugzeug.',
+  'settings.trail_length': 'Spurlänge',
+  'settings.trail_length_desc': 'Maximal gezeichnete Punkte pro Spur. „Voll“ zeichnet alles Gesammelte; das ausgewählte Flugzeug zeigt immer die volle Spur.',
+  'settings.trail_length_full': 'voll',
   'settings.ground_sprites': 'Flugzeugsymbole am Boden',
   'settings.ground_sprites_desc': 'Zeigt die tar1090-Silhouette unter jedem Flugzeug.',
   'settings.altitude_lines': 'Höhenlinien',
@@ -32,6 +37,7 @@ export const settingsStrings = {
   'settings.label_density_all': 'alle',
   'settings.range_rings': 'Entfernungsringe',
   'settings.range_rings_desc': 'Konzentrische Entfernungsringe alle 50 NM.',
+  'settings.section_map': 'Karte',
   'settings.basemap': 'Basiskarte',
   'settings.basemap_desc': 'Kartenkachel-Anbieter unterhalb der Szene.',
   'settings.basemap_carto_dark': 'Carto Dark',
