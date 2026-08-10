@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-10
+
+### Fixed
+
+- **C-5 Galaxy detail pass.** Four engine nacelles at the drawn pod
+  positions (the drawn pods previously extruded as sawtooth teeth on
+  the wing leading edges).
+- **T-tail stabilizers are real planforms now.** The raised tailplane
+  on the C-17, C-5, and Il-62 is a swept, tapered surface measured
+  from each drawing instead of a rectangle, and the fins are shaped so
+  the stab root seats fully on the fin tip chord (the C-17's met at a
+  point weld; part of its stab hung behind the fin).
+- **VR quality changes from the wrist menu now stick.** Mid-session
+  changes are parked and applied when the session ends (the runtime
+  allocates eye buffers at session start); previously they were
+  silently dropped with a console warning.
+- The "Can't change size while VR device is presenting" warning at
+  session end is gone (window resize replay now waits for three's own
+  session cleanup).
+
 ## [0.8.1] - 2026-08-10
 
 ### Fixed

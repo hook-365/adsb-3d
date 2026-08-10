@@ -19,7 +19,9 @@ import fuselageProfiles from '../src/aircraft/fuselage-profiles.json';
 // Per-part triangle counts are deterministic: a trapezoid extrusion is
 // 2 caps x 2 + 4 walls x 2 = 12 tris, a box is 12.
 const FIN_TRIS = 12;
-const TAILPLANE_TRIS = 12;
+// Swept/tapered tailplane: extruded 6-vertex planform = 4 tris per cap
+// (n - 2) x 2 caps + 6 side edges x 2 = 20.
+const TAILPLANE_TRIS = 20;
 // Capped 8-seg barrel (32) plus the open 8-seg intake lip (16).
 const ENGINE_TRIS = 48;
 // Fallback tube (no profile): nose cone + open cylinder + tail cone,

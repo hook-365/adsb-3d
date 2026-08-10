@@ -35,12 +35,16 @@ export interface FinFeature {
 /** Raised horizontal stabilizer (T-tails only — conventional tailplanes
  *  are already part of the extruded planform). */
 export interface TailplaneFeature {
-  /** Leading edge, fraction of length from the nose. */
+  /** Leading edge at the root, fraction of length from the nose. */
   y: number;
   /** Total span, fraction of viewBox width. */
   span: number;
-  /** Chord length. */
+  /** Root chord length. */
   chord: number;
+  /** Tip chord; defaults to `chord` (untapered rectangle). */
+  tipChord?: number;
+  /** Aft shift of the tip leading edge; defaults to 0 (unswept). */
+  sweep?: number;
   /** Mounting height above the fuselage top. */
   height: number;
 }
@@ -332,12 +336,19 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
   // C-17 Globemaster: full treatment.
   c17: {
     fuselage: { nose: 0.17, tail: 0.87, radius: 0.054 },
-    fin: { y: 0.63, rootChord: 0.16, tipChord: 0.08, height: 0.15, sweep: 0.08 },
+    // Fin tip swept so its chord spans the ENTIRE raised stab root
+    // (tip chord y [0.75, 0.87], stab root [0.775, 0.87]) — nothing
+    // overhangs behind the fin, and the fin LE pokes slightly ahead of
+    // the stab LE like the real aircraft. The original 0.08/0.08 met the
+    // stab at a point weld.
+    fin: { y: 0.63, rootChord: 0.16, tipChord: 0.12, height: 0.15, sweep: 0.12 },
     // Real T-tail: the drawn body-level stabilizer is clipped out of the
     // slab and replaced by the raised box, overlapping the fin tip so the
     // joint reads solid.
+    // Drawn stab (rasterized): y [0.78, 0.875], span 0.27 — swept LE,
+    // tapered tips.
     planformClip: { y0: 0.77, y1: 0.91 },
-    tailplane: { y: 0.755, span: 0.38, chord: 0.12, height: 0.147 },
+    tailplane: { y: 0.775, span: 0.3, chord: 0.095, tipChord: 0.04, sweep: 0.06, height: 0.147 },
     engines: mirror([
       { x: 0.4, y: 0.335, length: 0.1, radius: 0.028 },
       { x: 0.295, y: 0.4, length: 0.1, radius: 0.028 },
@@ -354,7 +365,14 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
     fuselage: { nose: 0.05, tail: 0.97, radius: 0.05 },
     fin: { y: 0.83, rootChord: 0.14, tipChord: 0.06, height: 0.16, sweep: 0.07 },
     planformClip: { y0: 0.865, y1: 0.965 },
-    tailplane: { y: 0.875, span: 0.27, chord: 0.085, height: 0.157 },
+    tailplane: { y: 0.87, span: 0.27, chord: 0.085, tipChord: 0.03, sweep: 0.055, height: 0.157 },
+    // Four TF39 nacelles at the drawn pod positions (leading-edge dips in
+    // the raster: inner pods tip at y 0.323, outer at y 0.367). Without
+    // these the drawn pods extrude as sawtooth teeth on the wing edge.
+    engines: mirror([
+      { x: 0.335, y: 0.375, length: 0.11, radius: 0.03 },
+      { x: 0.28, y: 0.415, length: 0.11, radius: 0.03 },
+    ]),
   },
   e390: {
     fuselage: { nose: 0.03, tail: 0.96, radius: 0.067 },
@@ -395,9 +413,10 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
   // span 0.20 of the viewBox, not 0.56.
   il_62: {
     fuselage: { nose: 0.07, tail: 0.95, radius: 0.037 },
-    fin: { y: 0.78, rootChord: 0.14, tipChord: 0.06, height: 0.17, sweep: 0.08 },
+    // Tip chord reaches the stab root TE (0.93) so the stab seats fully.
+    fin: { y: 0.78, rootChord: 0.14, tipChord: 0.07, height: 0.17, sweep: 0.08 },
     planformClip: { y0: 0.845, y1: 0.965 },
-    tailplane: { y: 0.85, span: 0.22, chord: 0.08, height: 0.167 },
+    tailplane: { y: 0.85, span: 0.22, chord: 0.08, tipChord: 0.03, sweep: 0.045, height: 0.167 },
   },
   l159: {
     fuselage: { nose: 0.04, tail: 0.79, radius: 0.041 },

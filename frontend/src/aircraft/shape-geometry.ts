@@ -248,10 +248,27 @@ export function buildFeatureParts(
     parts.push(g);
   }
   if (features.tailplane) {
+    // Swept, tapered planform: a symmetric hexagon (root chord at the
+    // centerline, tips swept aft and tapered) extruded to plate thickness.
+    // With tipChord = chord and sweep = 0 it degenerates to the old
+    // rectangle. The surface already lies in the viewBox x/y plane, so
+    // unlike the fin no basis change is needed — just raise it on -z.
     const tp = features.tailplane;
-    const g = new BoxGeometry(tp.span * vbW, tp.chord * vbH, depth * SURFACE_THICKNESS_RATIO);
-    // Box axes already match the frame: x span, y chord, z thickness.
-    g.translate(minX + vbW / 2, minY + (tp.y + tp.chord / 2) * vbH, -tp.height * vbH);
+    const halfSpan = (tp.span / 2) * vbW;
+    const rootChord = tp.chord * vbH;
+    const tipChord = (tp.tipChord ?? tp.chord) * vbH;
+    const sweep = (tp.sweep ?? 0) * vbH;
+    const t = depth * SURFACE_THICKNESS_RATIO;
+    const s = new Shape();
+    s.moveTo(0, 0);
+    s.lineTo(halfSpan, sweep);
+    s.lineTo(halfSpan, sweep + tipChord);
+    s.lineTo(0, rootChord);
+    s.lineTo(-halfSpan, sweep + tipChord);
+    s.lineTo(-halfSpan, sweep);
+    s.closePath();
+    const g = new ExtrudeGeometry(s, { depth: t, bevelEnabled: false, curveSegments: 1 });
+    g.translate(minX + vbW / 2, minY + tp.y * vbH, -tp.height * vbH - t / 2);
     parts.push(g);
   }
   for (const e of features.engines ?? []) {

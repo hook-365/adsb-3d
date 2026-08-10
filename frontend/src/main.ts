@@ -273,12 +273,30 @@ const VR_QUALITY_SCALE: Record<VrQuality, number> = {
   ultra: 2.0,
 };
 let lastVrQuality: VrQuality | null = null;
+// Quality changed from the wrist menu mid-session (issue #6): three warns
+// and ignores setFramebufferScaleFactor while presenting, so park the
+// value and apply it once the session ends — the next Enter VR gets it.
+let pendingVrQuality: VrQuality | null = null;
 function applyVrQuality(quality: VrQuality): void {
   if (quality === lastVrQuality) return;
+  if (world.renderer.xr.isPresenting) {
+    pendingVrQuality = quality;
+    return;
+  }
   lastVrQuality = quality;
   world.renderer.xr.setFramebufferScaleFactor(VR_QUALITY_SCALE[quality]);
 }
 applyVrQuality(getSettings().vrQuality);
+subscribeXr((s) => {
+  if (!s.presenting && pendingVrQuality !== null) {
+    const q = pendingVrQuality;
+    pendingVrQuality = null;
+    // Next frame: our XrState flips before three's own session-end
+    // cleanup clears isPresenting, so applying synchronously would still
+    // hit the warning.
+    requestAnimationFrame(() => applyVrQuality(q));
+  }
+});
 
 const xrLocomotion = setupXrLocomotion({
   renderer: world.renderer,
@@ -654,7 +672,11 @@ window.addEventListener('resize', () => {
   applyWindowSize();
 });
 subscribeXr((s) => {
-  if (!s.presenting) applyWindowSize();
+  // Next frame, not synchronously: our XrState flips before three's own
+  // session-end cleanup clears isPresenting, and an immediate setSize
+  // still triggers the "Can't change size while presenting" warning
+  // (caught by tyzbit's issue #6 logs).
+  if (!s.presenting) requestAnimationFrame(applyWindowSize);
 });
 
 // ────────────────────────────────────────────────────────────────────
