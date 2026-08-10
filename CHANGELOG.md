@@ -8,6 +8,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-08-10
+
+### Changed
+
+- **VR draw-call reduction (issue #6).** Quest profiling showed ~200
+  aircraft producing ~3,000 draw calls at 17-19 fps regardless of the
+  quality preset — the headset is draw-call bound, not fill-rate bound,
+  and ground icons were the single biggest cost. Three changes, each
+  benefiting desktop and stereo modes too:
+  - **Instanced ground icons.** The per-aircraft silhouette sprite
+    (one 72-triangle draped mesh + material each) is now an
+    `InstancedMesh` pool with one draw call per active shape
+    (~10-30 on a live scope instead of one per aircraft). Altitude
+    tint + stale fade ride a per-instance RGBA attribute; terrain
+    conformity is a planar tilt from a 3-sample surface normal
+    instead of the old 49-sample per-vertex drape. Icon
+    click-to-select still works via instanced raycast ids.
+  - **Fleet-wide altitude lines.** All per-aircraft one-segment lines
+    collapse into a single instanced `LineSegments2` (one draw call
+    total).
+  - **Invisible pick proxies no longer render.** The forgiving
+    raycast spheres around each aircraft were fully transparent yet
+    still drawn every frame in both eyes.
+  Net: roughly 39% fewer draw calls on a 200-aircraft VR scene, with
+  trails and marker bodies now the remaining candidates if more
+  headroom is needed.
+
+### Fixed
+
+- Entering VR no longer spams "Can't change size while VR device is
+  presenting" (window resizes are deferred until session end), and the
+  CSS2D label LOD pass no longer burns CPU while presenting (labels
+  are never rendered in-headset).
+
 ## [0.7.3] - 2026-08-10
 
 ### Fixed

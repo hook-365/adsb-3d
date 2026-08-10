@@ -346,7 +346,13 @@ syncLineResolution();
 // Headsets are vertex-bound before they're fill-bound (issue #6: busy
 // scenes chug at every quality preset), so presenting flips the
 // reconciler into decimated-trail mode.
-subscribeXr((s) => reconciler.setXrMode(s.presenting));
+subscribeXr((s) => {
+  reconciler.setXrMode(s.presenting);
+  // Label LOD is skipped entirely while presenting (CSS2D never renders
+  // in-headset); force a full pass on exit so opacities un-stale even if
+  // the desktop camera hasn't moved.
+  if (!s.presenting) reconciler.invalidateLabelLOD();
+});
 
 // ACARS messages from acarshub frequently arrive without an ICAO hex —
 // just flight/reg. Each store snapshot, walk pending unresolved messages
@@ -634,11 +640,21 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', () => {
+function applyWindowSize(): void {
   world.camera.aspect = window.innerWidth / window.innerHeight;
   world.camera.updateProjectionMatrix();
   world.renderer.setSize(window.innerWidth, window.innerHeight, false);
   labelRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener('resize', () => {
+  // The XR runtime owns the framebuffer while presenting — three refuses
+  // setSize with a console warning, and headsets fire window resizes on
+  // session entry. Dropped resizes are replayed on session end below.
+  if (world.renderer.xr.isPresenting) return;
+  applyWindowSize();
+});
+subscribeXr((s) => {
+  if (!s.presenting) applyWindowSize();
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -780,7 +796,10 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     if (world.camera.position.y < camGroundY) world.camera.position.y = camGroundY;
   }
   reconciler.syncFrame();
-  reconciler.updateLabelLOD();
+  // CSS2D labels are never rendered while presenting (the render branch
+  // below skips labelRenderer), so the LOD pass would be pure wasted
+  // frustum math + DOM writes there.
+  if (!world.renderer.xr.isPresenting) reconciler.updateLabelLOD();
   aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
 
   // Update the XR billboard while an immersive session is active — and in

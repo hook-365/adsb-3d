@@ -1,5 +1,4 @@
 import {
-  BufferAttribute,
   BufferGeometry,
   Color,
   ConeGeometry,
@@ -13,7 +12,6 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
-  PlaneGeometry,
   Raycaster,
   RingGeometry,
   SphereGeometry,
@@ -38,6 +36,8 @@ subscribeElevation(() => {
   elevationRefreshPending = true;
 });
 import { resolveShape, getShapeTexture, shapeRotates } from './shapes';
+import { IconInstancePool, defaultIconState, type IconInstanceState } from './icon-instances';
+import { AltLineArena } from './altline-arena';
 import { getSilhouetteGeometry, MARKER_FOOTPRINT_UNITS } from './shape-geometry';
 import { getSettings, subscribeSettings, type AircraftShapeStyle } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
@@ -217,16 +217,17 @@ interface TrailSide {
 interface RenderEntry {
   group: Group;
   cone: Mesh;
-  altLine: LineSegments2;
+  // Altitude-line endpoints (aircraft → ground anchor), cached by
+  // applyTransform and pushed into the fleet-wide AltLineArena each frame.
   altArr: Float32Array;
-  altBuf: InstancedInterleavedBuffer;
   trailSolid: LineSegments2;
   trailDashed: LineSegments2;
   solid: TrailSide;
   dashed: TrailSide;
   material: MeshStandardMaterial;
-  iconMesh: Mesh;
-  iconMaterial: MeshBasicMaterial;
+  // Ground icon lives in the reconciler-owned IconInstancePool; the entry
+  // just caches the per-instance state pushed into it each frame.
+  icon: IconInstanceState;
   iconRotates: boolean;
   // Resolved tar1090 shape identity, kept so the aircraftShape settings
   // subscriber can rebuild the marker body without re-resolving the type.
@@ -243,7 +244,6 @@ interface RenderEntry {
   label: CSS2DObject;
   labelEl: HTMLElement;
   selectionRing: Mesh;
-  pickMaterial: MeshBasicMaterial;
   lastTrailLength: number;
   lastLabelText: string;
   lastLabelClass: string;
@@ -332,7 +332,12 @@ subscribeTheme((tokens) => {
 // Invisible bounding sphere centered on each cone, used as a forgiving
 // raycast target so the user doesn't have to pixel-hunt the small cones —
 // especially important for touch where the "pixel" is a fingertip.
+// The proxies are raycast-only: `visible = false` keeps them out of the
+// render pass entirely (~1 draw call per aircraft per eye saved), and
+// three's Raycaster never consults `.visible`, so picking is unaffected.
+// One shared material serves every proxy since it's never rendered.
 const PICK_GEOMETRY = new SphereGeometry(4.5, 12, 8);
+const PICK_MATERIAL = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 
 function aircraftLabelText(a: Aircraft): string {
   if (a.callsign) return a.callsign;
@@ -447,46 +452,22 @@ function buildEntry(a: Aircraft): RenderEntry {
   const body = markerBodyFor(getSettings().aircraftShape, a.onGround, shapeName, scaling);
   const cone = new Mesh(body.geometry, material);
   cone.userData = { kind: 'aircraft', hex: a.hex };
+  // Ground icon: per-instance state for the reconciler's IconInstancePool.
+  // Footprint sizing matches the old per-aircraft plane (aspect-corrected,
+  // longer side at full raster resolution).
   const iconCache = getShapeTexture(shapeName);
   const aspect = iconCache?.aspect ?? 1;
-  const iconW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
-  const iconH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
-  // Segmented so the icon can drape over 3D terrain (see drapeIcon); on a
-  // flat world the extra vertices stay coplanar and cost nothing.
-  const iconGeom = new PlaneGeometry(iconW, iconH, ICON_DRAPE_SEGMENTS, ICON_DRAPE_SEGMENTS);
-  // Lay the plane flat on the ground. PlaneGeometry's UV(0,0) is at vertex
-  // (-w/2, -h/2); after rotateX(-π/2) that maps to scene +Z, so the SVG
-  // top (which is the aircraft's nose) ends up at scene -Z = north. With
-  // track=0 meaning north, no extra yaw is needed at construction.
-  iconGeom.rotateX(-Math.PI / 2);
-  const iconMaterial = new MeshBasicMaterial({
-    map: iconCache?.texture ?? null,
-    color: headColor,
-    transparent: true,
-    depthWrite: false,
-    side: DoubleSide,
-  });
-  const iconMesh = new Mesh(iconGeom, iconMaterial);
-  iconMesh.renderOrder = 1;
-  iconMesh.userData = { kind: 'aircraft-icon', hex: a.hex };
-  iconMesh.visible = getSettings().groundSprites;
+  const icon = defaultIconState();
+  icon.w = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
+  icon.h = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  icon.r = headColor.r;
+  icon.g = headColor.g;
+  icon.b = headColor.b;
   const iconRotates = shapeRotates(shapeName);
 
-  // Altitude line: one fat-line segment (aircraft → ground anchor).
-  // Persistent 6-float buffer updated in place by applyTransform — the
-  // stock LineGeometry.setPositions would reallocate per update.
-  const altGeom = new LineSegmentsGeometry();
+  // Altitude line endpoints: cached here, drawn by the fleet-wide arena
+  // (one instanced segment per aircraft, single draw call — issue #6).
   const altArr = new Float32Array(6);
-  const altBuf = new InstancedInterleavedBuffer(altArr, 6, 1);
-  altBuf.setUsage(DYNAMIC_DRAW_USAGE);
-  altGeom.setAttribute('instanceStart', new InterleavedBufferAttribute(altBuf, 3, 0));
-  altGeom.setAttribute('instanceEnd', new InterleavedBufferAttribute(altBuf, 3, 3));
-  altGeom.instanceCount = 1;
-  const altLine = new LineSegments2(altGeom, LINE_MAT_DEFAULT);
-  altLine.raycast = NOOP_RAYCAST;
-  altLine.frustumCulled = false;
-  altLine.userData = { kind: 'altitude-line', hex: a.hex };
-  altLine.visible = getSettings().altitudeLines;
 
   const solid = buildTrailLine(TRAIL_MAT_SOLID);
   solid.line.userData = { kind: 'trail', hex: a.hex };
@@ -498,9 +479,9 @@ function buildEntry(a: Aircraft): RenderEntry {
   label.position.set(0, 3.2, 0);
   cone.add(label);
 
-  const pickMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-  const pickProxy = new Mesh(PICK_GEOMETRY, pickMaterial);
+  const pickProxy = new Mesh(PICK_GEOMETRY, PICK_MATERIAL);
   pickProxy.userData = { kind: 'aircraft-pick', hex: a.hex };
+  pickProxy.visible = false;
   cone.add(pickProxy);
 
   const selectionMaterial = new MeshBasicMaterial({
@@ -543,26 +524,21 @@ function buildEntry(a: Aircraft): RenderEntry {
   group.userData = { kind: 'aircraft-root', hex: a.hex };
   group.add(solid.line);
   group.add(dashed.line);
-  group.add(altLine);
   group.add(emergencyRing);
   group.add(selectionRing);
   group.add(pingRing);
-  group.add(iconMesh);
   group.add(cone);
 
   return {
     group,
     cone,
-    altLine,
     altArr,
-    altBuf,
     trailSolid: solid.line,
     trailDashed: dashed.line,
     solid: solid.side,
     dashed: dashed.side,
     material,
-    iconMesh,
-    iconMaterial,
+    icon,
     iconRotates,
     shapeName,
     shapeScaling: scaling,
@@ -575,7 +551,6 @@ function buildEntry(a: Aircraft): RenderEntry {
     label,
     labelEl,
     selectionRing,
-    pickMaterial,
     lastTrailLength: 0,
     lastLabelText: '',
     lastLabelClass: '',
@@ -621,18 +596,14 @@ function refreshShape(entry: RenderEntry, a: Aircraft): void {
   entry.bodyRotates = body.rotates;
   if (!body.rotates) entry.cone.quaternion.identity();
   entry.lastTrackDeg = Number.NaN;
-  // Ground sprite: new texture and a re-sized plane (aspect can change).
+  // Ground sprite: the pool keys buckets by shape name (texture follows),
+  // so only the cached footprint + yaw eligibility need refreshing here.
   const iconCache = getShapeTexture(shapeName);
   const aspect = iconCache?.aspect ?? 1;
-  const iconW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
-  const iconH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
-  const iconGeom = new PlaneGeometry(iconW, iconH, ICON_DRAPE_SEGMENTS, ICON_DRAPE_SEGMENTS);
-  iconGeom.rotateX(-Math.PI / 2);
-  entry.iconMesh.geometry.dispose();
-  entry.iconMesh.geometry = iconGeom;
-  entry.iconMaterial.map = iconCache?.texture ?? null;
-  entry.iconMaterial.needsUpdate = true;
+  entry.icon.w = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
+  entry.icon.h = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
   entry.iconRotates = shapeRotates(shapeName);
+  if (!entry.iconRotates) entry.icon.yaw = 0;
 }
 
 function refreshLabel(entry: RenderEntry, a: Aircraft): void {
@@ -679,7 +650,7 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
     const sinH = Math.sin(half);
     const cosH = Math.cos(half);
     entry.cone.quaternion.set(0, sinH, 0, cosH);
-    if (entry.iconRotates) entry.iconMesh.quaternion.set(0, sinH, 0, cosH);
+    if (entry.iconRotates) entry.icon.yaw = yaw;
     entry.lastTrackDeg = a.trackDeg;
   }
 
@@ -690,64 +661,48 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   altArr[3] = tmpGround.x;
   altArr[4] = tmpGround.y;
   altArr[5] = tmpGround.z;
-  entry.altBuf.needsUpdate = true;
 
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
   entry.cone.scale.setScalar(s * entry.baseScale);
 
-  // Ground icon position follows the aircraft's lat/lon foot regardless of
-  // whether heading changed — its quaternion was either updated above or
-  // is already correct from a prior frame.
-  entry.iconMesh.position.set(
-    tmpGround.x,
-    tmpGround.y === 0 ? ICON_GROUND_Y : tmpGround.y,
-    tmpGround.z,
-  );
-  drapeIcon(entry, a, tmpGround.y);
+  // Ground icon anchor + terrain tilt, cached for the pool rebuild pass.
+  // The old per-aircraft path draped a 6x6 plane with 49 elevation samples;
+  // the instanced pool shares one flat quad, so terrain conformity is
+  // approximated as a planar tilt: 3 elevation samples (center, +E, +N)
+  // give a finite-difference surface normal over the icon's own footprint.
+  // On a flat world (terrain off / sea level) this degenerates to the old
+  // flat placement exactly. Depth-testing stays on, so icons still hide
+  // honestly behind mountains.
+  const icon = entry.icon;
+  icon.x = tmpGround.x;
+  icon.z = tmpGround.z;
+  if (tmpGround.y === 0) {
+    icon.y = ICON_GROUND_Y;
+    icon.nx = 0;
+    icon.ny = 1;
+    icon.nz = 0;
+  } else {
+    // Lift absorbs ridge convexity under the now-planar quad (the draped
+    // mesh could hug a crest; a plane would slice into it).
+    icon.y = tmpGround.y + ICON_DRAPE_LIFT;
+    const d = Math.max(icon.w, icon.h) * 0.5;
+    const cosLat = Math.cos((a.lat * Math.PI) / 180);
+    const lonE = a.lon + d / (60 * cosLat);
+    toScene(a.lat, lonE, elevationFtAt(a.lat, lonE), tmpDrape);
+    const yE = tmpDrape.y;
+    const latN = a.lat + d / 60; // scene +z = south, so north is -z
+    toScene(latN, a.lon, elevationFtAt(latN, a.lon), tmpDrape);
+    const yN = tmpDrape.y;
+    // Surface y(x, z): normal = (-dy/dx, 1, -dy/dz); the north sample sits
+    // at z = -d, so dy/dz = (center - north) / d.
+    icon.nx = -(yE - tmpGround.y) / d;
+    icon.ny = 1;
+    icon.nz = (yN - tmpGround.y) / d;
+  }
 }
 
-// Drape the ground icon over 3D terrain, ring-style: every vertex of the
-// segmented plane samples the terrain under its own world position — with
-// the footprint rotated by the aircraft's heading to match the mesh's yaw
-// quaternion — and takes that height in local Y (which stays world-up
-// under a pure yaw rotation). Depth-testing stays on, so icons conform to
-// ridges yet hide honestly behind mountains. In a flat world the center
-// sample is 0 and the geometry resets to coplanar once.
-const ICON_DRAPE_SEGMENTS = 6;
-const ICON_DRAPE_LIFT = 0.2;
+const ICON_DRAPE_LIFT = 0.35;
 const tmpDrape = new Vector3();
-function drapeIcon(entry: RenderEntry, a: Aircraft, centerGroundY: number): void {
-  const geom = entry.iconMesh.geometry;
-  const pos = geom.getAttribute('position') as BufferAttribute;
-  if (centerGroundY === 0) {
-    if (entry.iconMesh.userData.draped) {
-      for (let i = 0; i < pos.count; i++) pos.setY(i, 0);
-      pos.needsUpdate = true;
-      geom.computeBoundingSphere();
-      entry.iconMesh.userData.draped = false;
-    }
-    return;
-  }
-  entry.iconMesh.userData.draped = true;
-  const yaw =
-    entry.iconRotates && a.trackDeg !== null ? -((a.trackDeg * Math.PI) / 180) : 0;
-  const cosY = Math.cos(yaw);
-  const sinY = Math.sin(yaw);
-  const cosLat = Math.cos((a.lat * Math.PI) / 180);
-  for (let i = 0; i < pos.count; i++) {
-    const lx = pos.getX(i);
-    const lz = pos.getZ(i);
-    // World-frame footprint offset of this vertex under the yaw rotation.
-    const dx = lx * cosY + lz * sinY;
-    const dz = -lx * sinY + lz * cosY;
-    const lat = a.lat - dz / 60; // scene +z = south
-    const lon = a.lon + dx / (60 * cosLat);
-    toScene(lat, lon, elevationFtAt(lat, lon), tmpDrape);
-    pos.setY(i, tmpDrape.y - centerGroundY + ICON_DRAPE_LIFT);
-  }
-  pos.needsUpdate = true;
-  geom.computeBoundingSphere();
-}
 
 function refreshColor(entry: RenderEntry, a: Aircraft): void {
   // Cone + icon track altitude only; military distinction lives on the
@@ -757,7 +712,9 @@ function refreshColor(entry: RenderEntry, a: Aircraft): void {
   const c = altitudeColorCached(a.altFt, false, a.onGround);
   entry.material.color.copy(c);
   entry.material.emissive.copy(c).multiplyScalar(0.35);
-  entry.iconMaterial.color.copy(c);
+  entry.icon.r = c.r;
+  entry.icon.g = c.g;
+  entry.icon.b = c.b;
 }
 
 // XR trail budget (issue #6: busy scenes run poorly on the headset at
@@ -1057,6 +1014,12 @@ export class AircraftReconciler {
   private readonly frustum = new Frustum();
   private readonly projScreenMatrix = new Matrix4();
 
+  // Instanced ground-icon pool (issue #6): one draw call per active shape
+  // instead of one per aircraft. Rebuilt from entry state every syncFrame.
+  private readonly iconPool: IconInstancePool;
+  // Fleet-wide altitude-line arena (issue #6): one draw call total.
+  private readonly altArena: AltLineArena;
+
   constructor(
     private readonly store: AircraftStore,
     private readonly root: Object3D,
@@ -1072,6 +1035,10 @@ export class AircraftReconciler {
     }
   ) {
     const s0 = getSettings();
+    this.iconPool = new IconInstancePool(root, s0.groundSprites);
+    this.altArena = new AltLineArena(LINE_MAT_DEFAULT);
+    this.altArena.line.visible = s0.altitudeLines;
+    root.add(this.altArena.line);
     this.prevGroundSprites = s0.groundSprites;
     this.prevAltitudeLines = s0.altitudeLines;
     this.prevAircraftLabels = s0.aircraftLabels;
@@ -1089,9 +1056,9 @@ export class AircraftReconciler {
       const labChanged = s.aircraftLabels !== this.prevAircraftLabels;
       const shapeChanged = s.aircraftShape !== this.prevAircraftShape;
       if (!gsChanged && !alChanged && !labChanged && !shapeChanged) return;
+      if (gsChanged) this.iconPool.setVisible(s.groundSprites);
+      if (alChanged) this.altArena.line.visible = s.altitudeLines;
       for (const [hex, entry] of this.entries) {
-        if (gsChanged) entry.iconMesh.visible = s.groundSprites;
-        if (alChanged) entry.altLine.visible = s.altitudeLines;
         if (labChanged && !s.aircraftLabels) entry.label.visible = false;
         if (shapeChanged) {
           // Swap the marker body in place. Geometries are shared/cached,
@@ -1163,6 +1130,16 @@ export class AircraftReconciler {
     }
   }
 
+  /**
+   * Force the next updateLabelLOD to run a full pass even if the camera is
+   * idle. main.ts calls this when an XR session ends: label LOD is skipped
+   * entirely while presenting, so the desktop camera may be exactly where
+   * it was (idle) while the label opacities are stale.
+   */
+  invalidateLabelLOD(): void {
+    this.lodDirty = true;
+  }
+
   /** World-space position of an aircraft, or null if it isn't currently rendered. */
   positionOf(hex: string): Vector3 | null {
     const entry = this.entries.get(hex);
@@ -1179,16 +1156,25 @@ export class AircraftReconciler {
     const hits = raycaster.intersectObject(this.root, true);
     for (const hit of hits) {
       const ud = hit.object.userData as { kind?: string; hex?: string } | undefined;
-      if (!ud?.hex) continue;
-      if (ud.kind !== 'aircraft-pick' && ud.kind !== 'aircraft-icon') continue;
+      // Ground icons live in the instanced pool: the hit carries an
+      // instanceId that the pool resolves back to this frame's hex. The
+      // pool only ever contains visible aircraft, but the entry check
+      // below stays as a same-frame-race guard.
+      let hex: string | null = null;
+      if (ud?.kind === 'aircraft-icon-pool' && hit.instanceId !== undefined) {
+        hex = this.iconPool.hexAt(hit.object, hit.instanceId);
+      } else if (ud?.hex && ud.kind === 'aircraft-pick') {
+        hex = ud.hex;
+      }
+      if (!hex) continue;
       // three.js's raycaster does not skip subtrees whose parent Group has
       // `visible = false`, so the invisible pick proxies inside filtered-out
       // aircraft still register hits. Verify the entry is actually rendered
       // before returning it; otherwise clicking on empty sky in MIL-filter
       // mode would still surface civilian aircraft hiding underneath.
-      const entry = this.entries.get(ud.hex);
+      const entry = this.entries.get(hex);
       if (!entry || !entry.group.visible) continue;
-      return ud.hex;
+      return hex;
     }
     return null;
   }
@@ -1312,6 +1298,14 @@ export class AircraftReconciler {
     elevationRefreshPending = false;
     const now = Date.now();
     const perfNow = performance.now();
+    // Instanced icon + altitude-line rebuild: cursors reset here, every
+    // visible aircraft pushes its cached state in the loop below, commit()
+    // publishes counts. Zero-instance frames cost no draw calls.
+    const settingsNow = getSettings();
+    const spritesOn = settingsNow.groundSprites;
+    const altLinesOn = settingsNow.altitudeLines;
+    this.iconPool.begin();
+    this.altArena.begin();
 
     for (const a of snapshot.values()) {
       let entry = this.entries.get(a.hex);
@@ -1366,7 +1360,7 @@ export class AircraftReconciler {
         if (inEmergency) {
           entry.emergencyRing.position.set(
             entry.cone.position.x,
-            entry.iconMesh.position.y + 0.07,
+            entry.icon.y + 0.07,
             entry.cone.position.z,
           );
         }
@@ -1394,8 +1388,15 @@ export class AircraftReconciler {
       const opacity = entry.isSelected ? 1 : staleness(now - a.lastSeenMs);
       if (Math.abs(opacity - entry.lastStaleness) > 0.01) {
         entry.material.opacity = opacity;
-        entry.iconMaterial.opacity = opacity;
         entry.lastStaleness = opacity;
+      }
+      // Icon alpha rides the per-instance RGBA attribute; the pool rebuild
+      // below re-uploads every frame anyway, so no delta gating needed.
+      entry.icon.a = opacity;
+      if (spritesOn) this.iconPool.push(entry.shapeName, a.hex, entry.icon);
+      if (altLinesOn) {
+        const alt = entry.altArr;
+        this.altArena.push(alt[0]!, alt[1]!, alt[2]!, alt[3]!, alt[4]!, alt[5]!);
       }
 
       // ACARS ping animation: ring expands from cone-radius outward and
@@ -1425,7 +1426,6 @@ export class AircraftReconciler {
       if (this.selectedHex === hex) this.selectedHex = null;
       this.root.remove(entry.group);
       entry.material.dispose();
-      entry.altLine.geometry.dispose();
       entry.trailSolid.geometry.dispose();
       entry.trailDashed.geometry.dispose();
       // Trail materials (TRAIL_MAT_SOLID / TRAIL_MAT_DASHED) are shared
@@ -1435,16 +1435,15 @@ export class AircraftReconciler {
       selMat.dispose();
       PING_MATERIALS.delete(entry.pingMaterial);
       entry.pingMaterial.dispose();
-      entry.pickMaterial.dispose();
-      entry.iconMesh.geometry.dispose();
-      entry.iconMaterial.dispose();
-      // Shape textures are shared across aircraft via the shapes-module
-      // cache — do not dispose them here.
+      // Ground icons live in the shared instanced pool (textures shared via
+      // the shapes-module cache) — nothing per-aircraft to dispose.
       entry.label.removeFromParent();
       entry.labelEl.remove();
       this.entries.delete(hex);
       this.lodDirty = true;
     }
+    this.iconPool.commit();
+    this.altArena.commit();
   }
 
   get count(): number {
