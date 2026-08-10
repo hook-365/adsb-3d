@@ -2,8 +2,8 @@
 export const miscStrings = {
   'misc.legend_tooltip':
     'Las aeronaves se colorean según la altitud (esquema tar1090): baja = naranja, ' +
-    'media = verde, alta = magenta. Las aeronaves en tierra se muestran en gris ' +
-    'azulado tenue.\n\n' +
+    'media = verde, alta = magenta, +50k ft = rojo. Las aeronaves en tierra se ' +
+    'muestran en gris tenue.\n\n' +
     'Nota: la vista 3D exagera la altitud {factor}× respecto a la distancia ' +
     'horizontal para que el tráfico sea legible; la altura que se ve NO está ' +
     'a escala con el suelo.',

@@ -8,6 +8,12 @@ import {
   Object3D,
   Vector3,
 } from 'three';
+import {
+  ALT_AIR_S,
+  ALT_GROUND_HSL,
+  altitudeHue,
+  altitudeLightness,
+} from '../core/altitude-color';
 import { toScene } from '../core/coords';
 import type { HistoricalSample } from '../feed/historical';
 
@@ -18,7 +24,8 @@ import type { HistoricalSample } from '../feed/historical';
 // segments stack up — natural "heatmap in the sky".
 //
 // Color per vertex follows the tar1090 altitude palette so altitude
-// reads at a glance: orange-ish low, green mid-altitude, magenta high.
+// reads at a glance: orange low, green mid-altitude, magenta high,
+// red at the 51k ft ceiling.
 //
 // Geometry is a single LineSegments mesh, rebuilt whenever the loaded
 // historical window changes. Each pair of adjacent samples for the
@@ -30,37 +37,18 @@ const GAP_MS = 60_000;
 // bundles light up via additive blending.
 const SEGMENT_OPACITY = 0.18;
 
-// Reuse the tar1090 stops from the reconciler, inlined to avoid a
-// cross-module dep. 2k orange → 10k light green → 40k magenta.
-const HUE_STOPS: ReadonlyArray<{ alt: number; hue: number }> = [
-  { alt: 2000, hue: 20 },
-  { alt: 10000, hue: 140 },
-  { alt: 40000, hue: 300 },
-];
-const AIR_S = 0.85;
-const AIR_L = 0.55;
-const GROUND_HSL = { h: 230 / 360, s: 0.4, l: 0.3 };
-
-function altitudeHue(altFt: number): number {
-  const stops = HUE_STOPS;
-  if (altFt <= stops[0]!.alt) return stops[0]!.hue;
-  for (let i = 0; i < stops.length - 1; i++) {
-    const a = stops[i]!;
-    const b = stops[i + 1]!;
-    if (altFt <= b.alt) {
-      const t = (altFt - a.alt) / (b.alt - a.alt);
-      return a.hue + (b.hue - a.hue) * t;
-    }
-  }
-  return stops[stops.length - 1]!.hue;
-}
+// Shared tar1090 ramp from core/altitude-color, with lightness lifted a
+// touch so segments stay visible under the low per-segment opacity before
+// additive stacking kicks in.
+const LIGHTNESS_LIFT = 0.05;
 
 function altitudeColor(altFt: number, out: Color): void {
   if (altFt <= 0) {
-    out.setHSL(GROUND_HSL.h, GROUND_HSL.s, GROUND_HSL.l);
+    out.setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l);
     return;
   }
-  out.setHSL(altitudeHue(altFt) / 360, AIR_S, AIR_L);
+  const hue = altitudeHue(altFt);
+  out.setHSL((hue % 360) / 360, ALT_AIR_S, Math.min(altitudeLightness(hue) + LIGHTNESS_LIFT, 0.7));
 }
 
 export interface HeatmapStatus {

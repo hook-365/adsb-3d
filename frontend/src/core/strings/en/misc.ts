@@ -3,7 +3,8 @@
 export const miscStrings = {
   'misc.legend_tooltip':
     'Aircraft are coloured by altitude (tar1090 scheme): low = orange, ' +
-    'mid = green, high = magenta. Aircraft on the ground are dim blue-grey.\n\n' +
+    'mid = green, high = magenta, 50k+ ft = red. Aircraft on the ground ' +
+    'are dim grey.\n\n' +
     'Note: the 3D view exaggerates altitude {factor}× relative to ' +
     'horizontal distance so traffic stays readable — the height you see is ' +
     'NOT to scale against the ground.',

@@ -2,7 +2,8 @@
 export const miscStrings = {
   'misc.legend_tooltip':
     'Flugzeuge sind nach Höhe eingefärbt (tar1090-Schema): niedrig = Orange, ' +
-    'mittel = Grün, hoch = Magenta. Flugzeuge am Boden sind gedämpft blaugrau.\n\n' +
+    'mittel = Grün, hoch = Magenta, ab 50k ft = Rot. Flugzeuge am Boden sind ' +
+    'gedämpft grau.\n\n' +
     'Hinweis: Die 3D-Ansicht überhöht die Höhe im Verhältnis zur horizontalen ' +
     'Entfernung um das {factor}-Fache, damit der Verkehr lesbar bleibt. ' +
     'Die dargestellte Höhe ist NICHT maßstabsgetreu zum Boden.',

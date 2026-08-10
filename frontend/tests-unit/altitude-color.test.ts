@@ -3,6 +3,9 @@ import {
   altitudeColor,
   altitudeColorCached,
   altitudeColorStyleCached,
+  altitudeHue,
+  altitudeLightness,
+  ALT_AIR_S,
   ALT_MILITARY_HEX,
 } from '../src/core/altitude-color';
 
@@ -12,6 +15,45 @@ import {
 // the legend, cones, trails, icons, and labels all agree on hue.
 
 const APPROX = (n: number) => Math.round(n * 1e6) / 1e6;
+
+// Drift guard against tar1090's ColorByAlt (html/defaults.js). These are
+// the exact published stop values — if we retune the ramp we no longer
+// match globe.adsb.fi and this file should be updated deliberately.
+describe('tar1090 ColorByAlt parity', () => {
+  it('hue stops match tar1090 exactly', () => {
+    expect(altitudeHue(0)).toBe(20);
+    expect(altitudeHue(2000)).toBe(32.5);
+    expect(altitudeHue(4000)).toBe(43);
+    expect(altitudeHue(6000)).toBe(54);
+    expect(altitudeHue(8000)).toBe(72);
+    expect(altitudeHue(9000)).toBe(85);
+    expect(altitudeHue(11000)).toBe(140);
+    expect(altitudeHue(40000)).toBe(300);
+    expect(altitudeHue(51000)).toBe(360);
+  });
+
+  it('clamps to red above the top stop instead of magenta', () => {
+    expect(altitudeHue(60000)).toBe(360);
+    // hue 360 must wrap to pure red, not clamp inside Three
+    const c = altitudeColor(60000, false);
+    expect(c.r).toBeGreaterThan(0.8);
+    expect(APPROX(c.g)).toBe(APPROX(c.b)); // red channel dominant, g == b
+  });
+
+  it('saturation and lightness table match tar1090', () => {
+    expect(ALT_AIR_S).toBe(0.88);
+    expect(altitudeLightness(20)).toBe(0.5);
+    expect(altitudeLightness(140)).toBe(0.41);
+    expect(altitudeLightness(240)).toBe(0.58);
+    expect(altitudeLightness(300)).toBe(0.43);
+    expect(altitudeLightness(360)).toBe(0.53);
+  });
+
+  it('interpolates hue between stops', () => {
+    expect(altitudeHue(10000)).toBeCloseTo(85 + (140 - 85) * 0.5, 6);
+    expect(altitudeHue(45500)).toBeCloseTo(300 + 60 * (5500 / 11000), 6);
+  });
+});
 
 describe('altitudeColorCached', () => {
   it('military branch returns a single shared instance', () => {

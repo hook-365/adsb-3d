@@ -7,8 +7,8 @@ import { t } from '../core/i18n';
 // note that the 3D view's vertical scale is exaggerated. Static content —
 // mounted once at boot into the #altitude-legend footer slot.
 
-const MAX_ALT_FT = 40000;   // top of the ramp; hue clamps above this
-const GRADIENT_STOPS = 20;  // CSS-gradient sampling resolution
+const MAX_ALT_FT = 50000;   // top of the ramp; hue clamps to red above ~51k
+const GRADIENT_STOPS = 50;  // CSS-gradient sampling resolution (1000 ft/step)
 
 /** A CSS linear-gradient sampling the real altitude palette, low → high. */
 function buildGradient(): string {
@@ -31,8 +31,8 @@ export function mountAltitudeLegend(): void {
   cap.className = 'al-cap';
   cap.textContent = t('misc.legend_alt_caption');
 
-  // Ramp = gradient bar with altitude ticks beneath it. Five evenly-spaced
-  // ticks (0–40k) align with the bar because the gradient is linear in ft.
+  // Ramp = gradient bar with altitude ticks beneath it. Six evenly-spaced
+  // ticks (0–50k) align with the bar because the gradient is linear in ft.
   const ramp = document.createElement('span');
   ramp.className = 'al-ramp';
 
@@ -42,7 +42,7 @@ export function mountAltitudeLegend(): void {
 
   const ticks = document.createElement('span');
   ticks.className = 'al-ticks';
-  for (const label of ['0', '10k', '20k', '30k', '40k+ ft']) {
+  for (const label of ['0', '10k', '20k', '30k', '40k', '50k+ ft']) {
     const t = document.createElement('span');
     t.textContent = label;
     ticks.appendChild(t);

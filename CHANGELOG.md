@@ -8,6 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-10
+
+### Changed
+
+- **Exact tar1090 altitude palette.** The altitude color ramp was a
+  3-stop approximation that pinned at magenta from 40,000 ft up; it now
+  matches tar1090's `ColorByAlt` exactly: all nine hue stops (finer
+  orange-to-yellow banding below 11,000 ft), 88% saturation, the
+  per-hue lightness table, and the final magenta-to-red segment so
+  50,000+ ft traffic reads red like it does on globe.adsb.fi. Applies
+  to cones, trails, ground icons, labels, and the heatmap (which now
+  shares the ramp instead of keeping its own copy). The footer legend
+  extends to 50k+ ft, and ground aircraft are tar1090's dim grey
+  instead of blue-grey. A drift-guard test asserts the published
+  tar1090 values.
+
 ## [0.7.1] - 2026-08-10
 
 ### Added
