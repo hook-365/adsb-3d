@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-10
+
+### Fixed
+
+- **C-5 and Il-62 T-tails were far too wide.** Both shapes' raised
+  tailplanes were built from bad measurements of the drawn artwork
+  (C-5: span 0.6 vs the drawn 0.26; Il-62: 0.56 vs 0.20, with the band
+  placed past the drawing's edge), which made the tail read as a second
+  main wing. Re-measured by rasterizing the silhouettes; the clip bands
+  now remove the full drawn stabilizer and the raised tailplanes match
+  the drawn footprint.
+
 ## [0.8.0] - 2026-08-10
 
 ### Added

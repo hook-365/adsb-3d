@@ -345,13 +345,16 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
   },
   // C-5 Galaxy: real T-tail, same pattern as c17 — clip the drawn
   // body-level stabilizer out of the slab and raise it, overlapping the
-  // fin tip. Band measured off the drawing: swept tailplane sits at
-  // y [0.885, 0.965], x [0.2, 0.8].
+  // fin tip. Band re-measured by rasterizing the drawing (v0.8.1: the
+  // original x [0.2, 0.8] reading was wrong and produced a tailplane
+  // nearly as wide as the wing): drawn stab occupies y [0.87, 0.955],
+  // x [0.37, 0.63] at its widest — span 0.26 of the viewBox, matching
+  // the real aircraft's ~0.31 stab/wing ratio.
   c5: {
     fuselage: { nose: 0.05, tail: 0.97, radius: 0.05 },
     fin: { y: 0.83, rootChord: 0.14, tipChord: 0.06, height: 0.16, sweep: 0.07 },
-    planformClip: { y0: 0.885, y1: 0.965 },
-    tailplane: { y: 0.895, span: 0.6, chord: 0.06, height: 0.157 },
+    planformClip: { y0: 0.865, y1: 0.965 },
+    tailplane: { y: 0.875, span: 0.27, chord: 0.085, height: 0.157 },
   },
   e390: {
     fuselage: { nose: 0.03, tail: 0.96, radius: 0.067 },
@@ -386,13 +389,15 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
     fin: { y: 0.68, rootChord: 0.13, tipChord: 0.06, height: 0.11, sweep: 0.05 },
   },
   // Il-62: real T-tail, same treatment as c5/c17. Rear-mounted engine pods
-  // (drawn separately, untouched) end around y 0.84; the swept tailplane
-  // band runs y [0.875, 0.965], x [0.22, 0.78].
+  // (drawn separately, untouched) end around y 0.84, which floors the clip
+  // band. Re-measured off the raster (v0.8.1, same mismeasurement as c5):
+  // the drawn stab runs y [0.82, 0.93] and spans only x [0.36, 0.57] —
+  // span 0.20 of the viewBox, not 0.56.
   il_62: {
     fuselage: { nose: 0.07, tail: 0.95, radius: 0.037 },
     fin: { y: 0.78, rootChord: 0.14, tipChord: 0.06, height: 0.17, sweep: 0.08 },
-    planformClip: { y0: 0.875, y1: 0.965 },
-    tailplane: { y: 0.885, span: 0.56, chord: 0.07, height: 0.167 },
+    planformClip: { y0: 0.845, y1: 0.965 },
+    tailplane: { y: 0.85, span: 0.22, chord: 0.08, height: 0.167 },
   },
   l159: {
     fuselage: { nose: 0.04, tail: 0.79, radius: 0.041 },
