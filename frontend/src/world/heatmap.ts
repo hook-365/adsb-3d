@@ -6,6 +6,7 @@ import {
   LineBasicMaterial,
   LineSegments,
   Object3D,
+  SRGBColorSpace,
   Vector3,
 } from 'three';
 import {
@@ -44,11 +45,16 @@ const LIGHTNESS_LIFT = 0.05;
 
 function altitudeColor(altFt: number, out: Color): void {
   if (altFt <= 0) {
-    out.setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l);
+    out.setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l, SRGBColorSpace);
     return;
   }
   const hue = altitudeHue(altFt);
-  out.setHSL((hue % 360) / 360, ALT_AIR_S, Math.min(altitudeLightness(hue) + LIGHTNESS_LIFT, 0.7));
+  out.setHSL(
+    (hue % 360) / 360,
+    ALT_AIR_S,
+    Math.min(altitudeLightness(hue) + LIGHTNESS_LIFT, 0.7),
+    SRGBColorSpace,
+  );
 }
 
 export interface HeatmapStatus {

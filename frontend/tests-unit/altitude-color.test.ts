@@ -49,6 +49,15 @@ describe('tar1090 ColorByAlt parity', () => {
     expect(altitudeLightness(360)).toBe(0.53);
   });
 
+  it('declares HSL values as sRGB so rendering matches tar1090 CSS', () => {
+    // hsl(20, 88%, 50%) in CSS is rgb(240, 90, 15). getStyle() round-trips
+    // back to sRGB, so this only holds if setHSL declared the values as
+    // sRGB. With three's default (linear working space) the round-trip
+    // yields a washed-out rgb(249, 160, 63)-ish tone instead — the bug
+    // that made high-altitude red render as pastel pink.
+    expect(altitudeColor(0, false).getStyle()).toBe('rgb(240,90,15)');
+  });
+
   it('interpolates hue between stops', () => {
     expect(altitudeHue(10000)).toBeCloseTo(85 + (140 - 85) * 0.5, 6);
     expect(altitudeHue(45500)).toBeCloseTo(300 + 60 * (5500 / 11000), 6);

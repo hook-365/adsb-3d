@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-08-10
+
+### Fixed
+
+- **Altitude colors rendered washed-out.** Three.js r152+ interprets
+  `setHSL()` in the linear working color space by default, so every
+  altitude-derived color (cones, trails, ground icons, labels, legend,
+  heatmap) was gamma-encoded a second time on output and displayed
+  paler than tar1090's CSS `hsl()` — high-altitude red-magenta came out
+  pastel pink. All altitude ramp colors are now declared as sRGB, so
+  the rendered palette matches tar1090 exactly. A round-trip test pins
+  the sRGB behavior.
+
 ## [0.7.2] - 2026-08-10
 
 ### Changed

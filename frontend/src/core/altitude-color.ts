@@ -1,4 +1,10 @@
-import { Color } from 'three';
+import { Color, SRGBColorSpace } from 'three';
+
+// IMPORTANT: every setHSL below passes SRGBColorSpace. Three r152+ defaults
+// setHSL to the linear working color space, and the renderer then
+// gamma-encodes on output — which displays the ramp lighter and pinker
+// than the same hsl() in tar1090's CSS. Declaring the values as sRGB makes
+// the rendered cones/trails match tar1090 pixel-for-pixel.
 
 // tar1090's `ColorByAlt` scheme, transcribed from tar1090's html/defaults.js
 // (the palette globe.adsb.fi runs). Piecewise-linear hue interpolation in
@@ -92,10 +98,10 @@ export function altitudeLightness(hueDeg: number): number {
 export function altitudeColor(altFt: number, military: boolean, onGround = false): Color {
   if (military) return new Color(ALT_MILITARY_HEX);
   if (onGround) {
-    return new Color().setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l);
+    return new Color().setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l, SRGBColorSpace);
   }
   const hue = altitudeHue(altFt);
-  return new Color().setHSL((hue % 360) / 360, ALT_AIR_S, altitudeLightness(hue));
+  return new Color().setHSL((hue % 360) / 360, ALT_AIR_S, altitudeLightness(hue), SRGBColorSpace);
 }
 
 // Allocation-free color lookup for the reconciler's hot paths. The trail
@@ -112,9 +118,19 @@ const AIR_COLOR_CACHE: Color[] = new Array(CACHE_SIZE);
 for (let i = 0; i < CACHE_SIZE; i++) {
   const altFt = CACHE_MIN_FT + i * CACHE_BUCKET_FT;
   const hue = altitudeHue(altFt);
-  AIR_COLOR_CACHE[i] = new Color().setHSL((hue % 360) / 360, ALT_AIR_S, altitudeLightness(hue));
+  AIR_COLOR_CACHE[i] = new Color().setHSL(
+    (hue % 360) / 360,
+    ALT_AIR_S,
+    altitudeLightness(hue),
+    SRGBColorSpace,
+  );
 }
-const GROUND_COLOR = new Color().setHSL(ALT_GROUND_HSL.h, ALT_GROUND_HSL.s, ALT_GROUND_HSL.l);
+const GROUND_COLOR = new Color().setHSL(
+  ALT_GROUND_HSL.h,
+  ALT_GROUND_HSL.s,
+  ALT_GROUND_HSL.l,
+  SRGBColorSpace,
+);
 const MILITARY_COLOR = new Color(ALT_MILITARY_HEX);
 
 function airBucketIndex(altFt: number): number {
