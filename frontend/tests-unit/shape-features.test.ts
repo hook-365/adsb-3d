@@ -29,6 +29,8 @@ const FUSELAGE_FALLBACK_TRIS = 48;
 const loftTris = (stations: number) => (stations - 1) * 16 + 16;
 // Rotor: one blade box per angle (12 tris each) + a capped 6-seg mast (24).
 const rotorTris = (r: { angles?: number[] }) => (r.angles?.length ?? 2) * 12 + 24;
+// Tail rotor: two crossed boxes.
+const TAIL_ROTOR_TRIS = 24;
 // Budget ceiling: worst case is a four-engine heavy with lofted fuselage,
 // fin and T-tail (192 + 12 + 12 + 4x48 = 408) plus a little headroom.
 const MAX_FEATURE_TRIS = 420;
@@ -41,10 +43,12 @@ function expectedTris(name: string, f: ShapeFeatures): number {
   const profile = (fuselageProfiles as Record<string, number[]>)[name];
   return (
     (f.fin ? FIN_TRIS : 0) +
+    (f.fins?.length ?? 0) * FIN_TRIS +
     (f.tailplane ? TAILPLANE_TRIS : 0) +
     (f.engines?.length ?? 0) * ENGINE_TRIS +
     (f.fuselage ? (profile ? loftTris(profile.length) : FUSELAGE_FALLBACK_TRIS) : 0) +
-    (f.rotors ?? []).reduce((sum, r) => sum + rotorTris(r), 0)
+    (f.rotors ?? []).reduce((sum, r) => sum + rotorTris(r), 0) +
+    (f.tailRotor ? TAIL_ROTOR_TRIS : 0)
   );
 }
 
@@ -55,8 +59,8 @@ describe('annotation table validity', () => {
     });
 
     it(`${name} has sane fractions`, () => {
-      if (f.fin) {
-        const { y, rootChord, tipChord, height, sweep, x } = f.fin;
+      for (const fin of [...(f.fin ? [f.fin] : []), ...(f.fins ?? [])]) {
+        const { y, rootChord, tipChord, height, sweep, x } = fin;
         for (const v of [y, rootChord, tipChord, height, sweep]) {
           expect(Number.isFinite(v)).toBe(true);
         }
@@ -101,8 +105,12 @@ describe('annotation table validity', () => {
         expect(f.planformClip.y0).toBeGreaterThanOrEqual(0);
         expect(f.planformClip.y1).toBeGreaterThan(f.planformClip.y0);
         expect(f.planformClip.y1).toBeLessThanOrEqual(1);
-        // A clip without a raised tailplane would just amputate the tail.
-        expect(f.tailplane, 'planformClip requires tailplane').toBeDefined();
+        // A clip must be replacing something raised (T-tail box or rotor
+        // blades), else it just amputates part of the silhouette.
+        expect(
+          f.tailplane ?? f.rotors,
+          'planformClip requires tailplane or rotors'
+        ).toBeDefined();
       }
       for (const ro of f.rotors ?? []) {
         expect(ro.y).toBeGreaterThanOrEqual(0);
@@ -135,6 +143,16 @@ describe('annotation table validity', () => {
         if (Math.abs(e.x - 0.5) < 1e-6) continue;
         const mate = engines.find((m) => Math.abs(m.x - (1 - e.x)) < 1e-6);
         expect(mate, `${name} engine at x=${e.x} has no mirror mate`).toBeDefined();
+      }
+    });
+
+    it(`${name} twin fins are symmetric about the centerline`, () => {
+      const fins = f.fins ?? [];
+      for (const fin of fins) {
+        const x = fin.x ?? 0.5;
+        expect(x, `${name} twin fin must be off centerline`).not.toBeCloseTo(0.5, 5);
+        const mate = fins.find((m) => Math.abs((m.x ?? 0.5) - (1 - x)) < 1e-6);
+        expect(mate, `${name} fin at x=${x} has no mirror mate`).toBeDefined();
       }
     });
   }

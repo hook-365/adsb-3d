@@ -102,18 +102,23 @@ function build(shapeName: string): BufferGeometry | null {
   const features = getShapeFeatures(shapeName);
   if (features?.planformClip) {
     try {
-      const clipped = clipPlanformBand(shapes, minY, vbH, features.planformClip);
-      if (clipped.length > 0) shapes = clipped;
+      // An empty result is legitimate: a shape whose slab is entirely
+      // drawn rotor/stabilizer (the Chinook) keeps only its procedural
+      // parts. Only a thrown error falls back to the full slab.
+      shapes = clipPlanformBand(shapes, minY, vbH, features.planformClip);
     } catch (e) {
       console.warn(`[shape-geometry] planform clip failed for "${shapeName}", using full slab:`, e);
     }
   }
   const depth = vbH * (features?.fuselage ? WING_THICKNESS_RATIO : THICKNESS_RATIO);
-  let geom: BufferGeometry = new ExtrudeGeometry(shapes, {
-    depth,
-    bevelEnabled: false,
-    curveSegments: CURVE_SEGMENTS,
-  });
+  let geom: BufferGeometry | null =
+    shapes.length > 0
+      ? new ExtrudeGeometry(shapes, {
+          depth,
+          bevelEnabled: false,
+          curveSegments: CURVE_SEGMENTS,
+        })
+      : null;
 
   // Merge in the annotated 3D features (fin, nacelles) while still in raw
   // viewBox space, so the shared centering/rotation/scaling below applies
@@ -127,11 +132,11 @@ function build(shapeName: string): BufferGeometry | null {
       // ExtrudeGeometry is non-indexed while the primitive parts are
       // indexed; mergeGeometries refuses mixed input, so unindex first.
       const merged = mergeGeometries(
-        [geom, ...parts.map((p) => (p.index ? p.toNonIndexed() : p))],
+        [...(geom ? [geom] : []), ...parts.map((p) => (p.index ? p.toNonIndexed() : p))],
         false
       );
       if (merged) {
-        geom.dispose();
+        geom?.dispose();
         parts.forEach((p) => p.dispose());
         geom = merged;
       }
@@ -139,6 +144,9 @@ function build(shapeName: string): BufferGeometry | null {
       console.warn(`[shape-geometry] 3D features failed for "${shapeName}", using bare silhouette:`, e);
     }
   }
+  // A fully clipped slab with no buildable features has nothing to show —
+  // let the caller fall back to the cone.
+  if (!geom) return null;
 
   // SVG space → scene space: center on the viewBox (the sprite's rotation
   // anchor), then rotate the SVG plane flat. rotateX(+π/2) maps SVG +y
@@ -212,8 +220,8 @@ export function buildFeatureParts(
       parts.push(noseCone, mid, tailCone);
     }
   }
-  if (features.fin) {
-    const f = features.fin;
+  const fins = [...(features.fin ? [features.fin] : []), ...(features.fins ?? [])];
+  for (const f of fins) {
     const x = minX + (f.x ?? 0.5) * vbW;
     const yRoot = minY + f.y * vbH;
     const t = depth * SURFACE_THICKNESS_RATIO;
@@ -267,24 +275,43 @@ export function buildFeatureParts(
     parts.push(lip);
   }
   for (const ro of features.rotors ?? []) {
-    // Four-blade rotor caught mid-frame: two thin crossed boxes on a short
-    // mast. A solid disc reads as a turtle shell from above and hides the
-    // cabin; open blades keep the helicopter recognizable at every angle.
+    // Four-blade rotor caught mid-frame: two crossed boxes on a mast. A
+    // solid disc reads as a turtle shell from above and hides the cabin;
+    // open blades keep the helicopter recognizable at every angle. Blades
+    // are deliberately chunky and the mast tall — at marker scale a thin
+    // low rotor disappears and the body reads as an airship.
     const x = minX + (ro.x ?? 0.5) * vbW;
     const y = minY + ro.y * vbH;
-    const zBlades = -vbH * 0.05; // blade plane above the cabin (-z is up)
+    const zBlades = -vbH * 0.068; // blade plane well above the cabin (-z is up)
     const span = 2 * ro.radius * vbW;
-    const bladeW = Math.max(vbW * 0.016, ro.radius * vbW * 0.09);
+    const bladeW = Math.max(vbW * 0.03, ro.radius * vbW * 0.14);
     for (const deg of ro.angles ?? [45, 135]) {
-      const blade = new BoxGeometry(span, bladeW, vbH * 0.01);
+      const blade = new BoxGeometry(span, bladeW, vbH * 0.016);
       blade.rotateZ((deg * Math.PI) / 180);
       blade.translate(x, y, zBlades);
       parts.push(blade);
     }
-    const mast = new CylinderGeometry(vbW * 0.012, vbW * 0.012, -zBlades, 6, 1);
+    const mast = new CylinderGeometry(vbW * 0.018, vbW * 0.018, -zBlades, 6, 1);
     mast.rotateX(Math.PI / 2); // axis vertical
     mast.translate(x, y, zBlades / 2);
     parts.push(mast);
+  }
+  if (features.tailRotor) {
+    // Small crossed pair standing in the vertical plane beside the boom
+    // tip — the side-profile cue that says helicopter more than anything
+    // else on the airframe.
+    const tr = features.tailRotor;
+    const x = minX + vbW / 2 + (tr.x ?? 0.035) * vbW;
+    const y = minY + tr.y * vbH;
+    const zc = depth / 2;
+    const R = tr.radius * vbW;
+    const w = Math.max(vbW * 0.018, R * 0.22);
+    const t = vbW * 0.012;
+    const vertical = new BoxGeometry(t, w, 2 * R);
+    vertical.translate(x, y, zc);
+    const horizontal = new BoxGeometry(t, 2 * R, w);
+    horizontal.translate(x, y, zc);
+    parts.push(vertical, horizontal);
   }
   return parts;
 }

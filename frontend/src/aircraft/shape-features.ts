@@ -92,10 +92,20 @@ export interface RotorFeature {
 
 export interface ShapeFeatures {
   fin?: FinFeature;
+  /** Twin (or more) vertical stabilizers — twin-boom warbirds (A-10),
+   *  twin-tail fighters (F/A-18, F-15, F-35) and twin-finned transports
+   *  (An-225). Coexists with `fin` only in principle; every current entry
+   *  uses one or the other. Each entry's `x` is required (no centerline
+   *  default makes sense for a twin), so author one side and mirror it
+   *  with `mirrorFins()` rather than hand-duplicating the pair. */
+  fins?: FinFeature[];
   tailplane?: TailplaneFeature;
   engines?: EngineFeature[];
   fuselage?: FuselageFeature;
   rotors?: RotorFeature[];
+  /** Small crossed rotor pair standing vertically beside the tail boom.
+   *  Fractions: y of viewBox height, radius and x-offset of viewBox width. */
+  tailRotor?: { y: number; radius: number; x?: number };
   /** Remove a horizontal band of the planform slab before extrusion
    *  (fractions of length). Used with `tailplane` on T-tails: the drawing
    *  always includes a body-level stabilizer, and without cutting it out a
@@ -113,6 +123,20 @@ function mirror(engines: EngineFeature[]): EngineFeature[] {
   for (const e of engines) {
     out.push(e);
     if (Math.abs(e.x - 0.5) > 1e-6) out.push({ ...e, x: 1 - e.x });
+  }
+  return out;
+}
+
+/** Mirror twin-tail fins across the centerline: author one side (x < 0.5
+ *  or > 0.5) and get its mate at 1 - x for free, same convention as
+ *  `mirror()` for engines. A fin authored on the centerline (x = 0.5)
+ *  would collapse onto its own mate, so that's a caller error. */
+function mirrorFins(fins: FinFeature[]): FinFeature[] {
+  const out: FinFeature[] = [];
+  for (const f of fins) {
+    const x = f.x ?? 0.5;
+    if (Math.abs(x - 0.5) < 1e-6) throw new Error('mirrorFins: fin x must be off centerline');
+    out.push(f, { ...f, x: 1 - x });
   }
   return out;
 }
@@ -249,24 +273,62 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
   },
 
   // ---------------------------------------------------------------------
-  // Fuselage-only entries for the rest of the fixed-wing catalog, so every
-  // aircraft body reads as a tube rather than a plank. Dimensions were
-  // auto-measured by rasterizing each silhouette and scanning the
-  // centerline fill (nose/tail = first/last filled row, radius = 25th
-  // percentile run width, which excludes wing rows). No fins or engines:
-  // placement on deltas, twin tails and prop types needs human judgement.
-  // Deliberately absent: strato and verhees (twin-fuselage / flying wing —
-  // a centerline tube is wrong for both), c2 (its drawing has no fill on
-  // the centerline to measure), lighter-than-air, ground icons and novelty
-  // shapes. Rotorcraft have their own block below.
-  a10: { fuselage: { nose: 0.06, tail: 0.94, radius: 0.041 } },
-  a225: { fuselage: { nose: 0.06, tail: 0.89, radius: 0.045 } },
-  a400: { fuselage: { nose: 0.05, tail: 0.91, radius: 0.058 } },
-  alpha_jet: { fuselage: { nose: 0.14, tail: 0.84, radius: 0.037 } },
-  b1b_lancer: { fuselage: { nose: 0.04, tail: 0.89, radius: 0.037 } },
-  b52: { fuselage: { nose: 0.18, tail: 0.82, radius: 0.024 } },
-  bae_hawk: { fuselage: { nose: 0.17, tail: 0.72, radius: 0.026 } },
-  c130: { fuselage: { nose: 0.27, tail: 0.79, radius: 0.054 } },
+  // Fin pass for the rest of the fixed-wing catalog. Fuselage dimensions
+  // were auto-measured (see below); fin placement is hand-judged from
+  // fraction-grid renders of each planform plus type knowledge, since the
+  // fin itself is vertical and never shows in the drawing — only its
+  // footprint (a T-tail's tailplane, a twin-boom's horizontal stab) does.
+  // Engines are left as the drawn flat planform (optional polish, not
+  // required for tail coverage).
+  //
+  // Twin fins (a10, f18, md_f15, lancaster, f35, a225): root x read off
+  // the tips of the drawn horizontal stabilizer/boom structure, mirrored
+  // with mirrorFins().
+  a10: {
+    // Twin-boom Warthog: horizontal stabilizer box measured at x
+    // [0.335, 0.665], y [0.855, 0.905] — fins sit at the boom tips.
+    fuselage: { nose: 0.06, tail: 0.94, radius: 0.041 },
+    fins: mirrorFins([{ x: 0.335, y: 0.83, rootChord: 0.1, tipChord: 0.06, height: 0.12, sweep: 0.02 }]),
+  },
+  // An-225: twin fins added (over the An-124 baseline) for stability with
+  // the Buran orbiter on the spine — tip nubs visible on the drawn
+  // tailplane at x ~ [0.24, 0.76].
+  a225: {
+    fuselage: { nose: 0.06, tail: 0.89, radius: 0.045 },
+    fins: mirrorFins([{ x: 0.24, y: 0.76, rootChord: 0.1, tipChord: 0.05, height: 0.12, sweep: 0.04 }]),
+  },
+  // A400M is a real T-tail, but only c5/il_62 get the planformClip
+  // treatment here — a tall single fin rising from the drawn tailplane is
+  // close enough at marker scale.
+  a400: {
+    fuselage: { nose: 0.05, tail: 0.91, radius: 0.058 },
+    fin: { y: 0.75, rootChord: 0.13, tipChord: 0.06, height: 0.15, sweep: 0.06 },
+  },
+  alpha_jet: {
+    fuselage: { nose: 0.14, tail: 0.84, radius: 0.037 },
+    fin: { y: 0.68, rootChord: 0.11, tipChord: 0.05, height: 0.11, sweep: 0.05 },
+  },
+  b1b_lancer: {
+    fuselage: { nose: 0.04, tail: 0.89, radius: 0.037 },
+    fin: { y: 0.72, rootChord: 0.12, tipChord: 0.05, height: 0.13, sweep: 0.06 },
+  },
+  b52: {
+    fuselage: { nose: 0.18, tail: 0.82, radius: 0.024 },
+    fin: { y: 0.68, rootChord: 0.11, tipChord: 0.05, height: 0.14, sweep: 0.06 },
+  },
+  bae_hawk: {
+    fuselage: { nose: 0.17, tail: 0.72, radius: 0.026 },
+    fin: { y: 0.58, rootChord: 0.1, tipChord: 0.05, height: 0.09, sweep: 0.04 },
+  },
+  // C-130 Hercules: full treatment — tall fin and four turboprops.
+  c130: {
+    fuselage: { nose: 0.27, tail: 0.79, radius: 0.054 },
+    fin: { y: 0.66, rootChord: 0.13, tipChord: 0.06, height: 0.13, sweep: 0.05 },
+    engines: mirror([
+      { x: 0.39, y: 0.42, length: 0.11, radius: 0.024 },
+      { x: 0.27, y: 0.43, length: 0.1, radius: 0.022 },
+    ]),
+  },
   // C-17 Globemaster: full treatment.
   c17: {
     fuselage: { nose: 0.17, tail: 0.87, radius: 0.054 },
@@ -281,78 +343,213 @@ export const SHAPE_FEATURES: Record<string, ShapeFeatures> = {
       { x: 0.295, y: 0.4, length: 0.1, radius: 0.028 },
     ]),
   },
-  c5: { fuselage: { nose: 0.05, tail: 0.97, radius: 0.05 } },
-  e390: { fuselage: { nose: 0.03, tail: 0.96, radius: 0.067 } },
-  e3awacs: { fuselage: { nose: 0.08, tail: 0.92, radius: 0.045 } },
-  e737: { fuselage: { nose: 0.03, tail: 0.95, radius: 0.058 } },
-  f18: { fuselage: { nose: 0.06, tail: 0.91, radius: 0.08 } },
-  f35: { fuselage: { nose: 0.05, tail: 0.68, radius: 0.088 } },
-  f5_tiger: { fuselage: { nose: 0.13, tail: 0.91, radius: 0.032 } },
-  hunter: { fuselage: { nose: 0.1, tail: 0.92, radius: 0.045 } },
-  il_62: { fuselage: { nose: 0.07, tail: 0.95, radius: 0.037 } },
-  l159: { fuselage: { nose: 0.04, tail: 0.79, radius: 0.041 } },
-  lancaster: { fuselage: { nose: 0.28, tail: 0.88, radius: 0.028 } },
-  m326: { fuselage: { nose: 0.08, tail: 0.92, radius: 0.045 } },
-  md_a4: { fuselage: { nose: 0.04, tail: 0.87, radius: 0.041 } },
-  md_f15: { fuselage: { nose: 0.07, tail: 0.82, radius: 0.026 } },
-  mirage: { fuselage: { nose: 0.07, tail: 0.83, radius: 0.028 } },
-  miragef1: { fuselage: { nose: 0.06, tail: 0.92, radius: 0.025 } },
-  p3_orion: { fuselage: { nose: 0.03, tail: 0.97, radius: 0.062 } },
-  p8: { fuselage: { nose: 0.02, tail: 0.95, radius: 0.054 } },
+  // C-5 Galaxy: real T-tail, same pattern as c17 — clip the drawn
+  // body-level stabilizer out of the slab and raise it, overlapping the
+  // fin tip. Band measured off the drawing: swept tailplane sits at
+  // y [0.885, 0.965], x [0.2, 0.8].
+  c5: {
+    fuselage: { nose: 0.05, tail: 0.97, radius: 0.05 },
+    fin: { y: 0.83, rootChord: 0.14, tipChord: 0.06, height: 0.16, sweep: 0.07 },
+    planformClip: { y0: 0.885, y1: 0.965 },
+    tailplane: { y: 0.895, span: 0.6, chord: 0.06, height: 0.157 },
+  },
+  e390: {
+    fuselage: { nose: 0.03, tail: 0.96, radius: 0.067 },
+    fin: { y: 0.85, rootChord: 0.13, tipChord: 0.06, height: 0.12, sweep: 0.06 },
+  },
+  e3awacs: {
+    fuselage: { nose: 0.08, tail: 0.92, radius: 0.045 },
+    fin: { y: 0.76, rootChord: 0.13, tipChord: 0.05, height: 0.12, sweep: 0.07 },
+  },
+  e737: {
+    fuselage: { nose: 0.03, tail: 0.95, radius: 0.058 },
+    fin: { y: 0.82, rootChord: 0.14, tipChord: 0.06, height: 0.12, sweep: 0.06 },
+  },
+  // F/A-18: canted twin tails mounted over the LEX/wing junction, well
+  // forward of the tail tip — x tips read off the drawn stabilator waist.
+  f18: {
+    fuselage: { nose: 0.06, tail: 0.91, radius: 0.08 },
+    fins: mirrorFins([{ x: 0.37, y: 0.6, rootChord: 0.13, tipChord: 0.05, height: 0.11, sweep: 0.09 }]),
+  },
+  // F-35: twin tails too, but closely spaced compared to F/A-18 — real
+  // Lightning II tails sit close together over the boat-tail.
+  f35: {
+    fuselage: { nose: 0.05, tail: 0.68, radius: 0.088 },
+    fins: mirrorFins([{ x: 0.38, y: 0.55, rootChord: 0.11, tipChord: 0.05, height: 0.1, sweep: 0.06 }]),
+  },
+  f5_tiger: {
+    fuselage: { nose: 0.13, tail: 0.91, radius: 0.032 },
+    fin: { y: 0.62, rootChord: 0.13, tipChord: 0.06, height: 0.12, sweep: 0.06 },
+  },
+  hunter: {
+    fuselage: { nose: 0.1, tail: 0.92, radius: 0.045 },
+    fin: { y: 0.68, rootChord: 0.13, tipChord: 0.06, height: 0.11, sweep: 0.05 },
+  },
+  // Il-62: real T-tail, same treatment as c5/c17. Rear-mounted engine pods
+  // (drawn separately, untouched) end around y 0.84; the swept tailplane
+  // band runs y [0.875, 0.965], x [0.22, 0.78].
+  il_62: {
+    fuselage: { nose: 0.07, tail: 0.95, radius: 0.037 },
+    fin: { y: 0.78, rootChord: 0.14, tipChord: 0.06, height: 0.17, sweep: 0.08 },
+    planformClip: { y0: 0.875, y1: 0.965 },
+    tailplane: { y: 0.885, span: 0.56, chord: 0.07, height: 0.167 },
+  },
+  l159: {
+    fuselage: { nose: 0.04, tail: 0.79, radius: 0.041 },
+    fin: { y: 0.62, rootChord: 0.11, tipChord: 0.05, height: 0.1, sweep: 0.04 },
+  },
+  // Lancaster: twin oval fins at the tailplane tips, x read off the drawn
+  // horizontal-stab bar at x [0.3, 0.7].
+  lancaster: {
+    fuselage: { nose: 0.28, tail: 0.88, radius: 0.028 },
+    fins: mirrorFins([{ x: 0.3, y: 0.78, rootChord: 0.09, tipChord: 0.07, height: 0.09, sweep: 0.02 }]),
+  },
+  m326: {
+    fuselage: { nose: 0.08, tail: 0.92, radius: 0.045 },
+    fin: { y: 0.72, rootChord: 0.11, tipChord: 0.05, height: 0.09, sweep: 0.03 },
+  },
+  md_a4: {
+    fuselage: { nose: 0.04, tail: 0.87, radius: 0.041 },
+    fin: { y: 0.68, rootChord: 0.12, tipChord: 0.06, height: 0.1, sweep: 0.05 },
+  },
+  // F-15: twin fins on outward booms above the engine nacelles.
+  md_f15: {
+    fuselage: { nose: 0.07, tail: 0.82, radius: 0.026 },
+    fins: mirrorFins([{ x: 0.27, y: 0.64, rootChord: 0.13, tipChord: 0.06, height: 0.13, sweep: 0.06 }]),
+  },
+  // Deltas (mirage, rafale): modest fin at the tail — the real aircraft's
+  // fin is short relative to a swept-wing jet's.
+  mirage: {
+    fuselage: { nose: 0.07, tail: 0.83, radius: 0.028 },
+    fin: { y: 0.68, rootChord: 0.09, tipChord: 0.05, height: 0.09, sweep: 0.04 },
+  },
+  miragef1: {
+    fuselage: { nose: 0.06, tail: 0.92, radius: 0.025 },
+    fin: { y: 0.75, rootChord: 0.11, tipChord: 0.05, height: 0.11, sweep: 0.05 },
+  },
+  p3_orion: {
+    fuselage: { nose: 0.03, tail: 0.97, radius: 0.062 },
+    fin: { y: 0.85, rootChord: 0.13, tipChord: 0.06, height: 0.13, sweep: 0.05 },
+  },
+  p8: {
+    fuselage: { nose: 0.02, tail: 0.95, radius: 0.054 },
+    fin: { y: 0.85, rootChord: 0.13, tipChord: 0.06, height: 0.12, sweep: 0.06 },
+  },
   // Blended delta: the auto-measure mode lands on the refueling probe, so
   // the body radius is hand-set to match the mirage-class deltas.
-  rafale: { fuselage: { nose: 0.13, tail: 0.9, radius: 0.03 } },
-  beluga: { fuselage: { nose: 0.05, tail: 0.95, radius: 0.067 } },
-  rutan_veze: { fuselage: { nose: 0.23, tail: 0.62, radius: 0.032 } },
-  sb39: { fuselage: { nose: 0.05, tail: 0.86, radius: 0.029 } },
-  super_guppy: { fuselage: { nose: 0.12, tail: 0.92, radius: 0.088 } },
-  t38: { fuselage: { nose: 0.09, tail: 0.92, radius: 0.037 } },
-  tiger: { fuselage: { nose: 0.09, tail: 0.93, radius: 0.041 } },
-  tornado: { fuselage: { nose: 0.1, tail: 0.93, radius: 0.09 } },
-  typhoon: { fuselage: { nose: 0.06, tail: 0.88, radius: 0.058 } },
-  u2: { fuselage: { nose: 0.23, tail: 0.8, radius: 0.02 } },
-  wb57: { fuselage: { nose: 0.27, tail: 0.79, radius: 0.024 } },
+  rafale: {
+    fuselage: { nose: 0.13, tail: 0.9, radius: 0.03 },
+    fin: { y: 0.72, rootChord: 0.09, tipChord: 0.05, height: 0.09, sweep: 0.04 },
+  },
+  beluga: {
+    fuselage: { nose: 0.05, tail: 0.95, radius: 0.067 },
+    fin: { y: 0.77, rootChord: 0.13, tipChord: 0.06, height: 0.15, sweep: 0.06 },
+  },
+  // VariEze canard: main wing (with tip fins) is aft, near the pusher
+  // prop — small twin winglet fins at the wingtips, well forward of the
+  // tail. Kept deliberately small: real VariEze wingtip fins are winglets,
+  // not a dominant tail surface.
+  rutan_veze: {
+    fuselage: { nose: 0.23, tail: 0.62, radius: 0.032 },
+    fins: mirrorFins([{ x: 0.15, y: 0.4, rootChord: 0.045, tipChord: 0.03, height: 0.055, sweep: 0.015 }]),
+  },
+  sb39: {
+    fuselage: { nose: 0.05, tail: 0.86, radius: 0.029 },
+    fin: { y: 0.66, rootChord: 0.1, tipChord: 0.05, height: 0.1, sweep: 0.05 },
+  },
+  super_guppy: {
+    fuselage: { nose: 0.12, tail: 0.92, radius: 0.088 },
+    fin: { y: 0.8, rootChord: 0.13, tipChord: 0.06, height: 0.14, sweep: 0.05 },
+  },
+  t38: {
+    fuselage: { nose: 0.09, tail: 0.92, radius: 0.037 },
+    fin: { y: 0.72, rootChord: 0.11, tipChord: 0.05, height: 0.1, sweep: 0.05 },
+  },
+  tornado: {
+    fuselage: { nose: 0.1, tail: 0.93, radius: 0.09 },
+    fin: { y: 0.72, rootChord: 0.12, tipChord: 0.05, height: 0.11, sweep: 0.06 },
+  },
+  typhoon: {
+    fuselage: { nose: 0.06, tail: 0.88, radius: 0.058 },
+    fin: { y: 0.68, rootChord: 0.12, tipChord: 0.06, height: 0.12, sweep: 0.07 },
+  },
+  u2: {
+    fuselage: { nose: 0.23, tail: 0.8, radius: 0.02 },
+    fin: { y: 0.68, rootChord: 0.09, tipChord: 0.04, height: 0.12, sweep: 0.04 },
+  },
+  wb57: {
+    fuselage: { nose: 0.27, tail: 0.79, radius: 0.024 },
+    fin: { y: 0.64, rootChord: 0.1, tipChord: 0.05, height: 0.11, sweep: 0.04 },
+  },
 
   // ---------------------------------------------------------------------
-  // Rotorcraft: lofted cabin-and-boom fuselage plus a thin rotor disc
-  // hovering above the cabin (two for the tandem Chinook). Bodies and
-  // rotor spans were auto-measured from the drawings like the fixed-wing
-  // sweep; the drawn blades stay in the thin slab beneath the disc.
+  // Rotorcraft: lofted cabin-and-boom fuselage plus a raised four-blade
+  // rotor (two for the tandem Chinook). The drawn blades are clipped out
+  // of the slab entirely (the tube carries the cabin through the band), so
+  // the raised X is the only rotor — stacking both read as an eight-blade
+  // mess. Bodies and rotor spans were auto-measured from the drawings.
   apache: {
     fuselage: { nose: 0.25, tail: 0.84, radius: 0.075 },
-    rotors: [{ y: 0.43, radius: 0.211, angles: [80, 130] }],
+    planformClip: { y0: 0.17, y1: 0.68 },
+    rotors: [{ y: 0.43, radius: 0.211 }],
+    tailRotor: { y: 0.8, radius: 0.06 },
   },
   blackhawk: {
     fuselage: { nose: 0.12, tail: 0.94, radius: 0.068 },
-    rotors: [{ y: 0.36, radius: 0.228, angles: [60, 150] }],
+    planformClip: { y0: 0.02, y1: 0.71 },
+    rotors: [{ y: 0.36, radius: 0.228 }],
+    tailRotor: { y: 0.9, radius: 0.065 },
   },
   chinook: {
     fuselage: { nose: 0.24, tail: 0.74, radius: 0.065 },
-    rotors: [{ y: 0.3, radius: 0.168, angles: [70, 110, 170] }, { y: 0.68, radius: 0.168, angles: [50, 70, 110] }],
+    planformClip: { y0: 0.02, y1: 0.95 },
+    rotors: [{ y: 0.3, radius: 0.168 }, { y: 0.68, radius: 0.168 }],
   },
   dauphin: {
     fuselage: { nose: 0.09, tail: 0.94, radius: 0.075 },
-    rotors: [{ y: 0.39, radius: 0.29, angles: [45, 135] }],
+    planformClip: { y0: 0.07, y1: 0.7 },
+    rotors: [{ y: 0.39, radius: 0.29 }],
+    tailRotor: { y: 0.9, radius: 0.08 },
   },
   gazelle: {
     fuselage: { nose: 0.21, tail: 0.91, radius: 0.074 },
-    rotors: [{ y: 0.41, radius: 0.231, angles: [0, 60, 120] }],
+    planformClip: { y0: 0.06, y1: 0.79 },
+    rotors: [{ y: 0.41, radius: 0.231 }],
+    tailRotor: { y: 0.87, radius: 0.065 },
   },
   helicopter: {
     fuselage: { nose: 0.3, tail: 0.94, radius: 0.059 },
-    rotors: [{ y: 0.5, radius: 0.222, angles: [40, 130] }],
+    planformClip: { y0: 0.25, y1: 0.74 },
+    rotors: [{ y: 0.5, radius: 0.222 }],
+    tailRotor: { y: 0.88, radius: 0.065 },
   },
   mil24: {
     fuselage: { nose: 0.13, tail: 0.93, radius: 0.046 },
-    rotors: [{ y: 0.4, radius: 0.253, angles: [60, 145] }],
+    planformClip: { y0: 0.07, y1: 0.65 },
+    rotors: [{ y: 0.4, radius: 0.253 }],
+    tailRotor: { y: 0.89, radius: 0.07 },
   },
   puma: {
     fuselage: { nose: 0.13, tail: 0.89, radius: 0.058 },
-    rotors: [{ y: 0.35, radius: 0.266, angles: [45, 135] }],
+    planformClip: { y0: 0.06, y1: 0.65 },
+    rotors: [{ y: 0.35, radius: 0.266 }],
+    tailRotor: { y: 0.85, radius: 0.075 },
   },
   s61: {
     fuselage: { nose: 0.22, tail: 0.83, radius: 0.056 },
-    rotors: [{ y: 0.38, radius: 0.279, angles: [65, 150] }],
+    planformClip: { y0: 0.02, y1: 0.66 },
+    rotors: [{ y: 0.38, radius: 0.279 }],
+    tailRotor: { y: 0.79, radius: 0.078 },
+  },
+  // Eurocopter Tiger (TIGR): attack helicopter with stub-wing weapon
+  // pylons, otherwise the same cabin/rotor/tail-rotor treatment as the
+  // rest of the block. Was previously mis-bucketed as a fuselage-only
+  // fixed-wing entry — its drawing is a rotor cross, not a planform.
+  tiger: {
+    fuselage: { nose: 0.08, tail: 0.88, radius: 0.065 },
+    planformClip: { y0: 0.03, y1: 0.78 },
+    rotors: [{ y: 0.3, radius: 0.26 }],
+    tailRotor: { y: 0.88, radius: 0.06 },
   },
 };
 

@@ -8,6 +8,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-10
+
+### Added
+
+- **Full-catalog feature audit.** Every applicable shape now carries
+  all four passes (fuselage, wings, tail, vertical stabilizer): 26 more
+  single fins across military, transport and delta types; twin-fin
+  support (A-10 on its boom tips, F/A-18, F-15, F-35, Lancaster,
+  Rutan winglets); real T-tails for the C-5 and Il-62; and the full
+  fin-plus-four-turboprops treatment for the C-130.
+- **Helicopters reimagined.** Drawn blades are clipped out of the slab
+  so each type has a single chunky four-blade rotor riding a taller
+  mast, plus a vertical tail rotor beside the boom tip. The Eurocopter
+  Tiger, previously mis-filed as fixed-wing, is now a proper
+  helicopter.
+- **Inspection camera.** The orbit clamp is now ground-relative
+  instead of target-relative, so a followed aircraft at altitude can
+  be viewed from below while the camera still respects terrain; zoom
+  minimum drops while following so a marker can fill the frame.
+
+### Fixed
+
+- A planform clip that legitimately empties the slab (Chinook) is no
+  longer treated as a failure that restored the drawn blades.
+
 ## [0.7.0] - 2026-08-07
 
 ### Added

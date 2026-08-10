@@ -738,6 +738,27 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     fpsAccumMs = 0;
   }
 
+  // Ground-relative orbit clamp: the stock maxPolarAngle stops at the
+  // horizontal plane through the TARGET, which is needlessly strict when
+  // the target is an aircraft at altitude — you could never see a belly.
+  // Instead allow the orbit to dip as far below the target's horizon as
+  // terrain clearance at the current distance permits: camera height is
+  // target.y + dist*cos(polar), so the ground constraint solves to an
+  // acos. On a ground-level target this lands at (just under) the classic
+  // horizon clamp, so map browsing is unchanged. The hard camera-height
+  // clamp below stays as the backstop for damping overshoot.
+  if (!world.renderer.xr.isPresenting) {
+    const t = controls.target;
+    const dist = Math.max(world.camera.position.distanceTo(t), 0.001);
+    const headroom = t.y - (groundSceneY(t.x, -t.z) + 1.2);
+    const cosMax = Math.max(-1, Math.min(1, -headroom / dist));
+    controls.maxPolarAngle = Math.min(Math.PI - 0.15, Math.acos(cosMax) - 0.02);
+    // Inspection zoom: while following an aircraft the minimum distance
+    // drops so the marker (5.5-unit footprint) can fill the view; free
+    // map browsing keeps the original floor.
+    controls.minDistance = followHex ? 8 : 30;
+  }
+
   if (followHex && !controlsInteracting) {
     const pos = reconciler.positionOf(followHex);
     if (pos) controls.target.lerp(pos, FOLLOW_LERP);
