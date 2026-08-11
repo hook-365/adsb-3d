@@ -599,6 +599,7 @@ if [ -n "${FEEDS_CONFIG}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
         FEED_DATA_BLOCKS="${FEED_DATA_BLOCKS}
     # Feed slot ${SLOT}: ${FEED_NAME} - live data proxy
     location ${DATA_PATH} {
+        include /etc/nginx/security-headers.conf;
         proxy_pass http://${DATA_HOST}/data/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -639,6 +640,7 @@ if [ -n "${FEEDS_CONFIG}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
         FEED_API_BLOCKS="${FEED_API_BLOCKS}
     # Feed slot ${SLOT}: ${FEED_NAME} - API proxy
     location ${API_BASE}/ {
+        include /etc/nginx/security-headers.conf;
         limit_req zone=track_api_limit burst=20 nodelay;
         limit_req_status 429;
         set \$block_query 0;

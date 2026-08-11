@@ -62,6 +62,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Security response headers on every route; constrained third-party image
+  proxies.** nginx now sends `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors
+  'self'`, and `Referrer-Policy: strict-origin-when-cross-origin` on every
+  response (new `nginx/security-headers.conf`, included from the server
+  block and re-included in every location that sets its own `add_header`,
+  since nginx's header inheritance is all-or-nothing per level). `nginx/http.conf`
+  now sets `server_tokens off`. The legacy `/images/` and `/photos/` proxies
+  (airport-data.com, planespotters.net) are now regex-constrained to actual
+  image-file paths instead of proxying any path underneath them.
+  `location = /images/sprites.png` still wins (nginx exact-match locations
+  always take priority regardless of file order).
 - **Docker base images pinned; frontend build uses `npm ci`.** `node:20-alpine`
   → `node:20.19-alpine`, `nginx:alpine` → `nginx:1.29-alpine`,
   `python:3.11-slim` → `python:3.11.13-slim` (track-service, acars-service).

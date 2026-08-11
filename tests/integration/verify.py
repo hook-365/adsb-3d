@@ -55,6 +55,21 @@ async def eventually_json(
     raise AssertionError(f"timed out waiting for {description}; last response: {last!r}")
 
 
+async def verify_security_headers(session: aiohttp.ClientSession) -> None:
+    for url in (f"{VIEWER_URL}/", f"{VIEWER_URL}/config.js", f"{VIEWER_URL}/api/health"):
+        async with session.get(url) as response:
+            await response.read()
+            check(
+                response.headers.get("X-Content-Type-Options") == "nosniff",
+                f"{url} sets X-Content-Type-Options: nosniff",
+            )
+            server_header = response.headers.get("Server", "")
+            check(
+                not re.search(r"\d", server_header),
+                f"{url} Server header omits a version number (got: {server_header!r})",
+            )
+
+
 async def verify_nginx_and_config(session: aiohttp.ClientSession) -> None:
     async with session.get(f"{VIEWER_URL}/health") as response:
         check(response.status == 200 and (await response.text()).strip() == "OK", "viewer nginx health route")
@@ -205,6 +220,7 @@ async def verify_database() -> None:
 async def main() -> None:
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
+        await verify_security_headers(session)
         await verify_nginx_and_config(session)
         await verify_track_api(session)
         await verify_acars_api(session)

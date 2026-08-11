@@ -36,6 +36,7 @@ COPY --from=frontend-build /app/frontend/dist/ /usr/share/nginx/html/
 # entrypoint, so nginx's built-in templates/ auto-render never runs; this
 # is just a conventional home for a template file.)
 COPY nginx/http.conf /etc/nginx/conf.d/00-http.conf
+COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY nginx/nginx.conf /etc/nginx/templates/default.conf.template
 
 # Entrypoint generates config.js + dynamic feed proxy blocks at startup
