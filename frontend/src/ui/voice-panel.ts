@@ -31,6 +31,7 @@ import {
   getCalls,
 } from '../feed/voice-calls';
 import { t } from '../core/i18n';
+import { escapeHtml } from './html';
 
 // ─── Channel color palette ────────────────────────────────────────────────
 // Stable hue from label string; avoids reds/oranges used by warning states.
@@ -455,8 +456,8 @@ export function mountVoicePanel(container: HTMLElement): MountResult {
     const color = channelColor(call.label);
     li.innerHTML = `
       <span class="vc-time" title="${clockTime(call.startedAt)}">${relativeTime(call.startedAt)}</span>
-      <span class="vc-ch" style="color:${color}">${call.label}</span>
-      <span class="vc-freq">${call.freq}</span>
+      <span class="vc-ch" style="color:${color}">${escapeHtml(call.label)}</span>
+      <span class="vc-freq">${escapeHtml(call.freq)}</span>
       <span class="vc-dur">${formatDuration(call.durationS)}</span>
     `;
     li.addEventListener('click', () => {

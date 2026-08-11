@@ -4,6 +4,7 @@ import {
 } from '../aircraft/acars-store';
 import type { AcarsMessage } from '../feed/acars';
 import { t } from '../core/i18n';
+import { escapeHtml } from './html';
 
 // Full-page ACARS browser modal. Triggered by clicking the HUD ACARS
 // chip; renders the most-recent N messages from the global store with
@@ -29,18 +30,6 @@ export interface AcarsBrowserOptions {
 }
 
 const ROW_LIMIT = 200;
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case '&': return '&amp;';
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '"': return '&quot;';
-      default: return '&#39;';
-    }
-  });
-}
 
 function fmtAge(timeIso: string): string {
   const ms = Date.now() - Date.parse(timeIso);

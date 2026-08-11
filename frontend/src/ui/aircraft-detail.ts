@@ -10,6 +10,7 @@ import { getSettings, subscribeSettings } from '../core/settings';
 import { t, type StringKey } from '../core/i18n';
 import { elevationFtAt } from '../world/elevation';
 import type { AcarsMessage } from '../feed/acars';
+import { escapeHtml } from './html';
 
 // Detail card pinned under the aircraft list. Re-renders every store
 // snapshot (~1 Hz) so the selected aircraft's altitude/speed/etc. stay
@@ -296,11 +297,11 @@ export function createAircraftDetail(
     // destination isn't being overridden by ACARS (otherwise the names
     // wouldn't match the ACARS code).
     if (http && !acarsDestActive && (http.origin_name || http.destination_name)) {
-      routeNamesEl.innerHTML = `<span>${http.origin_name ?? ''}</span><span>${http.destination_name ?? ''}</span>`;
+      routeNamesEl.innerHTML = `<span>${escapeHtml(http.origin_name ?? '')}</span><span>${escapeHtml(http.destination_name ?? '')}</span>`;
       routeNamesEl.hidden = false;
     } else if (http && acarsDestActive && http.origin_name) {
       // Origin from adsb.im is still trustworthy; show it alone.
-      routeNamesEl.innerHTML = `<span>${http.origin_name}</span><span></span>`;
+      routeNamesEl.innerHTML = `<span>${escapeHtml(http.origin_name)}</span><span></span>`;
       routeNamesEl.hidden = false;
     } else {
       routeNamesEl.hidden = true;
@@ -444,18 +445,6 @@ export function createAircraftDetail(
     return t('detail.hours_ago', { n: Math.round(s / 3600) });
   }
 
-  function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => {
-      switch (c) {
-        case '&': return '&amp;';
-        case '<': return '&lt;';
-        case '>': return '&gt;';
-        case '"': return '&quot;';
-        default: return '&#39;';
-      }
-    });
-  }
-
   function renderAcarsRow(m: AcarsMessage): string {
     const label = m.label ? `<span class="acars-label">${escapeHtml(m.label)}</span>` : '';
     const age = `<span class="acars-age">${fmtAcarsAge(m.time)}</span>`;
@@ -517,7 +506,7 @@ export function createAircraftDetail(
     }
     chipsEl.hidden = false;
     chipsEl.innerHTML = chips
-      .map((c) => `<span class="chip${c.cls ? ` ${c.cls}` : ''}">${c.label}</span>`)
+      .map((c) => `<span class="chip${c.cls ? ` ${c.cls}` : ''}">${escapeHtml(c.label)}</span>`)
       .join('');
   }
 

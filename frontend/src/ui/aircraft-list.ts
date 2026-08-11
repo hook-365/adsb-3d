@@ -6,6 +6,7 @@ import { getFilter, setFilter, subscribeFilter, passesFilter, getSearchQuery, se
 import { hasAcars, subscribeAcars } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
 import { t } from '../core/i18n';
+import { escapeHtml } from './html';
 
 // tar1090-style aircraft list panel. Subscribes to the store and re-renders
 // at ~1Hz. To stay flat on big feeds (Europe regularly hits 1500+ contacts),
@@ -77,7 +78,7 @@ function renderRowTags(el: HTMLElement, mask: number, emergencyTitle: string | n
   if (mask & TAG_PRIVACY) tags.push({ glyph: 'P', cls: '', title: t('list.tag_privacy_icao') });
   if (mask & TAG_LADD) tags.push({ glyph: 'L', cls: '', title: t('list.tag_ladd') });
   el.innerHTML = tags
-    .map((tag) => `<span class="tag${tag.cls ? ` ${tag.cls}` : ''}" title="${tag.title}">${tag.glyph}</span>`)
+    .map((tag) => `<span class="tag${tag.cls ? ` ${tag.cls}` : ''}" title="${escapeHtml(tag.title)}">${tag.glyph}</span>`)
     .join('');
 }
 

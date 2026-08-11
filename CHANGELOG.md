@@ -8,6 +8,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+
+- **Root-owned entrypoint and webroot.** The container no longer chowns
+  `/entrypoint.sh`, the healthcheck script, or the served webroot to the
+  nginx worker user — a compromised worker can no longer rewrite the
+  root-executed entrypoint or persist injected JS in served assets. Only
+  the tile proxy cache stays worker-writable.
+- **`tests/` no longer ships in the image.** The test directory (smoke
+  page, integration compose files, fixtures) was copied into the public
+  webroot and fetchable by anyone.
+- **`config.js` rendering is validated and escaped.** LATITUDE/LONGITUDE
+  are validated numeric, FEED_MODE is a strict enum, BASE_PATH is
+  shape-checked, booleans are normalized, and LOCATION_NAME/BASE_PATH are
+  JS-escaped. Synthesized `FEEDN_*` feed JSON is now built with `jq`
+  (proper escaping) and re-validated after synthesis, so a quote or
+  script tag in a feed name can no longer break — or script — the page.
+  Also fixes `FEED1_ALT` being ignored by `config.js` (it was computed
+  before feed synthesis ran).
+- **Remote strings escaped before `innerHTML`.** adsb.im route names,
+  the feeder's verbatim `emergency` field, and voice-service call
+  label/frequency now pass through a shared `escapeHtml` (new
+  `ui/html.ts`); previously a hostile upstream could inject markup.
+
 ## [0.8.4] - 2026-08-11
 
 ### Changed
