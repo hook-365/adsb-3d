@@ -133,7 +133,7 @@ function fallbackFeed(): Feed {
   };
 }
 
-function normalizeFeed(raw: RawFeedConfig): Feed | null {
+export function normalizeFeed(raw: RawFeedConfig): Feed | null {
   if (!raw.id || !raw.name || !raw.liveUrl || !raw.home) return null;
   if (typeof raw.home.lat !== 'number' || typeof raw.home.lon !== 'number') return null;
   const apiBase = raw.apiBase ?? LOCAL_API_BASE;
@@ -181,7 +181,7 @@ function loadAllFeeds(): Feed[] {
   return out.length > 0 ? out : [fallbackFeed()];
 }
 
-function pickInitial(feeds: Feed[]): Feed {
+export function pickInitial(feeds: Feed[]): Feed {
   // URL takes precedence so a shared link lands on the right feed even if
   // the user's localStorage points elsewhere.
   const url = new URL(window.location.href);

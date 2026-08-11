@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Unit test coverage for `feed/feeds` and `feed/live`.** Covers feed-config
+  normalization/validation, local-vs-remote trail-cap and backfill-window
+  policy, initial-feed selection (URL param, stored id, stale-id cleanup,
+  fallback), and the WS-first/HTTP-fallback live transport (connect
+  timeout, reconnect/retry, feeder-age caching, snapshot/diff map
+  mutation). `feed/live.ts` gained `applyWsMessage`, a pure export of the
+  snapshot/diff mutation previously inlined in `ws.onmessage`.
 - **Unit test coverage for `core/time-context`, `core/url-state`, and
   `feed/normalize`.** Replaces the Phase 0 smoke placeholder with real
   coverage of historical playback state transitions, URL deep-linking

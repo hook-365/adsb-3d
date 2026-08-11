@@ -30,13 +30,13 @@ export interface FeedStatus {
 
 export type FeedListener = (records: Aircraft[], status: FeedStatus) => void;
 
-interface SnapshotMsg {
+export interface SnapshotMsg {
   type: 'snapshot';
   now: number;
   feeder_age_s?: number | null;
   aircraft: RawAircraft[];
 }
-interface DiffMsg {
+export interface DiffMsg {
   type: 'diff';
   now: number;
   feeder_age_s?: number | null;
@@ -44,7 +44,26 @@ interface DiffMsg {
   updated?: RawAircraft[];
   removed?: string[];
 }
-type WsMsg = SnapshotMsg | DiffMsg;
+export type WsMsg = SnapshotMsg | DiffMsg;
+
+/**
+ * Pure snapshot/diff map-mutation body of the WS onmessage handler, split
+ * out so it's independently testable without a live WebSocket. Mutates
+ * `map` in place; hex keys are lowercased; records without a `hex` are
+ * skipped.
+ */
+export function applyWsMessage(map: Map<string, RawAircraft>, msg: WsMsg): void {
+  if (msg.type === 'snapshot') {
+    map.clear();
+    for (const a of msg.aircraft) {
+      if (a.hex) map.set(a.hex.toLowerCase(), a);
+    }
+  } else if (msg.type === 'diff') {
+    for (const a of msg.added ?? []) if (a.hex) map.set(a.hex.toLowerCase(), a);
+    for (const a of msg.updated ?? []) if (a.hex) map.set(a.hex.toLowerCase(), a);
+    for (const h of msg.removed ?? []) map.delete(h.toLowerCase());
+  }
+}
 
 const WS_CONNECT_TIMEOUT_MS = 3000;
 const WS_RETRY_INTERVAL_MS = 30_000;
@@ -155,18 +174,8 @@ export class LiveFeed {
       } catch {
         return;
       }
-      if (msg.type === 'snapshot') {
-        this.wsRaw.clear();
-        for (const a of msg.aircraft) {
-          if (a.hex) this.wsRaw.set(a.hex.toLowerCase(), a);
-        }
-      } else if (msg.type === 'diff') {
-        for (const a of msg.added ?? []) if (a.hex) this.wsRaw.set(a.hex.toLowerCase(), a);
-        for (const a of msg.updated ?? []) if (a.hex) this.wsRaw.set(a.hex.toLowerCase(), a);
-        for (const h of msg.removed ?? []) this.wsRaw.delete(h.toLowerCase());
-      } else {
-        return;
-      }
+      if (msg.type !== 'snapshot' && msg.type !== 'diff') return;
+      applyWsMessage(this.wsRaw, msg);
       // The server includes feeder_age_s on every frame (snapshot + diff)
       // when it's running the redesigned track-service. Cache it so each
       // emit reflects the latest freshness reading even on heartbeat-only
