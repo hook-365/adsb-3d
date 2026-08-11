@@ -95,22 +95,51 @@ terrain_rgb|https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.
     echo "[tile-cache] Complete! Cached: $CACHED, Skipped: $SKIPPED, Failed: $FAILED"
 }
 
-# Strip unit suffix from ALTITUDE for JavaScript (e.g., "1234ft" -> "1234")
-# mlat-client needs the suffix, but config.js needs a pure number
-ALTITUDE_NUM=$(echo "${ALTITUDE:-1234}" | sed 's/[^0-9.]//g')
-
-# Escape LOCATION_NAME for embedding in a JS single-quoted string.
-# A literal ' in the value would break the string; escape it as \'.
-LOCATION_NAME_JS=$(printf '%s' "${LOCATION_NAME:-}" | sed "s/'/\\\\'/g")
-
-# Validate FEEDS_CONFIG is legal JSON before embedding it in config.js.
-# An injected value with unescaped characters could break the JS file.
-if [ -n "${FEEDS_CONFIG:-}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
-    if ! echo "${FEEDS_CONFIG}" | jq empty 2>/dev/null; then
-        echo "[ERROR] FEEDS_CONFIG is not valid JSON — refusing to embed it in config.js"
-        echo "[ERROR] FEEDS_CONFIG value: ${FEEDS_CONFIG}"
+# =============================================================================
+# Validation / escaping helpers
+# =============================================================================
+# Environment values are rendered into config.js (JavaScript) and nginx
+# config. Numbers and enums are validated and free text is escaped, so a
+# malformed — or hostile — value can't break (or script) the served page.
+_validate_number() {
+    local varname="$1"
+    local val="$2"
+    if ! echo "$val" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'; then
+        echo "[ERROR] ${varname} must be a number, got: '${val}'"
         exit 1
     fi
+}
+
+_is_number() {
+    echo "$1" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'
+}
+
+# Normalize a boolean-ish env value to a literal true/false for JS.
+_bool() {
+    case "$1" in
+        true|TRUE|True) echo "true" ;;
+        *) echo "false" ;;
+    esac
+}
+
+# Escape for a JS single-quoted string: backslashes first, then quotes;
+# strip CR/LF (a newline would terminate the string literal).
+_js_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g" | tr -d '\n\r'
+}
+
+_validate_feeds_config() {
+    if ! echo "$1" | jq empty 2>/dev/null; then
+        echo "[ERROR] FEEDS_CONFIG is not valid JSON — refusing to embed it in config.js"
+        echo "[ERROR] FEEDS_CONFIG value: $1"
+        exit 1
+    fi
+}
+
+# Validate user-supplied FEEDS_CONFIG before the FEEDN_* synthesis below.
+# Synthesized config is re-validated after it is built.
+if [ -n "${FEEDS_CONFIG:-}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
+    _validate_feeds_config "${FEEDS_CONFIG}"
 fi
 
 # =============================================================================
@@ -167,6 +196,19 @@ if [ -n "${FEED1_NAME:-}" ] && [ -z "${FEEDS_CONFIG:-}" ]; then
             SLOT=$((SLOT + 1))
             continue
         fi
+        if ! _is_number "$LAT" || ! _is_number "$LON"; then
+            echo "[feeds] WARNING: FEED${SLOT}_LAT/FEED${SLOT}_LON must be numeric ('${LAT}', '${LON}'); skipping slot ${SLOT}"
+            SLOT=$((SLOT + 1))
+            continue
+        fi
+        if ! _is_number "$ALT"; then
+            echo "[feeds] WARNING: FEED${SLOT}_ALT is not numeric ('${ALT}'); using 0"
+            ALT=0
+        fi
+        if ! echo "$COLOR" | grep -qE '^#[0-9a-fA-F]{3,8}$'; then
+            echo "[feeds] WARNING: FEED${SLOT}_COLOR is not a hex color ('${COLOR}'); using default"
+            COLOR="#4a9eff"
+        fi
 
         if [ "$SLOT" -eq 1 ]; then
             # Slot 1 is always local (uses default nginx /data/ and /api/ blocks).
@@ -207,12 +249,20 @@ if [ -n "${FEED1_NAME:-}" ] && [ -z "${FEEDS_CONFIG:-}" ]; then
             export "FEED${SLOT}_API_HOST=$API_HOST"
         fi
 
-        ACARS_FRAGMENT=""
-        if [ "$ACARS_ON" = "true" ]; then
-            ACARS_FRAGMENT=',"acars":{"enabled":true}'
-        fi
-
-        FEED_JSON="{\"id\":\"${FEED_ID}\",\"name\":\"${NAME}\",\"liveUrl\":\"${LIVE_URL}\",\"apiBase\":\"${API_BASE}\",\"color\":\"${COLOR}\",\"home\":{\"lat\":${LAT},\"lon\":${LON},\"alt\":${ALT}}${ACARS_FRAGMENT}}"
+        # Build the feed object with jq so free-text values (NAME above all)
+        # are JSON-escaped instead of string-concatenated into the array.
+        FEED_JSON=$(jq -cn \
+            --arg id "$FEED_ID" \
+            --arg name "$NAME" \
+            --arg liveUrl "$LIVE_URL" \
+            --arg apiBase "$API_BASE" \
+            --arg color "$COLOR" \
+            --argjson lat "$LAT" \
+            --argjson lon "$LON" \
+            --argjson alt "$ALT" \
+            --argjson acars "$(_bool "$ACARS_ON")" \
+            '{id: $id, name: $name, liveUrl: $liveUrl, apiBase: $apiBase, color: $color, home: {lat: $lat, lon: $lon, alt: $alt}}
+             + (if $acars then {acars: {enabled: true}} else {} end)')
         if [ -z "$FEEDS_JSON_PARTS" ]; then
             FEEDS_JSON_PARTS="$FEED_JSON"
         else
@@ -226,6 +276,7 @@ if [ -n "${FEED1_NAME:-}" ] && [ -z "${FEEDS_CONFIG:-}" ]; then
     FEED_COUNT=$((SLOT - 1))
     if [ "$FEED_COUNT" -gt 0 ]; then
         export FEEDS_CONFIG="[${FEEDS_JSON_PARTS}]"
+        _validate_feeds_config "${FEEDS_CONFIG}"
         if [ "$FEED_COUNT" -ge 2 ] && [ -z "${FEED_MODE:-}" ]; then
             export FEED_MODE="multi"
         fi
@@ -235,13 +286,49 @@ if [ -n "${FEED1_NAME:-}" ] && [ -z "${FEEDS_CONFIG:-}" ]; then
     fi
 fi
 
+# =============================================================================
+# Validate/normalize everything interpolated into config.js
+# =============================================================================
+if [ -n "${LATITUDE:-}" ]; then _validate_number "LATITUDE" "${LATITUDE}"; fi
+if [ -n "${LONGITUDE:-}" ]; then _validate_number "LONGITUDE" "${LONGITUDE}"; fi
+
+# Strip unit suffix from ALTITUDE for JavaScript (e.g., "1234ft" -> "1234").
+# mlat-client needs the suffix, but config.js needs a pure number. Runs after
+# the FEEDN_* synthesis above so a FEED1_ALT-derived ALTITUDE is picked up.
+ALTITUDE_NUM=$(echo "${ALTITUDE:-1234}" | sed 's/[^0-9.]//g')
+if [ -z "$ALTITUDE_NUM" ]; then
+    echo "[WARNING] ALTITUDE ('${ALTITUDE:-}') contains no digits; using 0"
+    ALTITUDE_NUM=0
+fi
+
+case "${FEED_MODE:-}" in
+    single|multi|"") ;;
+    *)
+        echo "[ERROR] FEED_MODE must be 'single' or 'multi', got: '${FEED_MODE}'"
+        exit 1
+        ;;
+esac
+
+if [ -n "${BASE_PATH:-}" ] && ! echo "${BASE_PATH}" | grep -qE '^(/[A-Za-z0-9._-]+)+$'; then
+    echo "[ERROR] BASE_PATH must be a simple URL path like /adsb-3d, got: '${BASE_PATH}'"
+    exit 1
+fi
+
+LOCATION_NAME_JS=$(_js_escape "${LOCATION_NAME:-}")
+BASE_PATH_JS=$(_js_escape "${BASE_PATH:-}")
+ENABLE_HISTORICAL_JS=$(_bool "${ENABLE_HISTORICAL:-false}")
+ENABLE_ACARS_JS=$(_bool "${ENABLE_ACARS:-false}")
+ENABLE_VOICE_JS=$(_bool "${ENABLE_VOICE:-false}")
+ENABLE_TERRAIN_JS=$(_bool "${ENABLE_TERRAIN:-true}")
+HIDE_TOWER_JS=$(_bool "${HIDE_TOWER:-false}")
+
 # Generate config.js from environment variables
 cat > /usr/share/nginx/html/config.js <<EOF
 // Auto-generated configuration from environment variables
 
 // BASE_PATH configuration
 // Can be set explicitly via BASE_PATH env var, or auto-detected from URL
-const CONFIGURED_BASE_PATH = '${BASE_PATH:-}';
+const CONFIGURED_BASE_PATH = '${BASE_PATH_JS}';
 const AUTO_BASE_PATH = (() => {
     // If explicitly configured, use that
     if (CONFIGURED_BASE_PATH) {
@@ -278,13 +365,13 @@ window.ADSB_CONFIG = {
 // Historical mode configuration
 // When enabled, expects track-service to be running
 window.HISTORICAL_CONFIG = {
-    enabled: ${ENABLE_HISTORICAL:-false}
+    enabled: ${ENABLE_HISTORICAL_JS}
 };
 
 // ACARS mode configuration
 // When enabled, expects acars-service to be running
 window.ACARS_CONFIG = {
-    enabled: ${ENABLE_ACARS:-false}
+    enabled: ${ENABLE_ACARS_JS}
 };
 
 // Voice scanner configuration (VHF AM aviation voice).
@@ -295,18 +382,18 @@ window.ACARS_CONFIG = {
 // VOICE_STREAM_HOST keeps the legacy /voice/scanner.mp3 nginx block valid
 // but the frontend no longer plays the mixed stream. See docs/VOICE.md.
 window.VOICE_CONFIG = {
-    enabled: ${ENABLE_VOICE:-false}
+    enabled: ${ENABLE_VOICE_JS}
 };
 
 // Tower visibility (set HIDE_TOWER=true to hide home tower marker and remove toggle)
 window.TOWER_CONFIG = {
-    hidden: ${HIDE_TOWER:-false}
+    hidden: ${HIDE_TOWER_JS}
 };
 
 // Terrain configuration (AWS Terrain-RGB tiles - free, no API key).
 // Deploy-level kill switch; users also get a per-browser settings toggle.
 window.TERRAIN_CONFIG = {
-    enabled: ${ENABLE_TERRAIN:-true}
+    enabled: ${ENABLE_TERRAIN_JS}
 };
 
 // Multi-feed configuration
