@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Unit test coverage for `aircraft/reconciler`.** Real Three.js objects
+  under jsdom (no WebGL) exercise entry build/remove/re-add, rev-gating
+  (label refresh skipped on a `lastSeenMs`-only resync), the emergency
+  ring, selection handoff — including the semantic that a removed
+  *selected* aircraft keeps its selection mirror in the reconciler and
+  gets `applySelection` re-applied through `syncFrame`'s re-entry branch
+  when it reappears — filter-exempt selection, and `positionOf`.
 - **Unit test coverage for `feed/feeds` and `feed/live`.** Covers feed-config
   normalization/validation, local-vs-remote trail-cap and backfill-window
   policy, initial-feed selection (URL param, stored id, stale-id cleanup,
