@@ -67,6 +67,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   raw `dict` with manual `.get()`/`isinstance` checks. This also fixes a
   latent 500: a non-string entry in `callsigns` previously crashed
   `cs.strip()` inside the handler instead of failing request validation.
+- **acars-service collector resilience.** Hub reconnects now back off
+  exponentially with jitter (5s doubling to 300s) instead of hammering a
+  down hub every 5s; the line-assembly buffer resets if it exceeds 1MiB
+  with no newline in sight; messages flush on a 30s wall-clock timer as
+  well as buffer-size, so a slow-arriving flight's messages don't sit
+  stale; WS broadcast sends get a 1s per-client timeout so a stalled
+  browser tab can't backpressure TCP ingest; and the collector's `run()`
+  restarts `collect_loop` with backoff instead of exiting once on an
+  unhandled exception. `/health` now reports collector status from task
+  liveness rather than just the `running` flag.
 
 ## [0.8.4] - 2026-08-11
 

@@ -15,6 +15,7 @@ from typing import List, Optional
 import asyncpg
 import asyncio
 import os
+import random
 import sys
 import json
 import logging
@@ -59,6 +60,11 @@ collector_task = None
 # Docker healthcheck curl gets a real answer.
 DB_ACQUIRE_TIMEOUT = 10.0
 
+# Per-send timeout for WS broadcast fan-out; a stalled browser tab can't be
+# allowed to backpressure TCP ingest from the hub.
+WS_SEND_TIMEOUT = 1.0
+
+
 # WebSocket connection manager for real-time streaming
 class ConnectionManager:
     """Manages WebSocket connections for real-time message broadcasting."""
@@ -84,7 +90,7 @@ class ConnectionManager:
 
         targets = list(self.active_connections)
         results = await asyncio.gather(
-            *(connection.send_json(message) for connection in targets),
+            *(asyncio.wait_for(connection.send_json(message), WS_SEND_TIMEOUT) for connection in targets),
             return_exceptions=True,
         )
         for connection, result in zip(targets, results):
@@ -212,6 +218,12 @@ async def initialize_database_schema(db_pool):
 # ACARS COLLECTOR (Background Task)
 # ============================================================================
 
+# Hard cap on the line-assembly buffer. ACARS Hub sends newline-delimited
+# JSON; if a read chunk arrives without a newline and the buffer grows past
+# this with still no newline in sight, something is wrong upstream (binary
+# garbage, protocol mismatch) — reset rather than grow unbounded.
+MAX_LINE_BUFFER_BYTES = 1_048_576
+
 class ACARSCollector:
     """Connects to ACARS Hub TCP port and collects messages."""
 
@@ -225,6 +237,8 @@ class ACARSCollector:
         self.message_buffer = []
         self.buffer_size = 10  # Batch insert size
         self.max_buffer_size = 1000  # Hard cap to prevent OOM if DB is down
+        self.flush_interval = 30.0  # Wall-clock flush even if buffer_size isn't reached
+        self.last_flush = time.monotonic()
         self.stats = {
             'messages_received': 0,
             'messages_stored': 0,
@@ -239,7 +253,15 @@ class ACARSCollector:
         logger.info(f"ACARS Collector initialized: {self.acars_host}:{self.acars_port}")
 
     async def connect(self):
-        """Establish TCP connection to ACARS Hub."""
+        """
+        Establish TCP connection to ACARS Hub.
+
+        Retries with exponential backoff + jitter (starting at
+        self.reconnect_delay, doubling to a 300s cap) instead of a fixed
+        5s retry, so a hub that's down for a while doesn't get hammered
+        forever at the same cadence.
+        """
+        delay = self.reconnect_delay
         while self.running:
             try:
                 logger.info(f"Connecting to ACARS Hub at {self.acars_host}:{self.acars_port}...")
@@ -252,14 +274,15 @@ class ACARSCollector:
                 self.hub_connected = True
                 return reader, writer
             except asyncio.TimeoutError:
-                logger.warning(f"Connection timeout, retrying in {self.reconnect_delay}s...")
+                logger.warning(f"Connection timeout, retrying in {delay:.1f}s...")
             except ConnectionRefusedError:
-                logger.warning(f"Connection refused, retrying in {self.reconnect_delay}s...")
+                logger.warning(f"Connection refused, retrying in {delay:.1f}s...")
             except Exception as e:
-                logger.error(f"Connection error: {e}, retrying in {self.reconnect_delay}s...")
+                logger.error(f"Connection error: {e}, retrying in {delay:.1f}s...")
 
             self.stats['connection_errors'] += 1
-            await asyncio.sleep(self.reconnect_delay)
+            await asyncio.sleep(delay + random.uniform(0, delay * 0.25))
+            delay = min(delay * 2, 300)
 
         return None, None
 
@@ -300,6 +323,7 @@ class ACARSCollector:
 
     async def store_messages(self, messages: List[dict]):
         """Batch insert messages into database."""
+        self.last_flush = time.monotonic()
         if not messages:
             return
 
@@ -345,6 +369,11 @@ class ACARSCollector:
                             break
 
                         buffer += data
+
+                        if len(buffer) > MAX_LINE_BUFFER_BYTES and b'\n' not in buffer:
+                            logger.warning("no newline in >1MiB from hub; resetting line buffer")
+                            buffer = b''
+                            continue
 
                         # Process complete JSON lines
                         while b'\n' in buffer:
@@ -414,6 +443,13 @@ class ACARSCollector:
                             except Exception as e:
                                 logger.error(f"Error processing message: {e}")
 
+                        # Wall-clock flush: a slow-arriving flight might never
+                        # fill buffer_size before the messages go stale, so
+                        # flush on a timer too, once per read chunk.
+                        if self.message_buffer and time.monotonic() - self.last_flush >= self.flush_interval:
+                            await self.store_messages(self.message_buffer)
+                            self.message_buffer = []
+
                     except asyncio.TimeoutError:
                         # No data for 60 seconds - flush buffer and continue
                         if self.message_buffer:
@@ -443,11 +479,34 @@ class ACARSCollector:
                 await asyncio.sleep(self.reconnect_delay)
 
     async def run(self):
-        """Start the collector."""
-        try:
-            await self.collect_loop()
-        except Exception as e:
-            logger.error(f"Collector fatal error: {e}")
+        """
+        Start the collector, restarting collect_loop with backoff if it ever
+        exits via an unhandled exception. collect_loop already retries most
+        transient errors internally; this is the outer safety net so a bug
+        there doesn't permanently kill collection for the life of the
+        container.
+        """
+        delay = 5.0
+        max_delay = 300.0
+        while self.running:
+            started = time.monotonic()
+            try:
+                await self.collect_loop()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Collector fatal error: {e}", exc_info=True)
+                if not self.running:
+                    break
+                if time.monotonic() - started > 60:
+                    delay = 5.0
+                else:
+                    delay = min(delay * 2, max_delay)
+                logger.info(f"Restarting collector in {delay:.0f}s...")
+                await asyncio.sleep(delay)
+            else:
+                # collect_loop returned normally (self.running went False)
+                break
 
     def stop(self):
         """Stop the collector gracefully."""
@@ -564,7 +623,10 @@ async def health_check():
                         MAX(time) as last_message
                     FROM acars_messages
                 """)
-            collector_status = "running" if collector_instance and collector_instance.running else "stopped"
+            # Task liveness, not just the `running` flag — a crashed/backoff-
+            # restarting collector still has `running` True, but a genuinely
+            # dead task (exited its while-loop after stop()) shows as .done().
+            collector_status = "running" if collector_task and not collector_task.done() else "stopped"
             session_stats = collector_instance.stats if collector_instance else {}
             payload = {
                 "status": "healthy",
