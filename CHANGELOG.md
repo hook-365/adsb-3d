@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Regenerated `tests/README.md`** with an accurate per-file unit-test
+  table (jsdom files noted), Playwright e2e, backend pytest, and lint
+  sections. Removed the legacy `tests/smoke-test.html` manual browser page,
+  superseded by the Vitest/Playwright/pytest suites.
 - **pytest suites for `track-service` and `acars-service`.** Pure-logic
   coverage: WS diff gating, resolution/downsample math, feeder-poll
   heuristics, the route cache + adsb.im circuit breaker, `ensure_utc`,
