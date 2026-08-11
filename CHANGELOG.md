@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Unit test coverage for `core/time-context`, `core/url-state`, and
+  `feed/normalize`.** Replaces the Phase 0 smoke placeholder with real
+  coverage of historical playback state transitions, URL deep-linking
+  round-trips, and raw-aircraft normalization (drop rules, altitude
+  ladder, dbFlags, emergency derivation).
 - **Keyboard and screen-reader access for the aircraft list and ACARS
   browser.** The aircraft list (`#panel-list`) is now a proper
   `role="listbox"`: ArrowUp/ArrowDown move a virtual active row via

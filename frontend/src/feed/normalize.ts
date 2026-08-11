@@ -21,7 +21,7 @@ const SQUAWK_EMERGENCIES: Record<string, string> = {
   '7700': 'emergency (7700)',
 };
 
-function deriveEmergency(squawk: string | null, raw: string | undefined): string | null {
+export function deriveEmergency(squawk: string | null, raw: string | undefined): string | null {
   if (squawk && SQUAWK_EMERGENCIES[squawk]) return SQUAWK_EMERGENCIES[squawk]!;
   if (raw && raw !== 'none' && raw.length > 0) return raw;
   return null;
