@@ -19,7 +19,14 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  frontend-checks:
+    uses: ./.github/workflows/frontend-ci.yml
+
+  backend-checks:
+    uses: ./.github/workflows/backend-integration.yml
+
   build-and-push-viewer:
+    needs: [frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,6 +72,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-track-service:
+    needs: [frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,6 +118,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-acars-service:
+    needs: [frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read

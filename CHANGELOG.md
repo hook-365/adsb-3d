@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **`docker-publish` now gates image builds on frontend and backend
+  checks.** `frontend-ci.yml` and `backend-integration.yml` gained
+  `workflow_call:` triggers; `docker-publish.yml` calls both as
+  `frontend-checks` / `backend-checks` jobs and every
+  `build-and-push-*` job now `needs: [frontend-checks, backend-checks]`.
+  Neither called workflow references secrets, so no `secrets: inherit`
+  is needed.
 - **CI: backend unit tests, lint jobs, container lint, Playwright e2e.**
   New `backend-ci.yml` runs pytest per-service (matrix over
   `track-service`/`acars-service`) plus a `ruff check` job.

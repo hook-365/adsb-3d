@@ -24,6 +24,7 @@ on:
       - "docker-healthcheck.sh"
       - "tests/integration/**"
       - ".github/workflows/backend-integration.yml"
+  workflow_call:
 
 permissions:
   contents: read
