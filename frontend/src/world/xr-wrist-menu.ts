@@ -268,8 +268,15 @@ const PAGES: MenuRow[][] = [
     toggleRow('historyTrails', () => tr('misc.xr_trails')),
   ],
   [
-    // Diorama page (issue #6 desk-ornament + follow).
-    toggleRow('dioramaClip', () => tr('misc.xr_diorama')),
+    // Diorama page (issue #6 desk-ornament + follow). The clip toggle is
+    // AR-only (hardware feedback: "I don't see much utility in diorama
+    // mode in VR, it just limits what you can see") — hidden in VR
+    // sessions rather than shown-but-inert, matching the AR-place action
+    // row's own visibility pattern above.
+    {
+      ...toggleRow('dioramaClip', () => tr('misc.xr_diorama')),
+      visible: () => getXrState().presentingMode === 'ar',
+    },
     toggleRow('xrFollow', () => tr('misc.xr_follow')),
   ],
 ];

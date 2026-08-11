@@ -147,6 +147,25 @@ export function setupXrLocomotion(opts: {
     const freefly = s.xrMoveMode === 'freefly' && (freeflyAllowed?.() ?? true);
     const xrCam = renderer.xr.getCamera();
 
+    // Diorama pan-only (issue #6 hardware feedback — tyzbit: "Free-fly in
+    // AR moves the map while diorama mode is activated... I think it
+    // should probably only move the diorama viewport and keep the map
+    // stationary - only X, Y translation with the left thumbstick").
+    // Read literally this contradicts the desk-anchored design (the box
+    // itself must stay glued to the desk, see diorama-clip.ts) — sliding
+    // the WORLD under the fixed box via the left stick is exactly how the
+    // visible slice changes, and is already the mechanism (freeflyAllowed
+    // explicitly keeps free-fly on for this case). The actionable reading
+    // is the axes that visibly break the "bounded ornament" illusion:
+    // right-stick vertical translation sinks/floats the ground through
+    // the box's fixed floor, and turning spins the whole world inside
+    // stationary walls. Both read as "the map moves" in a way plain
+    // horizontal panning doesn't. So: keep left-stick X/Y horizontal pan,
+    // drop right-stick height and turning while the box is active. Scope
+    // mode and non-diorama free-fly are untouched. If this isn't what
+    // tyzbit meant, this is the one flag to flip.
+    const dioramaPanOnly = freefly && dioramaActive();
+
     for (const src of session.inputSources) {
       const gp = src.gamepad;
       if (!gp) continue;
@@ -194,23 +213,30 @@ export function setupXrLocomotion(opts: {
         // free-fly is first-person, push right → YOU yaw right, which
         // is the world rotating the other way.
         const turnSign = (x > 0 ? -1 : 1) * (freefly ? -1 : 1);
-        if (s.xrTurnStyle === 'smooth') {
-          if (Math.abs(x) > DEADZONE) {
-            snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * turnSign);
-          }
-        } else {
-          if (Math.abs(x) < DEADZONE) {
-            snapTurnArmed = true;
-          } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
-            snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * turnSign);
-            snapTurnArmed = false;
+        // Turning suppressed in diorama pan-only free-fly (issue #6, see
+        // dioramaPanOnly above) — it would spin the world inside the
+        // stationary box walls.
+        if (!dioramaPanOnly) {
+          if (s.xrTurnStyle === 'smooth') {
+            if (Math.abs(x) > DEADZONE) {
+              snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * turnSign);
+            }
+          } else {
+            if (Math.abs(x) < DEADZONE) {
+              snapTurnArmed = true;
+            } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
+              snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * turnSign);
+              snapTurnArmed = false;
+            }
           }
         }
 
         // Free-fly vertical: push up (negative axis) → user rises →
         // world sinks. Deep deadzone + dominant-axis gate so sweeping
         // through a diagonal mid-turn doesn't drift height (issue #6).
-        if (freefly && Math.abs(y) > VERT_DEADZONE && Math.abs(y) > Math.abs(x)) {
+        // Also suppressed in diorama pan-only mode — it would sink or
+        // float the ground through the box's fixed floor.
+        if (freefly && !dioramaPanOnly && Math.abs(y) > VERT_DEADZONE && Math.abs(y) > Math.abs(x)) {
           xrRoot.position.y += y * VERT_SPEED_M_PER_S * dtS;
         }
 

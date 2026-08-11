@@ -111,7 +111,7 @@ export const settingsStrings = {
   'settings.xr_turn_snap': 'Por pasos (30°)',
   'settings.xr_turn_smooth': 'Continuo',
   'settings.diorama_clip': 'Recorte de diorama',
-  'settings.diorama_clip_desc': 'En RV/RA, recorta el espacio aéreo a una caja alrededor del radar colocado, como un adorno de escritorio.',
+  'settings.diorama_clip_desc': 'En RA, recorta el espacio aéreo a una caja alrededor del radar colocado, como un adorno de escritorio.',
   'settings.diorama_size': 'Tamaño del diorama',
   'settings.diorama_size_desc': 'Ancho de la caja de recorte en metros.',
   'settings.xr_follow': 'Seguir aeronave seleccionada',

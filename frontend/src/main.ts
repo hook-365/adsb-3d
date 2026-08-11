@@ -169,12 +169,20 @@ const xrArPlace = new XrArPlace({
 const dioramaOrigin = new Vector3();
 function syncDiorama(): void {
   const s = getSettings();
+  // AR-only (issue #6 hardware feedback — tyzbit: "I don't see much
+  // utility in diorama mode in VR, it just limits what you can see, I
+  // think it can be disabled"). The box is a passthrough desk-ornament
+  // effect; in VR there's no real desk under it, so it only ever hides
+  // scope content with nothing gained. Suppress activation outright in
+  // immersive-vr even if the setting is still on from a previous AR
+  // session.
+  const arMode = getXrState().presentingMode === 'ar';
   // Gate on OUR XrState flag, not renderer.xr.isPresenting: on the
   // session-end edge three still reports presenting while our event
   // fires, and reading it here re-armed the box instead of clearing it —
   // leaving the desktop view clipped to a 0.9 m nothing (tyzbit's
   // "display darkens until diorama is toggled off").
-  if (dioramaWasPresenting && s.dioramaClip) {
+  if (dioramaWasPresenting && arMode && s.dioramaClip) {
     setDioramaBox(dioramaOrigin, s.dioramaSize);
   } else {
     clearDiorama();

@@ -114,7 +114,7 @@ export const settingsStrings = {
   'settings.xr_turn_snap': 'Snap (30°)',
   'settings.xr_turn_smooth': 'Smooth',
   'settings.diorama_clip': 'Diorama clipping',
-  'settings.diorama_clip_desc': 'In VR/AR, clip the airspace to a box around the placed scope so it reads as a desk ornament.',
+  'settings.diorama_clip_desc': 'In AR, clip the airspace to a box around the placed scope so it reads as a desk ornament.',
   'settings.diorama_size': 'Diorama size',
   'settings.diorama_size_desc': 'Width of the clipping box in metres.',
   'settings.xr_follow': 'Follow selected aircraft',

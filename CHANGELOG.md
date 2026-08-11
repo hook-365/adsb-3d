@@ -8,6 +8,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **VR/AR diorama interaction, from issue #6 hardware feedback (Quest 3,
+  tyzbit).** Free-fly locomotion is pan-only while the diorama clip box
+  is active — left-stick X/Y still slides the world under the fixed box,
+  but right-stick height and turning are suppressed so the box floor and
+  walls can't visibly move. Diorama clipping is now AR-only: it no
+  longer activates in immersive-vr sessions, and the wrist-menu toggle
+  is hidden there (desktop settings panel keeps the row, reworded to
+  say AR). The diorama-size slider's floor dropped from 0.1 m to 0.03 m
+  so the box can still be made smaller than the map at the lowest AR/VR
+  zoom, where the old floor matched the map's minimum footprint exactly
+  and clipping looked inert.
+
 ## [0.9.0] - 2026-08-11
 
 ### Added
