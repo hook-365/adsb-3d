@@ -10,6 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **CI: backend unit tests, lint jobs, container lint, Playwright e2e.**
+  New `backend-ci.yml` runs pytest per-service (matrix over
+  `track-service`/`acars-service`) plus a `ruff check` job.
+  `frontend-ci.yml` gained parallel `lint` (eslint) and advisory `e2e`
+  (Playwright, `continue-on-error`, cached browsers, uploads
+  `test-results` on failure) jobs, plus a concurrency group. New advisory
+  `container-lint.yml` runs shellcheck over the deploy scripts and
+  hadolint over all three Dockerfiles.
 - **eslint flat config (`frontend/eslint.config.js`) and `ruff.toml`.**
   ESLint: js/ts recommended (non-type-checked) across all frontend source
   and tests, plus a type-aware tier (`projectService`) over `src/**` only
