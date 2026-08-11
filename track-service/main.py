@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 import hashlib
 import time
 from datetime import datetime, timedelta, timezone
@@ -1387,17 +1388,18 @@ async def get_bulk_tracks_timelapse(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class MetadataBulkRequest(BaseModel):
+    hexes: list[str] = []
+
+
 @app.post("/aircraft/metadata/bulk")
-async def get_metadata_bulk(payload: dict):
+async def get_metadata_bulk(payload: MetadataBulkRequest):
     """
     Bulk metadata lookup for a list of ICAO hexes. Used by the historical
     playback feed to enrich position-only timelapse responses with
     registration / type / operator / military-flag.
     """
-    raw = payload.get('hexes') or []
-    if not isinstance(raw, list):
-        raise HTTPException(status_code=400, detail="hexes must be a list")
-    hexes = [str(h).strip().lower() for h in raw if isinstance(h, (str,)) and str(h).strip()]
+    hexes = [h.strip().lower() for h in payload.hexes if h and h.strip()]
     hexes = list(dict.fromkeys(hexes))[:1000]
     if not hexes:
         return {"results": {}}
@@ -2104,18 +2106,21 @@ async def _fetch_routes_from_adsb_im(callsigns: list) -> dict:
         return {}
 
 
+class RouteBatchRequest(BaseModel):
+    callsigns: list[str] = []
+
+
 @app.post("/route/batch")
-async def get_routes_batch(body: dict):
+async def get_routes_batch(body: RouteBatchRequest):
     """
     Batch route lookup for multiple callsigns via adsb.im.
     Accepts: {"callsigns": ["AAL1690", "UAL432", ...]}
     Returns cached results immediately; fetches uncached from adsb.im.
     """
-    callsigns_raw = body.get("callsigns", [])
-    if not callsigns_raw or not isinstance(callsigns_raw, list):
+    if not body.callsigns:
         raise HTTPException(status_code=400, detail="callsigns array required")
 
-    callsigns = [cs.strip().upper() for cs in callsigns_raw if cs and cs.strip()]
+    callsigns = [cs.strip().upper() for cs in body.callsigns if cs and cs.strip()]
     callsigns = list(dict.fromkeys(callsigns))[:100]  # deduplicate, cap at 100
 
     cache_hits = {}

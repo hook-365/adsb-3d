@@ -61,6 +61,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `approximate_row_count()` for the (large) `aircraft_positions` table
   instead of an exact `COUNT(*)`; the small `aircraft_metadata` table
   keeps its exact count.
+- **Pydantic request models for track-service POST bodies.** `POST
+  /aircraft/metadata/bulk` and `POST /route/batch` now validate their
+  bodies against `MetadataBulkRequest`/`RouteBatchRequest` instead of a
+  raw `dict` with manual `.get()`/`isinstance` checks. This also fixes a
+  latent 500: a non-string entry in `callsigns` previously crashed
+  `cs.strip()` inside the handler instead of failing request validation.
 
 ## [0.8.4] - 2026-08-11
 
