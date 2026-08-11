@@ -1480,7 +1480,11 @@ export class AircraftReconciler {
 
     for (const [hex, entry] of this.entries) {
       if (snapshot.has(hex)) continue;
-      if (this.selectedHex === hex) this.selectedHex = null;
+      // Do NOT null out this.selectedHex here — main.ts's applySelection owns
+      // selection state. Keeping the mirror lets the re-entry branch above
+      // (`if (a.hex === this.selectedHex) this.applySelection(entry, true)`)
+      // restore the selection ring / trail-cap exemption if this aircraft
+      // drops out of coverage and later reappears while still selected.
       this.root.remove(entry.group);
       entry.material.dispose();
       entry.trailSolid.geometry.dispose();

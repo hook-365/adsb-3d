@@ -85,6 +85,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   now `(data.get('flight') or '').strip()`). A failed batch insert now
   retries row-by-row instead of dropping the whole batch, logging one
   summary line with per-row stored/dropped counts.
+- **Frontend correctness batch.** Tile-layer disposal now flags the group
+  before tearing it down, so a texture that finishes decoding after a feed
+  switch or basemap change gets disposed instead of leaking onto the GPU
+  (moved into `world/tiles.ts` as `disposeTileLayer`, shared by
+  `world/scene.ts`). `feed/acars.ts` now tracks its settled transport the
+  same way `feed/live.ts` does, fixing the 3s WS-connect-timeout HTTP
+  fallback being dead code (it gated on the `ws` handle, which is already
+  set while still `CONNECTING`). `feed/voice-calls.ts` now tears its
+  socket, reconnect timer, and prune interval all the way down once every
+  subscriber has gone away, and reconnects with exponential backoff +
+  jitter instead of a flat 2s retry. The window resize handler no longer
+  races `applyWindowSize()` for line-material resolution sync — it now
+  runs as the last step of `applyWindowSize()` itself. Clipboard writes
+  across `main.ts` and `ui/aircraft-detail.ts` no longer leave unhandled
+  promise rejections, and the share button's original label is captured
+  once at setup instead of risking a null/"Copied!" race on rapid clicks.
 
 ## [0.8.4] - 2026-08-11
 

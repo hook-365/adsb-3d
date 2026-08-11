@@ -11,7 +11,6 @@ import {
   PerspectiveCamera,
   RingGeometry,
   Scene,
-  Texture,
   WebGLRenderer
 } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
@@ -20,7 +19,7 @@ import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { setRenderer as registerXrRenderer } from '../core/xr';
 import { groundSceneY, subscribeElevation } from './elevation';
-import { createTileLayer } from './tiles';
+import { createTileLayer, disposeTileLayer } from './tiles';
 import { DIORAMA_PLANES } from './diorama-clip';
 
 export interface World {
@@ -98,18 +97,6 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // feed switch or when the user picks a different basemap provider.
   let tileLayer: Group = createTileLayer({ provider: getSettings().basemap });
   xrRoot.add(tileLayer);
-
-  function disposeTileLayer(layer: Group): void {
-    for (const child of layer.children) {
-      if (child instanceof Mesh) {
-        child.geometry.dispose();
-        const mat = child.material as MeshBasicMaterial;
-        const map = mat.map as Texture | null;
-        if (map) map.dispose();
-        mat.dispose();
-      }
-    }
-  }
 
   function recenter(): void {
     xrRoot.remove(tileLayer);

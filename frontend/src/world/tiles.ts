@@ -274,10 +274,21 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
               }
             }
             void Promise.all(ensures).then(() => {
+              // The layer may have been disposed (feed switch / basemap
+              // change) while we were waiting on elevation tiles — don't
+              // resurrect a texture into a group nobody owns anymore.
+              if (group.userData['disposed']) {
+                texture.dispose();
+                return;
+              }
               group.add(buildTerrainTileMesh(zoom, x, y, texture, dropY));
               loaded++;
             });
           } else {
+            if (group.userData['disposed']) {
+              texture.dispose();
+              return;
+            }
             group.add(buildTileMesh(zoom, x, y, texture, dropY));
             loaded++;
           }
@@ -291,7 +302,27 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       );
     }
   }
-  group.userData = { provider, zoom, queued, get loaded() { return loaded; } };
+  group.userData = { provider, zoom, queued, disposed: false, get loaded() { return loaded; } };
 
   return group;
+}
+
+// Disposes every tile mesh's geometry/material/texture, and — critically —
+// flags the group as disposed BEFORE tearing anything down. In-flight
+// TextureLoader requests queued by createTileLayer() resolve asynchronously
+// (feed switch / basemap change can fire well before every tile lands); the
+// load callbacks above check this flag and dispose the just-decoded texture
+// instead of adding a mesh to a group nobody owns anymore. Without it, each
+// switch leaked every in-flight tile's GPU texture.
+export function disposeTileLayer(layer: Group): void {
+  layer.userData['disposed'] = true;
+  for (const child of layer.children) {
+    if (child instanceof Mesh) {
+      child.geometry.dispose();
+      const mat = child.material as MeshBasicMaterial;
+      const map = mat.map as Texture | null;
+      if (map) map.dispose();
+      mat.dispose();
+    }
+  }
 }

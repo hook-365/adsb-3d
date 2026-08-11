@@ -414,9 +414,8 @@ function syncLineResolution(): void {
     setLineResolution(lineResSize.x, lineResSize.y);
   }
 }
-// Runs after scene.ts's own resize handler (registered first), so the
-// drawing-buffer size is already updated when we read it.
-window.addEventListener('resize', syncLineResolution);
+// Resize is covered by applyWindowSize() below, which calls this as its
+// last step (both the plain resize listener and the post-XR rAF replay).
 subscribeXr(syncLineResolution);
 syncLineResolution();
 
@@ -681,16 +680,26 @@ document.getElementById('recenter-btn')!.addEventListener('click', recenterView)
 // to the clipboard. Pairs with the click-to-copy callsign in the detail
 // panel: "what feed, what aircraft" lands in someone's chat in two clicks.
 const shareBtn = document.getElementById('share-btn') as HTMLButtonElement;
+// Captured once at setup time, not inside the click handler — reading
+// textContent there could pick up null on a weird DOM state, or (on a
+// rapid double-click within the 1100ms window) the transient "Copied!"
+// label itself.
+const shareBtnOriginalLabel = shareBtn.textContent;
 shareBtn.addEventListener('click', () => {
-  void navigator.clipboard?.writeText(window.location.href).then(() => {
-    shareBtn.classList.add('copied');
-    const original = shareBtn.textContent;
-    shareBtn.textContent = t('main.share_copied');
-    setTimeout(() => {
-      shareBtn.classList.remove('copied');
-      shareBtn.textContent = original;
-    }, 1100);
-  });
+  void navigator.clipboard
+    ?.writeText(window.location.href)
+    .then(() => {
+      shareBtn.classList.add('copied');
+      shareBtn.textContent = t('main.share_copied');
+      setTimeout(() => {
+        shareBtn.classList.remove('copied');
+        shareBtn.textContent = shareBtnOriginalLabel;
+      }, 1100);
+    })
+    .catch(() => {
+      // Clipboard write can reject (permissions, insecure context) —
+      // nothing to recover; just don't leave an unhandled rejection.
+    });
 });
 
 // Keyboard shortcuts — only when the user isn't typing into an input.
@@ -725,6 +734,10 @@ function applyWindowSize(): void {
   world.camera.updateProjectionMatrix();
   world.renderer.setSize(window.innerWidth, window.innerHeight, false);
   labelRenderer.setSize(window.innerWidth, window.innerHeight);
+  // Drawing-buffer size just changed — keep fat-line materials' px→clip
+  // conversion in sync. Covers both the resize listener below and the
+  // post-XR rAF replay.
+  syncLineResolution();
 }
 window.addEventListener('resize', () => {
   // The XR runtime owns the framebuffer while presenting — three refuses

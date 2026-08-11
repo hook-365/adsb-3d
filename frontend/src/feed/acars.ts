@@ -155,6 +155,11 @@ export class AcarsFeed {
   private httpTimer: ReturnType<typeof setTimeout> | null = null;
   private httpAborter: AbortController | null = null;
   private running = false;
+  // Mirrors feed/live.ts's gating: `this.ws` is set as soon as the socket
+  // is constructed (still CONNECTING), so gating the HTTP path on it made
+  // the 3s connect-timeout fallback dead code — fallbackToHttp's own guard
+  // (`this.ws`) blocked it every time. Track the settled transport instead.
+  private source: 'ws' | 'http' | null = null;
 
   private status: AcarsStatus = {
     hubConnected: false,
@@ -204,6 +209,7 @@ export class AcarsFeed {
     this.clearWsRetryTimer();
     this.closeWs();
     this.stopHttp();
+    this.source = null;
     this.setStatus({ ...this.status, transportOk: false });
   }
 
@@ -251,6 +257,7 @@ export class AcarsFeed {
     ws.onopen = () => {
       this.clearWsConnectTimer();
       this.clearWsRetryTimer();
+      this.source = 'ws';
       this.setStatus({ ...this.status, transportOk: true });
       this.stopHttp();
     };
@@ -285,6 +292,7 @@ export class AcarsFeed {
     ws.onclose = () => {
       this.ws = null;
       this.clearWsConnectTimer();
+      this.source = null;
       this.setStatus({ ...this.status, transportOk: false });
       if (!this.running) return;
       this.fallbackToHttp();
@@ -332,6 +340,7 @@ export class AcarsFeed {
 
   private fallbackToHttp(): void {
     if (!this.running || this.httpTimer || this.httpAborter) return;
+    this.source = 'http';
     void this.httpTick();
   }
 
@@ -343,7 +352,7 @@ export class AcarsFeed {
   }
 
   private async httpTick(): Promise<void> {
-    if (!this.running || this.ws) return;
+    if (!this.running || this.source === 'ws') return;
     this.httpAborter?.abort();
     this.httpAborter = new AbortController();
     try {
@@ -369,7 +378,10 @@ export class AcarsFeed {
       if ((err as Error).name === 'AbortError') return;
       this.setStatus({ ...this.status, transportOk: false });
     }
-    if (!this.running || this.ws) return;
+    // TS narrows `this.source` from the early-return above and can't see
+    // that ws.onopen (an async callback) may have reassigned it across the
+    // await — cast through the full union like feed/live.ts does.
+    if (!this.running || (this.source as 'ws' | 'http' | null) === 'ws') return;
     this.httpTimer = setTimeout(() => void this.httpTick(), HTTP_POLL_INTERVAL_MS);
   }
 

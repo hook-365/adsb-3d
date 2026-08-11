@@ -89,7 +89,9 @@ let calls: Call[] = [];
 let wsConnected = false;
 let ws: WebSocket | null = null;
 let reconnectTimer: number | null = null;
+let pruneIntervalId: number | null = null;
 let initialized = false;
+let reconnectAttempt = 0;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -126,10 +128,13 @@ function prependCall(call: Call): void {
 
 function scheduleReconnect(): void {
   if (reconnectTimer !== null) return;
+  const delay =
+    Math.min(30_000, RECONNECT_DELAY_MS * 2 ** reconnectAttempt) * (0.8 + Math.random() * 0.4);
+  reconnectAttempt++;
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, RECONNECT_DELAY_MS);
+  }, delay);
 }
 
 function connect(): void {
@@ -141,12 +146,16 @@ function connect(): void {
     return;
   }
 
-  ws.addEventListener('open', () => {
+  // on* assignments (not addEventListener) so closeWs() can null every
+  // handler before closing — a stray event from a socket we've already
+  // moved on from can't fire into torn-down state.
+  ws.onopen = () => {
     wsConnected = true;
+    reconnectAttempt = 0;
     notifyConnection(true);
-  });
+  };
 
-  ws.addEventListener('message', (e) => {
+  ws.onmessage = (e) => {
     let msg: WsMessage;
     try {
       msg = JSON.parse(e.data as string) as WsMessage;
@@ -161,18 +170,18 @@ function connect(): void {
       prependCall(call);
       notifyCalls(call);
     }
-  });
+  };
 
-  ws.addEventListener('close', () => {
+  ws.onclose = () => {
     wsConnected = false;
     notifyConnection(false);
     scheduleReconnect();
-  });
+  };
 
-  ws.addEventListener('error', () => {
+  ws.onerror = () => {
     // The close event fires next and handles reconnect scheduling.
     console.warn('[voice-calls] WebSocket error');
-  });
+  };
 }
 
 // ─── Initial fetch ────────────────────────────────────────────────────────
@@ -208,9 +217,42 @@ function ensureInit(): void {
   void fetchInitial();
   connect();
   // Age calls out of the 1-hour window even when no new calls are arriving.
-  window.setInterval(() => {
+  pruneIntervalId = window.setInterval(() => {
     if (pruneOld()) notifyCalls(null);
   }, 60_000);
+}
+
+/** Mirrors feed/live.ts's closeWs: null every handler before closing so a
+ *  late event from the old socket can't fire into torn-down state. */
+function closeWs(): void {
+  if (!ws) return;
+  ws.onopen = null;
+  ws.onmessage = null;
+  ws.onclose = null;
+  ws.onerror = null;
+  try { ws.close(); } catch { /* ignore */ }
+  ws = null;
+}
+
+/** Refcounted teardown: once every consumer (voice-panel.ts unsubscribes
+ *  all three on destroy) has gone away, tear the connection all the way
+ *  down instead of leaking a socket + timers for a hidden/unmounted panel. */
+function maybeTeardown(): void {
+  if (callsListeners.size > 0 || activityListeners.size > 0 || connectionListeners.size > 0) {
+    return;
+  }
+  closeWs();
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (pruneIntervalId !== null) {
+    window.clearInterval(pruneIntervalId);
+    pruneIntervalId = null;
+  }
+  wsConnected = false;
+  initialized = false;
+  reconnectAttempt = 0;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
@@ -224,7 +266,10 @@ export function getCalls(): readonly Call[] {
 export function subscribeCalls(fn: CallsListener): () => void {
   ensureInit();
   callsListeners.add(fn);
-  return () => { callsListeners.delete(fn); };
+  return () => {
+    callsListeners.delete(fn);
+    maybeTeardown();
+  };
 }
 
 /** Subscribe to per-channel activity updates from the WebSocket.
@@ -232,7 +277,10 @@ export function subscribeCalls(fn: CallsListener): () => void {
 export function subscribeActivity(fn: ActivityListener): () => void {
   ensureInit();
   activityListeners.add(fn);
-  return () => { activityListeners.delete(fn); };
+  return () => {
+    activityListeners.delete(fn);
+    maybeTeardown();
+  };
 }
 
 /** Subscribe to WebSocket connection state changes (true = connected).
@@ -241,5 +289,8 @@ export function subscribeConnection(fn: ConnectionListener): () => void {
   ensureInit();
   connectionListeners.add(fn);
   fn(wsConnected); // fire immediately with current state
-  return () => { connectionListeners.delete(fn); };
+  return () => {
+    connectionListeners.delete(fn);
+    maybeTeardown();
+  };
 }

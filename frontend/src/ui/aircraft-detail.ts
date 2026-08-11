@@ -190,10 +190,16 @@ export function createAircraftDetail(
     el.addEventListener('click', () => {
       const text = getText();
       if (!text) return;
-      void navigator.clipboard?.writeText(text).then(() => {
-        el.classList.add('copied');
-        setTimeout(() => el.classList.remove('copied'), 800);
-      });
+      void navigator.clipboard
+        ?.writeText(text)
+        .then(() => {
+          el.classList.add('copied');
+          setTimeout(() => el.classList.remove('copied'), 800);
+        })
+        .catch(() => {
+          // Clipboard write can reject (permissions, insecure context) —
+          // nothing to recover; just don't leave an unhandled rejection.
+        });
     });
   }
   attachCopy(callsignEl, () => callsignEl.textContent);
@@ -210,10 +216,16 @@ export function createAircraftDetail(
       window.location.search +
       '#' +
       selectedHex;
-    void navigator.clipboard?.writeText(url).then(() => {
-      shareBtn.classList.add('copied');
-      setTimeout(() => shareBtn.classList.remove('copied'), 800);
-    });
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => {
+        shareBtn.classList.add('copied');
+        setTimeout(() => shareBtn.classList.remove('copied'), 800);
+      })
+      .catch(() => {
+        // Clipboard write can reject (permissions, insecure context) —
+        // nothing to recover; just don't leave an unhandled rejection.
+      });
   });
 
   function showPhoto(info: PhotoInfo | null): void {
