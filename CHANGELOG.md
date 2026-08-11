@@ -52,6 +52,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   3s on `/health` so the 5s Docker healthcheck curl gets a real 503
   instead of hanging), which is what actually makes the existing
   `except asyncio.TimeoutError -> 503` handlers reachable.
+- **Bounded expensive track-service queries.** `/tracks/bulk/timelapse`
+  caps at `BULK_MAX_POSITIONS` (200k) rows via a deterministic
+  `ORDER BY icao, time` + `LIMIT`, and reports `truncated` in the
+  response stats when it hits the cap. `/heatmap` now rejects windows
+  over 7 days outright, and over 24h when no `bbox` is given, instead of
+  scanning the whole hypertable. `/stats/database` uses TimescaleDB's
+  `approximate_row_count()` for the (large) `aircraft_positions` table
+  instead of an exact `COUNT(*)`; the small `aircraft_metadata` table
+  keeps its exact count.
 
 ## [0.8.4] - 2026-08-11
 

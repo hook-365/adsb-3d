@@ -1072,6 +1072,12 @@ RAW_FULL_MAX_WINDOW_SECONDS = 4 * 3600
 # trail-rendering use case and stays well under the multi-MB JSON
 # parse-stall threshold on the client.
 AUTO_DOWNSAMPLE_TARGET_POINTS = 7200
+# Hard cap on rows returned by /tracks/bulk/timelapse. Both query variants
+# ORDER BY icao, time (or its bucketed equivalent) so a LIMIT truncation is
+# deterministic — always the earliest rows by (icao, time), not an arbitrary
+# subset. Protects against an unbounded `hexes` + wide time-range combo
+# turning into a multi-GB response.
+BULK_MAX_POSITIONS = 200_000
 
 
 def _autodownsample_if_window_too_wide(
@@ -1282,6 +1288,8 @@ async def get_bulk_tracks_timelapse(
                 # the query text.
                 params.append(bucket_seconds)
                 bucket_param = f"${len(params)}"
+                params.append(BULK_MAX_POSITIONS + 1)
+                bulk_limit_param = f"${len(params)}"
                 # Bucketed mode keeps a single representative kinematics
                 # sample per bucket via a window-function-style subquery.
                 # For the playback feed we need flight/gs/track on every
@@ -1305,8 +1313,11 @@ async def get_bulk_tracks_timelapse(
                     WHERE {where_clause} AND {hex_filter}
                     GROUP BY icao, 2
                     ORDER BY icao, 2
+                    LIMIT {bulk_limit_param}
                 """
             else:
+                params.append(BULK_MAX_POSITIONS + 1)
+                bulk_limit_param = f"${len(params)}"
                 query = f"""
                     {rank_cte}
                     SELECT
@@ -1323,9 +1334,16 @@ async def get_bulk_tracks_timelapse(
                     FROM aircraft_positions
                     WHERE {where_clause} AND {hex_filter}
                     ORDER BY icao, time
+                    LIMIT {bulk_limit_param}
                 """
 
             rows = await conn.fetch(query, *params, timeout=30)
+
+        # ORDER BY icao, time (or its bucketed equivalent) makes truncation
+        # deterministic: we always keep the earliest BULK_MAX_POSITIONS rows.
+        truncated = len(rows) > BULK_MAX_POSITIONS
+        if truncated:
+            rows = rows[:BULK_MAX_POSITIONS]
 
         tracks_by_aircraft: dict = {}
         for row in rows:
@@ -1356,7 +1374,8 @@ async def get_bulk_tracks_timelapse(
             'stats': {
                 'unique_aircraft': len(tracks_by_aircraft),
                 'total_positions': len(rows),
-                'time_span_hours': time_range.total_seconds() / 3600
+                'time_span_hours': time_range.total_seconds() / 3600,
+                'truncated': truncated
             },
             'tracks': list(tracks_by_aircraft.values())
         }
@@ -1410,6 +1429,13 @@ async def get_metadata_bulk(payload: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Hard cap on the heatmap query window: past this, even a bbox-scoped
+# request scans too much of the hypertable. Without a bbox the cap is
+# tighter still (24h) since an unscoped query touches every chunk in range.
+HEATMAP_MAX_WINDOW_SECONDS = 7 * 86400
+HEATMAP_NO_BBOX_MAX_WINDOW_SECONDS = 24 * 3600
+
+
 @app.get("/heatmap")
 async def get_heatmap(
     start: datetime = Query(..., description="Start time (UTC)"),
@@ -1433,6 +1459,18 @@ async def get_heatmap(
     """
     start = ensure_utc(start)
     end = ensure_utc(end)
+
+    window_seconds = (end - start).total_seconds()
+    if window_seconds > HEATMAP_MAX_WINDOW_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"window too large: max {HEATMAP_MAX_WINDOW_SECONDS / 86400:g} days"
+        )
+    if not bbox and window_seconds > HEATMAP_NO_BBOX_MAX_WINDOW_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"window without bbox too large: max {HEATMAP_NO_BBOX_MAX_WINDOW_SECONDS / 3600:g} hours; pass a bbox for longer windows"
+        )
 
     filters = ["time BETWEEN $1 AND $2"]
     params: list = [start, end]
@@ -1897,8 +1935,7 @@ async def get_database_stats():
         'row_counts': """
             SELECT
                 'aircraft_positions' as table_name,
-                COUNT(*) as row_count
-            FROM aircraft_positions
+                approximate_row_count('aircraft_positions')::bigint as row_count
             UNION ALL
             SELECT
                 'aircraft_metadata' as table_name,
