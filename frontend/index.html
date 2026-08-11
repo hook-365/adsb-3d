@@ -62,6 +62,7 @@
       <span id="feed-selector" class="feed-selector" hidden></span>
       <span id="feed-status">feed: …</span>
       <span id="aircraft-count">aircraft: 0</span>
+      <span id="aircraft-count-live" class="visually-hidden" aria-live="polite"></span>
       <span id="frame-rate">— fps</span>
       <span id="clocks" class="clocks" title="Local · UTC" data-i18n-title="static.clocks_title">—:— · —:—Z</span>
       <button id="share-btn" type="button" class="status-btn" title="Copy a shareable link" data-i18n="static.share" data-i18n-title="static.share_title">share</button>
@@ -100,7 +101,7 @@
         <button class="col col-spd" data-sort="spd" data-i18n="static.col_spd">Spd</button>
         <button class="col col-dist" data-sort="dist" data-i18n="static.col_dist">Dist</button>
       </div>
-      <ul id="panel-list" role="list"></ul>
+      <ul id="panel-list" role="listbox" tabindex="0" aria-label="Aircraft list" data-i18n-aria-label="static.aircraft_list_aria"></ul>
     </aside>
     <section id="panel-detail" hidden>
       <header>
@@ -169,7 +170,7 @@
       <span class="pill-callsign" id="detail-pill-callsign"></span>
       <span class="pill-stats" id="detail-pill-stats"></span>
     </button>
-    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-label="ACARS message browser" data-i18n-aria-label="static.acars_browser_aria">
+    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-modal="true" aria-label="ACARS message browser" data-i18n-aria-label="static.acars_browser_aria">
       <div class="acars-backdrop" id="acars-backdrop"></div>
       <section class="acars-panel">
         <header>

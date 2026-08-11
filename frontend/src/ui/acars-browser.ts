@@ -52,6 +52,9 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
   let isOpen = false;
   let query = '';
   let labelFilter = '';
+  // Restored on close so keyboard/screen-reader users land back where they
+  // triggered the modal from (usually the HUD ACARS chip), not at <body>.
+  let lastFocused: HTMLElement | null = null;
   // Cached label set so the dropdown only repopulates when new labels show up.
   const seenLabels = new Set<string>();
 
@@ -144,6 +147,7 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
   function open(): void {
     if (isOpen) return;
     isOpen = true;
+    lastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     root.hidden = false;
     render();
     // Focus the search box so the user can type immediately.
@@ -154,6 +158,8 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
     if (!isOpen) return;
     isOpen = false;
     root.hidden = true;
+    lastFocused?.focus();
+    lastFocused = null;
   }
 
   function toggle(): void {
@@ -164,7 +170,33 @@ export function mountAcarsBrowser(options: AcarsBrowserOptions): AcarsBrowserHan
   backdrop.addEventListener('click', close);
   closeBtn.addEventListener('click', close);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isOpen) close();
+    if (!isOpen) return;
+    if (e.key === 'Escape') {
+      close();
+      return;
+    }
+    if (e.key === 'Tab') {
+      // Trap focus inside the modal: Tab/Shift+Tab wrap among its own
+      // focusable elements instead of escaping into the page behind it.
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last || !root.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
   });
 
   // Live-update while open.

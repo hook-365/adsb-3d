@@ -152,9 +152,11 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   const topSpacer = document.createElement('li');
   topSpacer.className = 'spacer';
   topSpacer.setAttribute('aria-hidden', 'true');
+  topSpacer.setAttribute('role', 'presentation');
   const bottomSpacer = document.createElement('li');
   bottomSpacer.className = 'spacer';
   bottomSpacer.setAttribute('aria-hidden', 'true');
+  bottomSpacer.setAttribute('role', 'presentation');
   list.replaceChildren(topSpacer, bottomSpacer);
 
   function applyColumnIndicator(): void {
@@ -290,6 +292,9 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
       li.className = trimmed;
       refs.lastClass = trimmed;
     }
+    if (isSelected !== refs.lastSelected) {
+      li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    }
     refs.lastSelected = isSelected;
   }
 
@@ -339,6 +344,8 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
       if (!li) {
         li = createRow();
         li.dataset.hex = hex;
+        li.id = `ac-row-${hex}`;
+        li.setAttribute('role', 'option');
         liByHex.set(hex, li);
         isNew = true;
       }
@@ -410,18 +417,12 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
     for (const fn of selectListeners) fn(selectedHex);
   }
 
-  // Event delegation: a single click listener on the <ul> derives the row
-  // from event.target. Cheaper than wiring per-row listeners and survives
-  // virtualization (rows are recycled across hexes).
-  list.addEventListener('click', (e) => {
-    const li = (e.target as HTMLElement | null)?.closest('li');
-    if (!li || li.classList.contains('spacer')) return;
-    const hex = (li as HTMLLIElement).dataset.hex;
-    if (!hex) return;
+  // Shared by the click handler and the Enter/Space keyboard path below.
+  // Flips .selected class on whichever currently-mounted rows are affected
+  // — the store hasn't changed so this doesn't trigger a full re-render.
+  function toggleSelect(hex: string): void {
     selectedHex = selectedHex === hex ? null : hex;
     notifySelection();
-    // Flip .selected class on whichever currently-mounted rows are affected.
-    // The store hasn't changed so we don't trigger a full re-render.
     const snap = store.snapshot;
     for (const [h, row] of liByHex) {
       const refs = row.__refs!;
@@ -430,6 +431,58 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
         const a = snap.get(h);
         if (a) updateRowClass(row, a, refs, isSel);
       }
+    }
+  }
+
+  // Event delegation: a single click listener on the <ul> derives the row
+  // from event.target. Cheaper than wiring per-row listeners and survives
+  // virtualization (rows are recycled across hexes).
+  list.addEventListener('click', (e) => {
+    const li = (e.target as HTMLElement | null)?.closest('li');
+    if (!li || li.classList.contains('spacer')) return;
+    const hex = (li as HTMLLIElement).dataset.hex;
+    if (!hex) return;
+    toggleSelect(hex);
+  });
+
+  // Keyboard nav (role="listbox" on the <ul>, tabindex="0"): ArrowUp/Down
+  // move a virtual "active" row via aria-activedescendant rather than real
+  // roving tabindex — virtualized rows get detached from the DOM as they
+  // scroll out, so they can't reliably hold browser focus. Enter/Space
+  // select the active row through the same path as a click.
+  let activeIndex = -1;
+  function setActiveIndex(idx: number): void {
+    const total = sortedHexes.length;
+    if (total === 0) {
+      activeIndex = -1;
+      list.removeAttribute('aria-activedescendant');
+      return;
+    }
+    activeIndex = Math.max(0, Math.min(total - 1, idx));
+    const hex = sortedHexes[activeIndex]!;
+    // Same scroll-into-view math as setSelected below — materializes the
+    // row so aria-activedescendant always points at something actually
+    // mounted in the DOM, not a virtualized row that doesn't exist yet.
+    const top = activeIndex * rowHeight;
+    const bot = top + rowHeight;
+    if (top < list.scrollTop || bot > list.scrollTop + list.clientHeight) {
+      list.scrollTop = Math.max(0, top - list.clientHeight / 2 + rowHeight / 2);
+      renderVisible(store.snapshot);
+    }
+    list.setAttribute('aria-activedescendant', `ac-row-${hex}`);
+  }
+  list.addEventListener('keydown', (e) => {
+    if (sortedHexes.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(activeIndex < 0 ? 0 : activeIndex + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(activeIndex < 0 ? 0 : activeIndex - 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (activeIndex < 0) return;
+      e.preventDefault();
+      toggleSelect(sortedHexes[activeIndex]!);
     }
   });
 

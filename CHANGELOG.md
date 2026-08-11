@@ -8,6 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Keyboard and screen-reader access for the aircraft list and ACARS
+  browser.** The aircraft list (`#panel-list`) is now a proper
+  `role="listbox"`: ArrowUp/ArrowDown move a virtual active row via
+  `aria-activedescendant` (not roving tabindex — virtualized rows detach
+  from the DOM as they scroll out and can't reliably hold browser focus),
+  Enter/Space select through the same path as a click, and the active row
+  is always scrolled into view first so it's actually mounted. Rows carry
+  `role="option"`, a stable `id`, and `aria-selected`; virtualization
+  spacers are `role="presentation"`. The ACARS browser dialog now saves
+  and restores focus across open/close and traps Tab navigation within
+  itself while open (`aria-modal="true"`). The aircraft-count HUD text
+  gets a visually-hidden `aria-live="polite"` sibling, throttled to at
+  most one announcement per 10s so a screen reader doesn't narrate every
+  single in/out on a busy scope.
+
 ### Changed
 
 - **Frontend perf: settings persistence, detail panel, HUD, ground-chrome

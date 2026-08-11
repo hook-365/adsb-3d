@@ -66,10 +66,17 @@ import {
 
 const hudAcars = document.getElementById('hud-acars') as HTMLElement;
 const aircraftCount = document.getElementById('aircraft-count')!;
+const aircraftCountLive = document.getElementById('aircraft-count-live')!;
 // Skip the t() call and textContent write when the count hasn't moved —
 // this runs every animation frame, but reconciler.count only actually
 // changes on a data tick.
 let lastAircraftCount = -1;
+// The visible HUD counter updates on every real change (up to ~1Hz with a
+// live feed) — far too chatty for an aria-live region, which would have a
+// screen reader narrating the count on every aircraft in/out. The hidden
+// live-region sibling instead gets a throttled update, at most every 10s.
+let lastAircraftCountAnnounceMs = 0;
+const AIRCRAFT_COUNT_ANNOUNCE_INTERVAL_MS = 10_000;
 const frameRate = document.getElementById('frame-rate')!;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
@@ -905,7 +912,12 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   if (!world.renderer.xr.isPresenting) reconciler.updateLabelLOD();
   if (reconciler.count !== lastAircraftCount) {
     lastAircraftCount = reconciler.count;
-    aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
+    const text = t('main.aircraft_count', { n: reconciler.count });
+    aircraftCount.textContent = text;
+    if (frameTime - lastAircraftCountAnnounceMs >= AIRCRAFT_COUNT_ANNOUNCE_INTERVAL_MS) {
+      lastAircraftCountAnnounceMs = frameTime;
+      aircraftCountLive.textContent = text;
+    }
   }
 
   // Update the XR billboard while an immersive session is active — and in

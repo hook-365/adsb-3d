@@ -4,6 +4,21 @@
   display: none !important;
 }
 
+/* Screen-reader-only content: present in the accessibility tree, invisible
+   and out of layout flow for sighted users. Standard clip-based technique
+   (not display:none/visibility:hidden, which some screen readers skip). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :root {
   color-scheme: dark;
   /* Theme tokens. Defaults mirror the Midnight Glass theme; core/theme.ts
