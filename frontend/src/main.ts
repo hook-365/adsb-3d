@@ -66,6 +66,10 @@ import {
 
 const hudAcars = document.getElementById('hud-acars') as HTMLElement;
 const aircraftCount = document.getElementById('aircraft-count')!;
+// Skip the t() call and textContent write when the count hasn't moved —
+// this runs every animation frame, but reconciler.count only actually
+// changes on a data tick.
+let lastAircraftCount = -1;
 const frameRate = document.getElementById('frame-rate')!;
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
@@ -899,7 +903,10 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // below skips labelRenderer), so the LOD pass would be pure wasted
   // frustum math + DOM writes there.
   if (!world.renderer.xr.isPresenting) reconciler.updateLabelLOD();
-  aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
+  if (reconciler.count !== lastAircraftCount) {
+    lastAircraftCount = reconciler.count;
+    aircraftCount.textContent = t('main.aircraft_count', { n: reconciler.count });
+  }
 
   // Update the XR billboard while an immersive session is active — and in
   // side-by-side stereo, where it's the only per-aircraft text that renders

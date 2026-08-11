@@ -256,13 +256,44 @@ export function getDefaultSettings(): Readonly<Settings> {
   return DEFAULTS;
 }
 
-export function updateSettings(patch: Partial<Settings>): void {
-  current = { ...current, ...patch };
+// The localStorage write is debounced (below) — updateSettings can be called
+// at high frequency (WebXR thumbstick scale, VR quality slider drag) and a
+// synchronous write on every call is a needless main-thread stall. The
+// singleton contract itself stays synchronous: `current` and the listener
+// fanout happen immediately, only the persistence write trails behind.
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const PERSIST_DEBOUNCE_MS = 300;
+
+function flushPersist(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   } catch {
     // localStorage may be unavailable (privacy mode); behave as session-only.
   }
+}
+
+function schedulePersist(): void {
+  if (persistTimer !== null) clearTimeout(persistTimer);
+  persistTimer = setTimeout(flushPersist, PERSIST_DEBOUNCE_MS);
+}
+
+// Registered once at module init: a pending debounced write must not be
+// lost to a tab close or backgrounding (mobile Safari, in particular, never
+// reliably fires 'unload').
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushPersist);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPersist();
+  });
+}
+
+export function updateSettings(patch: Partial<Settings>): void {
+  current = { ...current, ...patch };
+  schedulePersist();
   // Isolate subscribers: one throwing listener must not starve the rest,
   // and updateSettings is called from inside the WebXR animation loop
   // (thumbstick scale), where an uncaught throw kills rendering outright

@@ -581,8 +581,27 @@ export function createAircraftDetail(
     if (!selectedHex) return;
     if (hex === '' || hex === selectedHex) render();
   });
-  subscribeSettings(() => {
-    if (selectedHex) render();
+  // render() only actually depends on four settings keys: acarsMessages
+  // (section visibility) and the three unit choices consumed by
+  // fmtAltitude/fmtSpeed/fmtDistance/fmtVerticalRate. Every other settings
+  // change (theme, basemap, VR quality, ...) fired a full innerHTML
+  // rebuild for nothing at up to 1Hz store-driven churn already competing
+  // for the frame. Skip render() unless one of those four actually moved.
+  let lastAcarsMessages = getSettings().acarsMessages;
+  let lastAltitudeUnit = getSettings().altitudeUnit;
+  let lastSpeedUnit = getSettings().speedUnit;
+  let lastDistanceUnit = getSettings().distanceUnit;
+  subscribeSettings((s) => {
+    const changed =
+      s.acarsMessages !== lastAcarsMessages ||
+      s.altitudeUnit !== lastAltitudeUnit ||
+      s.speedUnit !== lastSpeedUnit ||
+      s.distanceUnit !== lastDistanceUnit;
+    lastAcarsMessages = s.acarsMessages;
+    lastAltitudeUnit = s.altitudeUnit;
+    lastSpeedUnit = s.speedUnit;
+    lastDistanceUnit = s.distanceUnit;
+    if (changed && selectedHex) render();
   });
 
   return {

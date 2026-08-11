@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Frontend perf: settings persistence, detail panel, HUD, ground-chrome
+  draping.** `core/settings.ts` debounces its localStorage write (~300ms,
+  flushed immediately on `pagehide`/tab-hide) instead of writing on every
+  call — `current` and listener fanout stay synchronous, only persistence
+  trails behind. `ui/aircraft-detail.ts`'s settings subscriber now skips
+  `render()` unless one of the four keys it actually reads (`acarsMessages`
+  plus the three unit choices) changed. The per-frame aircraft-count HUD
+  write in `main.ts` is now gated on the count actually changing.
+  `world/scene.ts` coalesces bursts of elevation-tile decodes into one
+  `drapeGroundChrome()` call per animation frame instead of one per tile.
+
 ### Security
 
 - **Root-owned entrypoint and webroot.** The container no longer chowns

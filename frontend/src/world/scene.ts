@@ -222,7 +222,18 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   }
   // Re-drape as each elevation tile decodes, and after a feed switch (the
   // recenter path below) in case the new home's tiles were already cached.
-  subscribeElevation(drapeGroundChrome);
+  // Coalesced to one call per animation frame: a burst of elevation tiles
+  // landing in the same frame (initial load, recenter) would otherwise
+  // re-walk every ring/label/home-marker vertex once per tile.
+  let drapePending = false;
+  subscribeElevation(() => {
+    if (drapePending) return;
+    drapePending = true;
+    requestAnimationFrame(() => {
+      drapePending = false;
+      drapeGroundChrome();
+    });
+  });
 
   // Live theme updates — mutate the same materials/colors in place so the
   // scene reflects a theme change without disposal or rebuilds. The
