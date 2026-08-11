@@ -14,6 +14,18 @@ services:
     image: ghcr.io/hook-365/adsb-3d:latest
     container_name: adsb-3d
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 192m
+    # Loads vars from a .env file next to this compose file (see
+    # .env.example) — e.g. DB_PASSWORD, CORS_ALLOW_ORIGIN, FEEDN_* if you'd
+    # rather keep them out of this file. The inline `environment:` block
+    # below takes precedence over anything the same name sets here.
+    # required: false so `docker compose config` still works before you've
+    # created a .env — copy .env.example to .env to actually use it.
+    env_file:
+      - path: .env
+        required: false
     environment:
       # ── Local station ────────────────────────────────────────────────
       - LATITUDE=45.0000
@@ -61,6 +73,13 @@ services:
       # - FEED3_LON=-87.0000
     ports:
       - "8086:80"
+    # Uncomment to persist the map tile cache across restarts and enable
+    # boot-time tile pre-caching around your station (see MAP_ZOOM /
+    # MAP_GRID_SIZE in .env.example). Without this volume, tiles are only
+    # cached in the container's nginx proxy cache for the container's
+    # lifetime.
+    # volumes:
+    #   - adsb-3d-tiles:/tiles
     # Uncomment for historical mode:
     # depends_on:
     #   - track-service
@@ -119,6 +138,9 @@ services:
   #   depends_on:
   #     - timescaledb-adsb
 
-# Uncomment for historical mode:
+# Uncomment whichever of these you enabled above (historical mode's DB
+# volume, and/or the adsb-3d tiles cache volume) — both live under one
+# top-level `volumes:` key.
 # volumes:
 #   timescaledb-data:
+#   adsb-3d-tiles:

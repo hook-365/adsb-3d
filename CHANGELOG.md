@@ -27,6 +27,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **`docker-compose.example.yml` aligned with `.env.example`.** The example
+  `adsb-3d` service now loads an `.env` file (inline `environment:` still
+  wins on a name collision), and mirrors `docker-compose.dev.yml`'s
+  `security_opt: no-new-privileges:true` and `mem_limit: 192m`. Added a
+  commented-out tiles volume for persisting the map tile cache / enabling
+  boot-time pre-caching. `.env.example` now documents every deploy-relevant
+  variable the entrypoint and both backend services actually read:
+  `FEEDER_HOST` (legacy `FEEDER_URL` alias), `FEEDS_CONFIG` (raw-JSON
+  alternative to `FEEDN_*`), `RETENTION_DAYS`, `FEEDER_POLL_SECONDS`, and
+  `COLLECTION_INTERVAL`.
 - **Frontend perf: settings persistence, detail panel, HUD, ground-chrome
   draping.** `core/settings.ts` debounces its localStorage write (~300ms,
   flushed immediately on `pagehide`/tab-hide) instead of writing on every
