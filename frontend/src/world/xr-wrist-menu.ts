@@ -46,6 +46,7 @@ import {
   THEME_OPTIONS,
 } from '../core/theme';
 import { roundRect, withAlpha } from './canvas-ui';
+import { DIORAMA_SIZE_MAX_M, DIORAMA_SIZE_MIN_M } from './diorama-clip';
 // Aliased: `t` is the conventional local name for theme tokens in the draw
 // code below.
 import { t as tr } from '../core/i18n';
@@ -138,10 +139,14 @@ function cycleRow<K extends keyof Settings>(
   };
 }
 
+type NumberSettingKey = {
+  [K in keyof Settings]: Settings[K] extends number ? K : never;
+}[keyof Settings];
+
 /** Quantized range: each press jumps to the next step above the current
  *  value, wrapping to the first — a slider is unusable on a laser menu. */
 function stepRow(
-  key: 'labelDensity',
+  key: NumberSettingKey,
   label: () => string,
   steps: readonly number[],
   format: (v: number) => string,
@@ -153,7 +158,31 @@ function stepRow(
     activate: () => {
       const cur = getSettings()[key];
       const next = steps.find((s) => s > cur) ?? steps[0] ?? 0;
-      updateSettings({ [key]: next });
+      updateSettings({ [key]: next } as Partial<Settings>);
+    },
+  };
+}
+
+/** Quantized range over a continuous min/max/step (rather than stepRow's
+ *  explicit value list) — each press nudges up by `stepM`, wrapping back
+ *  to `min` past `max`. Used for dioramaSize, whose range comes from
+ *  DIORAMA_SIZE_MIN_M/MAX_M (world/diorama-clip.ts) rather than a short
+ *  hand-picked list. */
+function adjustRow(
+  key: NumberSettingKey,
+  label: () => string,
+  opts: { min: number; max: number; stepM: number; format: (v: number) => string },
+): MenuRow {
+  return {
+    id: key,
+    label,
+    value: () => opts.format(getSettings()[key]),
+    activate: () => {
+      const cur = getSettings()[key];
+      const next = cur + opts.stepM > opts.max + 1e-9 ? opts.min : cur + opts.stepM;
+      // Round to millimetres — repeated float addition (0.03 + 0.05 + …)
+      // otherwise drifts the displayed value (0.35999999999999996 m).
+      updateSettings({ [key]: Math.round(next * 1000) / 1000 } as Partial<Settings>);
     },
   };
 }
@@ -277,6 +306,19 @@ const PAGES: MenuRow[][] = [
       ...toggleRow('dioramaClip', () => tr('misc.xr_diorama')),
       visible: () => getXrState().presentingMode === 'ar',
     },
+    // Size control for the same box, same AR-only gate — no reason to show
+    // it when the clip toggle above it is already hidden (issue #6
+    // follow-up: put the diorama-size control the wrist menu never had,
+    // panel-only until now, within reach without pulling out a phone).
+    {
+      ...adjustRow('dioramaSize', () => tr('misc.xr_diorama_size'), {
+        min: DIORAMA_SIZE_MIN_M,
+        max: DIORAMA_SIZE_MAX_M,
+        stepM: 0.05,
+        format: (v) => `${v.toFixed(2)} m`,
+      }),
+      visible: () => getXrState().presentingMode === 'ar',
+    },
     toggleRow('xrFollow', () => tr('misc.xr_follow')),
   ],
 ];
@@ -300,7 +342,6 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
-  dioramaSize: 'slider needs the stepper pattern; panel-only, clip toggle is on page 4',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

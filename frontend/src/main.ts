@@ -323,12 +323,34 @@ subscribeXr((s) => {
 // xr-locomotion module drives this via updateSettings on every frame
 // the user is pushing the thumbstick; subscribing here keeps the
 // wrist-menu display + persistence as the single source of truth.
+let prevVrScaleForFollow = getSettings().vrScale;
+let prevArScaleForFollow = getSettings().arScale;
 subscribeSettings((s) => {
   if (world.renderer.xr.isPresenting) {
     world.xrRoot.scale.setScalar(
       getXrState().presentingMode === 'ar' ? s.arScale : s.vrScale,
     );
   }
+  // XR follow "zoom fights follow" fix (issue #6 hardware feedback:
+  // "zooming in or out encounters resistance as the mode tries to keep a
+  // constant distance from the aircraft"). The left thumbstick's zoom
+  // (applyScale in xr-locomotion.ts) and the follow correction below both
+  // drive xrRoot.position; a scale change leaves xrFollowAnchor pointing
+  // at its pre-zoom location, so the very next follow tick lerps the view
+  // back toward the stale anchor — felt as resistance fighting the
+  // gesture. Whenever the active scale changes while following, drop the
+  // anchor so the follow loop re-seeds it at the post-zoom position
+  // instead of dragging back to the old one. Net effect: the stick keeps
+  // doing exactly what it always did (scale, clamped to the same
+  // SCALE_MIN/SCALE_MAX in xr-locomotion.ts), but while following it now
+  // reads as "set how close the aircraft sits" rather than fighting an
+  // invisible tether. No-op outside follow mode (guarded on s.xrFollow),
+  // so ordinary zoom is unchanged.
+  if (s.xrFollow && (s.vrScale !== prevVrScaleForFollow || s.arScale !== prevArScaleForFollow)) {
+    xrFollowAnchor = null;
+  }
+  prevVrScaleForFollow = s.vrScale;
+  prevArScaleForFollow = s.arScale;
   applyVrQuality(s.vrQuality);
 });
 

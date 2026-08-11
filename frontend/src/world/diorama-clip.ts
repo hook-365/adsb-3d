@@ -38,6 +38,21 @@ const UP = new Vector3(0, 1, 0);
 // (at the placement height) survives float jitter instead of shimmering.
 const BOTTOM_EPSILON_M = 0.02;
 
+// Sane bounds for Settings.dioramaSize, shared by the desktop settings
+// panel (ui/settings-panel.ts) and the wrist-menu size stepper
+// (world/xr-wrist-menu.ts) so the two controls can't drift apart.
+//
+// The floor (issue #6 tuning feedback — tyzbit: "the minimum size doesn't
+// quite match the minimum map zoom level, it's smaller") used to sit at
+// 0.1 m, which is exactly the whole scope's real-world footprint at the
+// lowest AR/VR zoom (2*RANGE_NM=500 scene units * xr-locomotion.ts
+// SCALE_MIN=0.0002 = 0.1 m) — so at minimum zoom the box could never be
+// made smaller than the map and dragging the slider to its floor had no
+// visible clipping effect. Floored well under that so the box stays
+// smaller than the map across the full zoom range.
+export const DIORAMA_SIZE_MIN_M = 0.03;
+export const DIORAMA_SIZE_MAX_M = 2;
+
 /**
  * Activate (or move/resize) the diorama box. `center` is the box center in
  * metre space — the placed scope origin; `size` is the full wall-to-wall

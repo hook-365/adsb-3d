@@ -10,6 +10,7 @@ import {
 import { t } from '../core/i18n';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
+import { DIORAMA_SIZE_MAX_M, DIORAMA_SIZE_MIN_M } from '../world/diorama-clip';
 
 // Gear button + popover panel. Mounted into a slot the host page provides
 // in the header (#settings-slot) and a panel container appended to <body>
@@ -76,18 +77,6 @@ type SettingsRow = ToggleRow | ChoiceRow | RangeRow | ButtonRow;
 // Full display labels per basemap. Record<Basemap, …> so extending
 // BASEMAP_VALUES without labelling the new entry here fails to compile
 // (the wrist menu keeps its own terse map the same way).
-// Diorama box minimum width (issue #6 tuning feedback — tyzbit: "The
-// minimum size also doesn't quite match the minimum map zoom level, it's
-// smaller"). The box lives in fixed real-world metres (diorama-clip.ts)
-// while the whole scope (RANGE_NM=250 NM radius, so 2*RANGE_NM=500 scene
-// units wall to wall, 1 unit = 1 NM) shrinks with world scale. At the
-// lowest AR/VR zoom (xr-locomotion.ts SCALE_MIN = 0.0002) that footprint
-// is only 500 * 0.0002 = 0.1 m — exactly the old floor here, so at
-// minimum zoom the box could never be made smaller than the map and
-// dragging the slider to its floor had no visible clipping effect.
-// Floored well under that so the box stays smaller than the map (and so
-// visibly clips something) across the full zoom range.
-const DIORAMA_SIZE_MIN_M = 0.03;
 
 const BASEMAP_LABELS: Record<Basemap, string> = {
   dark: t('settings.basemap_carto_dark'),
@@ -397,7 +386,7 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         label: t('settings.diorama_size'),
         description: t('settings.diorama_size_desc'),
         min: DIORAMA_SIZE_MIN_M,
-        max: 2,
+        max: DIORAMA_SIZE_MAX_M,
         step: 0.1,
         format: (v) => `${v.toFixed(1)} m`,
       },
