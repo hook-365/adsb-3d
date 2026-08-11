@@ -29,3 +29,18 @@ docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --wait track-service 
 
 echo "Re-running verification after backend restart..."
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" run --rm integration-tests
+
+echo "Checking viewer nginx config is idempotent across a restart..."
+CONF_BEFORE=$(mktemp)
+CONF_AFTER=$(mktemp)
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T viewer cat /etc/nginx/conf.d/default.conf > "$CONF_BEFORE"
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" restart viewer
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --wait viewer
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T viewer cat /etc/nginx/conf.d/default.conf > "$CONF_AFTER"
+if ! diff -u "$CONF_BEFORE" "$CONF_AFTER"; then
+    echo "FAIL: viewer's rendered nginx config changed after a restart (should be byte-identical)"
+    rm -f "$CONF_BEFORE" "$CONF_AFTER"
+    exit 1
+fi
+rm -f "$CONF_BEFORE" "$CONF_AFTER"
+echo "PASS: viewer nginx config is identical before and after restart"

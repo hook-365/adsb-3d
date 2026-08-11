@@ -675,22 +675,34 @@ fi
 
 # Discover the current FAA chart cycle date from vfrmap.com so the sectional/
 # IFR tile proxies stay valid through the next 56-day refresh. The cycle is
-# embedded in vfrmap.com's frontend JS as `f='YYYYMMDD'`. Best-effort: if the
-# scrape fails (no network at boot, vfrmap down), fall back to an empty value
-# so sectional tiles 404 cleanly while every other basemap keeps working.
-VFRMAP_CYCLE="$(curl -fsS --max-time 5 https://vfrmap.com/js/map.js?7 2>/dev/null \
-    | grep -oE "f='[0-9]{8}'" | head -1 | grep -oE '[0-9]{8}' || true)"
+# embedded in vfrmap.com's frontend JS as `f='YYYYMMDD'`. Best-effort: retry
+# a few times (transient network blips at boot are common), and if every
+# attempt fails, fall back to an empty value so sectional tiles 404 cleanly
+# while every other basemap keeps working. There's no background re-scrape —
+# by design, an occasional container restart is what picks up a new cycle.
+VFRMAP_CYCLE=""
+VFRMAP_ATTEMPT=1
+while [ "$VFRMAP_ATTEMPT" -le 3 ]; do
+    VFRMAP_CYCLE="$(curl -fsS --max-time 5 https://vfrmap.com/js/map.js?7 2>/dev/null \
+        | grep -oE "f='[0-9]{8}'" | head -1 | grep -oE '[0-9]{8}' || true)"
+    [ -n "$VFRMAP_CYCLE" ] && break
+    echo "[vfrmap] attempt ${VFRMAP_ATTEMPT}/3 failed to fetch chart cycle"
+    VFRMAP_ATTEMPT=$((VFRMAP_ATTEMPT + 1))
+    [ "$VFRMAP_ATTEMPT" -le 3 ] && sleep 5
+done
 if [ -n "$VFRMAP_CYCLE" ]; then
     echo "[vfrmap] FAA chart cycle: $VFRMAP_CYCLE"
 else
-    echo "[vfrmap] WARN: could not fetch chart cycle from vfrmap.com — sectional tiles will be unavailable until next restart"
+    echo "[vfrmap] WARN: could not fetch chart cycle from vfrmap.com after 3 attempts — sectional tiles will be unavailable until next restart"
 fi
 export VFRMAP_CYCLE
 
-# Replace placeholders in nginx config with generated blocks
-# First, replace basic environment variables
-envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE}' < /etc/nginx/conf.d/default.conf > /etc/nginx/conf.d/default.conf.tmp
-mv /etc/nginx/conf.d/default.conf.tmp /etc/nginx/conf.d/default.conf
+# Render nginx config from the pristine template on every boot (never read
+# conf.d/default.conf back in) — this is what makes `docker restart`
+# idempotent. Previously this step read-and-overwrote conf.d/default.conf in
+# place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
+# boot and a restart silently kept stale (or doubled-up) feed blocks.
+envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then
@@ -725,6 +737,17 @@ if [ -d "/tiles" ] && [ -w "/tiles" ]; then
     precache_tiles &
 else
     echo "Tile caching disabled (no /tiles volume mounted)"
+fi
+
+# Validate the rendered config before handing off to nginx. A malformed
+# generated block (bad feed data, a busted envsubst substitution) should
+# fail the container loudly instead of nginx refusing to start with a
+# cryptic message buried in `docker logs`.
+if ! nginx -t 2>&1; then
+    echo "[ERROR] generated nginx config failed validation"
+    echo "[ERROR] last 50 lines of /etc/nginx/conf.d/default.conf:"
+    tail -n 50 /etc/nginx/conf.d/default.conf
+    exit 1
 fi
 
 # Start nginx

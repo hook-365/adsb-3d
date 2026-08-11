@@ -29,9 +29,14 @@ RUN mkdir -p /var/cache/nginx/tiles
 # Built frontend
 COPY --from=frontend-build /app/frontend/dist/ /usr/share/nginx/html/
 
-# nginx configurations
+# nginx configurations. nginx.conf is a template: entrypoint.sh renders it
+# fresh (envsubst + dynamic feed blocks) into conf.d/default.conf on every
+# boot, so it lives under templates/ as a pristine source — never edited or
+# consumed in place. (Our entrypoint fully replaces nginx's own docker
+# entrypoint, so nginx's built-in templates/ auto-render never runs; this
+# is just a conventional home for a template file.)
 COPY nginx/http.conf /etc/nginx/conf.d/00-http.conf
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/nginx.conf /etc/nginx/templates/default.conf.template
 
 # Entrypoint generates config.js + dynamic feed proxy blocks at startup
 COPY entrypoint.sh /entrypoint.sh

@@ -94,6 +94,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **`docker restart` no longer serves stale nginx config.** `nginx.conf`
+  now ships as a pristine template (`/etc/nginx/templates/default.conf.template`)
+  that entrypoint.sh renders fresh into `conf.d/default.conf` on every boot,
+  instead of reading and overwriting `conf.d/default.conf` in place — the
+  old approach consumed the `### DYNAMIC_FEED_DATA_BLOCKS ###` /
+  `### DYNAMIC_FEED_API_BLOCKS ###` markers on first boot, so a plain
+  `docker restart` silently kept whatever feed blocks (or lack thereof)
+  happened to be rendered at image build time. The entrypoint now runs
+  `nginx -t` before handing off to nginx, printing the last 50 lines of the
+  rendered config and exiting 1 on failure instead of letting nginx itself
+  fail with a buried error. The vfrmap.com chart-cycle scrape retries up to
+  3 times (5s apart) before falling back to disabling sectional tiles for
+  that boot.
 - **Container healthcheck reflects viewer health, not feeder uptime.**
   `docker-healthcheck.sh` no longer probes `/data/aircraft.json`; it checks
   nginx liveness plus the presence of entrypoint-rendered `config.js`
