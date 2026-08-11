@@ -1,12 +1,12 @@
 # =============================================================================
 # Stage 1: build the redesigned TypeScript frontend
 # =============================================================================
-FROM node:20-alpine AS frontend-build
+FROM node:20.19-alpine AS frontend-build
 WORKDIR /app/frontend
 
 # Install deps first for layer caching
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 # Copy the rest of the frontend source and build
 COPY frontend/ ./
@@ -15,10 +15,12 @@ RUN npm run build
 # =============================================================================
 # Stage 2: runtime nginx image
 # =============================================================================
-FROM nginx:alpine
+FROM nginx:1.29-alpine
 
 # Tools used by entrypoint.sh: bc (math for tile pre-cache), wget (downloads),
 # jq (FEEDS_CONFIG parsing), gettext (envsubst), curl (healthcheck).
+# Versions intentionally unpinned: Alpine's apk repos drop superseded package
+# versions once a new one lands, so pinning here breaks rebuilds within days.
 RUN apk add --no-cache bc wget jq gettext curl
 
 # nginx tile cache dir and tle cache dir removed (satellite dropped)

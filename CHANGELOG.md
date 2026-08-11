@@ -62,6 +62,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Docker base images pinned; frontend build uses `npm ci`.** `node:20-alpine`
+  → `node:20.19-alpine`, `nginx:alpine` → `nginx:1.29-alpine`,
+  `python:3.11-slim` → `python:3.11.13-slim` (track-service, acars-service).
+  The frontend build stage now runs `npm ci` against the committed
+  `package-lock.json` instead of `npm install`, so a build fails loudly on a
+  missing/out-of-sync lockfile rather than silently drifting dependency
+  versions. Alpine `apk` packages in the runtime image stay unpinned
+  deliberately — Alpine repos drop superseded package builds, so pinning
+  those breaks rebuilds within days.
 - **Root-owned entrypoint and webroot.** The container no longer chowns
   `/entrypoint.sh`, the healthcheck script, or the served webroot to the
   nginx worker user — a compromised worker can no longer rewrite the
