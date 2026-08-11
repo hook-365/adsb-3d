@@ -286,6 +286,36 @@ class ACARSCollector:
 
         return None, None
 
+    @staticmethod
+    def _to_int(v):
+        """Best-effort int coercion; None (not a crash) on anything unusable."""
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_float(v):
+        """Best-effort float coercion; None (not a crash) on anything unusable."""
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_text(v):
+        """Best-effort text coercion; None for falsy/missing values."""
+        if not v:
+            return None
+        try:
+            return str(v)
+        except (TypeError, ValueError):
+            return None
+
     def parse_acars_message(self, data: dict) -> dict:
         """Parse ACARS Hub JSON message into database format."""
         try:
@@ -293,59 +323,82 @@ class ACARSCollector:
             # Common fields: flight, tail, text, label, block_id, msg_num, freq, level, error
             return {
                 'time': datetime.now(timezone.utc),
-                'flight': data.get('flight', '').strip() or None,
-                'reg': data.get('tail') or data.get('reg'),
-                'icao': data.get('icao'),
-                'label': data.get('label'),
-                'block_id': data.get('block_id'),
-                'msg_num': data.get('msg_num') or data.get('msgno'),
-                'text': data.get('text') or data.get('message'),
-                'freq': data.get('freq'),
-                'level': data.get('level') or data.get('signal'),
-                'error': data.get('error'),
+                'flight': (data.get('flight') or '').strip() or None,
+                'reg': self._to_text(data.get('tail') or data.get('reg')),
+                'icao': self._to_text(data.get('icao')),
+                'label': self._to_text(data.get('label')),
+                'block_id': self._to_text(data.get('block_id')),
+                'msg_num': self._to_text(data.get('msg_num') or data.get('msgno')),
+                'text': self._to_text(data.get('text') or data.get('message')),
+                'freq': self._to_float(data.get('freq')),
+                'level': self._to_int(data.get('level') or data.get('signal')),
+                'error': self._to_int(data.get('error')),
                 'mode': data.get('mode', 'ACARS'),
                 'station_id': self.station_id,
                 # OOOI data (Out of gate, Off ground, On ground, Into gate)
-                'dsta': data.get('dsta'),  # Destination airport
-                'eta': data.get('eta'),    # Estimated time of arrival
-                'gtout': data.get('gtout'),  # Gate out time
-                'gtin': data.get('gtin'),    # Gate in time
-                'wloff': data.get('wloff'),  # Wheels off time
-                'wlin': data.get('wlin'),    # Wheels on time
+                'dsta': self._to_text(data.get('dsta')),  # Destination airport
+                'eta': self._to_text(data.get('eta')),    # Estimated time of arrival
+                'gtout': self._to_text(data.get('gtout')),  # Gate out time
+                'gtin': self._to_text(data.get('gtin')),    # Gate in time
+                'wloff': self._to_text(data.get('wloff')),  # Wheels off time
+                'wlin': self._to_text(data.get('wlin')),    # Wheels on time
                 # Position data (if available)
-                'lat': data.get('lat'),
-                'lon': data.get('lon'),
-                'alt': data.get('alt')
+                'lat': self._to_float(data.get('lat')),
+                'lon': self._to_float(data.get('lon')),
+                'alt': self._to_int(data.get('alt'))
             }
         except Exception as e:
             logger.error(f"Error parsing ACARS message: {e}")
             return None
 
+    _INSERT_SQL = '''
+        INSERT INTO acars_messages
+        (time, flight, reg, icao, label, block_id, msg_num, text,
+         freq, level, error, mode, station_id,
+         dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                $14, $15, $16, $17, $18, $19, $20, $21, $22)
+    '''
+
+    @staticmethod
+    def _to_record(m: dict) -> tuple:
+        """Build the positional-parameter tuple for one message row."""
+        return (
+            m['time'], m['flight'], m['reg'], m['icao'], m['label'],
+            m['block_id'], m['msg_num'], m['text'], m['freq'], m['level'],
+            m['error'], m['mode'], m['station_id'],
+            m['dsta'], m['eta'], m['gtout'], m['gtin'], m['wloff'], m['wlin'],
+            m['lat'], m['lon'], m['alt']
+        )
+
     async def store_messages(self, messages: List[dict]):
-        """Batch insert messages into database."""
+        """Batch insert messages into database, falling back to per-row
+        inserts if the batch as a whole fails (e.g. one bad row poisons an
+        executemany) so a single malformed message doesn't drop the batch."""
         self.last_flush = time.monotonic()
         if not messages:
             return
 
         try:
             async with self.db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
-                await conn.executemany('''
-                    INSERT INTO acars_messages
-                    (time, flight, reg, icao, label, block_id, msg_num, text,
-                     freq, level, error, mode, station_id,
-                     dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                            $14, $15, $16, $17, $18, $19, $20, $21, $22)
-                ''', [
-                    (m['time'], m['flight'], m['reg'], m['icao'], m['label'],
-                     m['block_id'], m['msg_num'], m['text'], m['freq'], m['level'],
-                     m['error'], m['mode'], m['station_id'],
-                     m['dsta'], m['eta'], m['gtout'], m['gtin'], m['wloff'], m['wlin'],
-                     m['lat'], m['lon'], m['alt'])
-                    for m in messages
-                ])
-                self.stats['messages_stored'] += len(messages)
-                logger.debug(f"Stored {len(messages)} ACARS messages")
+                try:
+                    await conn.executemany(self._INSERT_SQL, [self._to_record(m) for m in messages])
+                    self.stats['messages_stored'] += len(messages)
+                    logger.debug(f"Stored {len(messages)} ACARS messages")
+                except Exception as e:
+                    stored = 0
+                    dropped = 0
+                    for m in messages:
+                        try:
+                            await conn.execute(self._INSERT_SQL, *self._to_record(m))
+                            stored += 1
+                        except Exception:
+                            dropped += 1
+                    self.stats['messages_stored'] += stored
+                    self.stats['messages_dropped'] += dropped
+                    logger.error(
+                        f"batch insert failed ({e}); per-row retry stored {stored}, dropped {dropped}"
+                    )
 
         except Exception as e:
             self.stats['messages_dropped'] += len(messages)

@@ -77,6 +77,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   restarts `collect_loop` with backoff instead of exiting once on an
   unhandled exception. `/health` now reports collector status from task
   liveness rather than just the `running` flag.
+- **acars-service type coercion + per-row insert fallback.** Hub JSON
+  fields are now coerced through `_to_int`/`_to_float`/`_to_text` instead
+  of stored raw, so a hub sending e.g. a string in a numeric field can't
+  poison the batch insert. Fixes a latent crash on an explicit JSON
+  `null` for `flight` (`data.get('flight', '').strip()` raises on `None`;
+  now `(data.get('flight') or '').strip()`). A failed batch insert now
+  retries row-by-row instead of dropping the whole batch, logging one
+  summary line with per-row stored/dropped counts.
 
 ## [0.8.4] - 2026-08-11
 
