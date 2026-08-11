@@ -4,8 +4,12 @@ Use this checklist before publishing a new release of ADS-B 3D.
 
 ## Image & Registry
 
-- [ ] GitHub Actions CI passes (typecheck + Vitest + build) on the release commit
-- [ ] Multi-arch image built and pushed (`linux/amd64`, `linux/arm64`)
+- [ ] GitHub Actions CI passes on the release commit: frontend
+  (typecheck + Vitest + build + eslint), backend unit tests (pytest ×2 +
+  ruff), and the Docker integration suite. `docker-publish` is gated on
+  the frontend and integration checks and will not push otherwise.
+- [ ] Multi-arch image built and pushed (`linux/amd64`, `linux/arm64`,
+  `linux/arm/v7`)
   ```
   ghcr.io/hook-365/adsb-3d:latest
   ghcr.io/hook-365/adsb-track-service:latest
@@ -95,6 +99,26 @@ Test aircraft.json ingestion with:
 | Frame rate (100 aircraft, desktop) | > 30 FPS |
 | Browser memory after 1 h | < 500 MB |
 | Cold-load trail backfill (30 aircraft) | < 1 s |
+
+## Security
+
+- [ ] Security headers present on `/` and `/config.js`
+  (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy`, CSP `frame-ancestors 'self'`), and the `Server`
+  header carries no version (`server_tokens off`)
+- [ ] CORS is locked by default — `curl -sI <host>/api/health` shows no
+  `Access-Control-*` headers. Set `CORS_ALLOW_ORIGIN` only if another
+  origin consumes the API directly
+- [ ] Behind a fronting reverse proxy: `TRUSTED_PROXY_CIDR` set to the
+  proxy's CIDR so per-client rate limiting keys on the real client IP
+  (otherwise all users share one bucket)
+- [ ] `/tests/` returns 404 (test assets do not ship in the image)
+- [ ] Container healthcheck semantics: a dead/rebooting *feeder* leaves the
+  viewer healthy (staleness is surfaced in-app via `feeder_age_s`); only
+  nginx/config failures mark the container unhealthy
+- [ ] `docker restart` of the viewer is config-idempotent (the integration
+  suite asserts this; spot-check after config changes with
+  `docker exec <c> cat /etc/nginx/conf.d/default.conf` before/after)
 
 ## Release steps
 

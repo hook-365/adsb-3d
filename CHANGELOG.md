@@ -127,64 +127,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   applies under a cap too, and the window only advances (forcing one rebuild)
   once enough head has actually expired (>64 points or >10% of the window).
 
-### Security
-
-- **Env-driven CORS and trusted-proxy real IP.** The hardcoded wildcard
-  `Access-Control-Allow-Origin: *` on `/data/`, `/api/`, `/voice/calls`, and
-  `/acars-api/` (and the equivalent blocks generated per remote feed) is
-  gone — CORS headers are now off by default (same-origin through nginx) and
-  only sent when `CORS_ALLOW_ORIGIN` is set (validated against `*` or a
-  single `http(s)://host` origin). `/api/` and `/acars-api/` now
-  `proxy_hide_header` the FastAPI backends' own wildcard CORS headers so
-  nginx's env-driven value is authoritative — a browser rejects a response
-  with two `Access-Control-Allow-Origin` headers. New `TRUSTED_PROXY_CIDR`
-  (comma-separated CIDRs, validated) configures `set_real_ip_from` +
-  `real_ip_header X-Forwarded-For` + `real_ip_recursive on` so per-client
-  rate limiting sees the real client IP when this container sits behind
-  another reverse proxy; empty/off by default. The public tile/image proxy
-  CORS headers (used for map imagery) are unchanged.
-- **Security response headers on every route; constrained third-party image
-  proxies.** nginx now sends `X-Content-Type-Options: nosniff`,
-  `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors
-  'self'`, and `Referrer-Policy: strict-origin-when-cross-origin` on every
-  response (new `nginx/security-headers.conf`, included from the server
-  block and re-included in every location that sets its own `add_header`,
-  since nginx's header inheritance is all-or-nothing per level). `nginx/http.conf`
-  now sets `server_tokens off`. The legacy `/images/` and `/photos/` proxies
-  (airport-data.com, planespotters.net) are now regex-constrained to actual
-  image-file paths instead of proxying any path underneath them.
-  `location = /images/sprites.png` still wins (nginx exact-match locations
-  always take priority regardless of file order).
-- **Docker base images pinned; frontend build uses `npm ci`.** `node:20-alpine`
-  → `node:20.19-alpine`, `nginx:alpine` → `nginx:1.29-alpine`,
-  `python:3.11-slim` → `python:3.11.13-slim` (track-service, acars-service).
-  The frontend build stage now runs `npm ci` against the committed
-  `package-lock.json` instead of `npm install`, so a build fails loudly on a
-  missing/out-of-sync lockfile rather than silently drifting dependency
-  versions. Alpine `apk` packages in the runtime image stay unpinned
-  deliberately — Alpine repos drop superseded package builds, so pinning
-  those breaks rebuilds within days.
-- **Root-owned entrypoint and webroot.** The container no longer chowns
-  `/entrypoint.sh`, the healthcheck script, or the served webroot to the
-  nginx worker user — a compromised worker can no longer rewrite the
-  root-executed entrypoint or persist injected JS in served assets. Only
-  the tile proxy cache stays worker-writable.
-- **`tests/` no longer ships in the image.** The test directory (smoke
-  page, integration compose files, fixtures) was copied into the public
-  webroot and fetchable by anyone.
-- **`config.js` rendering is validated and escaped.** LATITUDE/LONGITUDE
-  are validated numeric, FEED_MODE is a strict enum, BASE_PATH is
-  shape-checked, booleans are normalized, and LOCATION_NAME/BASE_PATH are
-  JS-escaped. Synthesized `FEEDN_*` feed JSON is now built with `jq`
-  (proper escaping) and re-validated after synthesis, so a quote or
-  script tag in a feed name can no longer break — or script — the page.
-  Also fixes `FEED1_ALT` being ignored by `config.js` (it was computed
-  before feed synthesis ran).
-- **Remote strings escaped before `innerHTML`.** adsb.im route names,
-  the feeder's verbatim `emergency` field, and voice-service call
-  label/frequency now pass through a shared `escapeHtml` (new
-  `ui/html.ts`); previously a hostile upstream could inject markup.
-
 ### Fixed
 
 - **`docker restart` no longer serves stale nginx config.** `nginx.conf`
@@ -275,6 +217,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   across `main.ts` and `ui/aircraft-detail.ts` no longer leave unhandled
   promise rejections, and the share button's original label is captured
   once at setup instead of risking a null/"Copied!" race on rapid clicks.
+
+### Security
+
+- **Env-driven CORS and trusted-proxy real IP.** The hardcoded wildcard
+  `Access-Control-Allow-Origin: *` on `/data/`, `/api/`, `/voice/calls`, and
+  `/acars-api/` (and the equivalent blocks generated per remote feed) is
+  gone — CORS headers are now off by default (same-origin through nginx) and
+  only sent when `CORS_ALLOW_ORIGIN` is set (validated against `*` or a
+  single `http(s)://host` origin). `/api/` and `/acars-api/` now
+  `proxy_hide_header` the FastAPI backends' own wildcard CORS headers so
+  nginx's env-driven value is authoritative — a browser rejects a response
+  with two `Access-Control-Allow-Origin` headers. New `TRUSTED_PROXY_CIDR`
+  (comma-separated CIDRs, validated) configures `set_real_ip_from` +
+  `real_ip_header X-Forwarded-For` + `real_ip_recursive on` so per-client
+  rate limiting sees the real client IP when this container sits behind
+  another reverse proxy; empty/off by default. The public tile/image proxy
+  CORS headers (used for map imagery) are unchanged.
+- **Security response headers on every route; constrained third-party image
+  proxies.** nginx now sends `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors
+  'self'`, and `Referrer-Policy: strict-origin-when-cross-origin` on every
+  response (new `nginx/security-headers.conf`, included from the server
+  block and re-included in every location that sets its own `add_header`,
+  since nginx's header inheritance is all-or-nothing per level). `nginx/http.conf`
+  now sets `server_tokens off`. The legacy `/images/` and `/photos/` proxies
+  (airport-data.com, planespotters.net) are now regex-constrained to actual
+  image-file paths instead of proxying any path underneath them.
+  `location = /images/sprites.png` still wins (nginx exact-match locations
+  always take priority regardless of file order).
+- **Docker base images pinned; frontend build uses `npm ci`.** `node:20-alpine`
+  → `node:20.19-alpine`, `nginx:alpine` → `nginx:1.29-alpine`,
+  `python:3.11-slim` → `python:3.11.13-slim` (track-service, acars-service).
+  The frontend build stage now runs `npm ci` against the committed
+  `package-lock.json` instead of `npm install`, so a build fails loudly on a
+  missing/out-of-sync lockfile rather than silently drifting dependency
+  versions. Alpine `apk` packages in the runtime image stay unpinned
+  deliberately — Alpine repos drop superseded package builds, so pinning
+  those breaks rebuilds within days.
+- **Root-owned entrypoint and webroot.** The container no longer chowns
+  `/entrypoint.sh`, the healthcheck script, or the served webroot to the
+  nginx worker user — a compromised worker can no longer rewrite the
+  root-executed entrypoint or persist injected JS in served assets. Only
+  the tile proxy cache stays worker-writable.
+- **`tests/` no longer ships in the image.** The test directory (smoke
+  page, integration compose files, fixtures) was copied into the public
+  webroot and fetchable by anyone.
+- **`config.js` rendering is validated and escaped.** LATITUDE/LONGITUDE
+  are validated numeric, FEED_MODE is a strict enum, BASE_PATH is
+  shape-checked, booleans are normalized, and LOCATION_NAME/BASE_PATH are
+  JS-escaped. Synthesized `FEEDN_*` feed JSON is now built with `jq`
+  (proper escaping) and re-validated after synthesis, so a quote or
+  script tag in a feed name can no longer break — or script — the page.
+  Also fixes `FEED1_ALT` being ignored by `config.js` (it was computed
+  before feed synthesis ran).
+- **Remote strings escaped before `innerHTML`.** adsb.im route names,
+  the feeder's verbatim `emergency` field, and voice-service call
+  label/frequency now pass through a shared `escapeHtml` (new
+  `ui/html.ts`); previously a hostile upstream could inject markup.
 
 ## [0.8.4] - 2026-08-11
 

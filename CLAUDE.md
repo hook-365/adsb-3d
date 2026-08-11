@@ -152,6 +152,14 @@ features get dummy upstreams so the generated nginx config is always valid.
   terrain follows the altitude-curve slider automatically.
 - Multi-feed: flat `FEEDN_*` env vars; the entrypoint synthesizes per-feed
   nginx proxy blocks. Slot 1 is always the local feed.
+- Security posture: nginx ships conservative security headers
+  (`nginx/security-headers.conf`) and no CORS headers by default.
+  `CORS_ALLOW_ORIGIN` (empty default) opts a specific origin — or `*` —
+  back in; `TRUSTED_PROXY_CIDR` enables real-IP resolution so rate
+  limiting keys on the client, not a fronting proxy. The entrypoint
+  validates/escapes everything it renders into `config.js`, renders the
+  nginx config from a pristine template each boot (`docker restart` is
+  config-idempotent), and gates startup on `nginx -t`.
 - The voice scanner is **call-based** (one audio clip per radio transmission)
   and **local-feed-only** — see `docs/VOICE.md`.
 - **FAA chart tiles** (sectional, IFR, helicopter): `entrypoint.sh` scrapes
@@ -169,12 +177,19 @@ From `frontend/`:
 - `npm run typecheck` — `tsc -b --noEmit`, strict.
 - `npm run test` — Vitest, one-shot (`npm run test:watch` for watch mode).
   Unit tests live in `frontend/tests-unit/`.
+- `npm run lint` — eslint (flat config, includes type-aware
+  `no-floating-promises` / `no-explicit-any` over `src/`).
 - `npm run build` — `tsc -b && vite build` → `dist/`.
+
+Backend: each service has a pytest suite (`cd track-service && pytest`,
+same for `acars-service` — run per-service, both modules are `main.py`)
+and `ruff check track-service acars-service` from the repo root.
 
 Full container against an existing backend:
 `docker compose -f docker-compose.dev.yml --project-directory . up --build`.
 
-Always run typecheck + test + build before considering frontend work done.
+Always run typecheck + test + lint + build before considering frontend
+work done.
 
 ## Conventions
 
