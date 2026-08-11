@@ -94,6 +94,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Container healthcheck reflects viewer health, not feeder uptime.**
+  `docker-healthcheck.sh` no longer probes `/data/aircraft.json`; it checks
+  nginx liveness plus the presence of entrypoint-rendered `config.js`
+  (`window.ENV_CONFIG`). A stale or rebooting feeder no longer flips the
+  viewer container unhealthy and triggers an orchestrator restart of an
+  otherwise-working viewer — feeder staleness is already surfaced in-app
+  via `feeder_age_s` on WS frames.
 - **track-service broadcast loop and collector no longer die silently.**
   `ws_broadcast_loop` tolerates a non-object feeder JSON body and non-dict
   aircraft entries instead of crashing the tick loop, and the whole

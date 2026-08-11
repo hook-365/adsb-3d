@@ -37,9 +37,10 @@ COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Healthcheck script: verify nginx is up AND the aircraft data pipe returns JSON.
-# An empty aircraft list ({"aircraft":[]}) still counts as healthy — there may
-# be no planes overhead at night.
+# Healthcheck script: nginx is up and entrypoint.sh's rendered config.js is
+# present. Deliberately does NOT probe feeder freshness — that's surfaced
+# in-app via feeder_age_s on WS frames, not container health, so a feeder
+# reboot can't make an orchestrator restart an otherwise-healthy viewer.
 COPY docker-healthcheck.sh /docker-healthcheck.sh
 RUN chmod +x /docker-healthcheck.sh
 
