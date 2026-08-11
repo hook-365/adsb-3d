@@ -491,6 +491,6 @@ export function pickAngle(a: number | null, b: number | null, t: number): number
   if (a === null) return b;
   if (b === null) return a;
   // Shortest-path interpolation across the 0/360 wrap.
-  let diff = ((b - a + 540) % 360) - 180;
+  const diff = ((b - a + 540) % 360) - 180;
   return ((a + diff * t) + 360) % 360;
 }

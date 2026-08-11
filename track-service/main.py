@@ -20,7 +20,6 @@ import aiohttp
 import asyncio
 import os
 import sys
-import signal
 import logging
 import json
 import re
@@ -1484,8 +1483,10 @@ async def get_heatmap(
             if len(parts) != 4:
                 raise ValueError
             lat0, lon0, lat1, lon1 = parts
-            if lat0 > lat1: lat0, lat1 = lat1, lat0
-            if lon0 > lon1: lon0, lon1 = lon1, lon0
+            if lat0 > lat1:
+                lat0, lat1 = lat1, lat0
+            if lon0 > lon1:
+                lon0, lon1 = lon1, lon0
         except (ValueError, IndexError):
             raise HTTPException(status_code=400, detail="bbox must be lat0,lon0,lat1,lon1")
         filters.append(f"lat BETWEEN ${len(params) + 1} AND ${len(params) + 2}")

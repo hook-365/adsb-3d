@@ -34,7 +34,7 @@ function resolveLocale(pref: string): string {
   return short in LOCALES ? short : 'en';
 }
 
-let activeLocale = resolveLocale(getSettings().language);
+const activeLocale = resolveLocale(getSettings().language);
 
 /** BCP 47-ish code of the active UI locale ('en', 'de'). Feed to Intl.* APIs. */
 export function getLocale(): string {

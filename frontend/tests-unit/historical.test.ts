@@ -141,7 +141,7 @@ describe('synthSampleAt', () => {
     const s0 = makeSample(0, { trackDeg: 350 });
     const s1 = makeSample(10_000, { trackDeg: 10 });
     const r = synthSampleAt([s0, s1], 5000);
-    expect(r?.sample.trackDeg!).toBeCloseTo(0);
+    expect(r!.sample.trackDeg).toBeCloseTo(0);
   });
 
   it('flight/category prefer after; fall back to before when after is null', () => {

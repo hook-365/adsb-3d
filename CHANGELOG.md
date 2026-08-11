@@ -10,6 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **eslint flat config (`frontend/eslint.config.js`) and `ruff.toml`.**
+  ESLint: js/ts recommended (non-type-checked) across all frontend source
+  and tests, plus a type-aware tier (`projectService`) over `src/**` only
+  enabling `no-floating-promises` and `no-explicit-any`. `npm run lint`
+  is clean with no rules downgraded — fixed the handful of trivial hits
+  (two `prefer-const`, one unsafe non-null-asserted optional chain in a
+  test). Ruff (default `E4,E7,E9,F` rule set, target py311) covers
+  `track-service` and `acars-service`; fixed an unused `signal` import
+  and two single-line `if:` statements in `track-service/main.py`. Both
+  services' `requirements-dev.txt` gained `ruff~=0.7`.
 - **Regenerated `tests/README.md`** with an accurate per-file unit-test
   table (jsdom files noted), Playwright e2e, backend pytest, and lint
   sections. Removed the legacy `tests/smoke-test.html` manual browser page,
