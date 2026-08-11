@@ -75,11 +75,13 @@ export interface Settings {
   /** Render per-aircraft position history trails. */
   historyTrails: boolean;
   /**
-   * Max rendered trail points per aircraft. 0 = full (whatever the feed's
-   * own cap collected — unlimited on the local feed), matching the
-   * labelDensity 0-sentinel convention. Render-side only: history keeps
-   * being collected at the feed cap, so raising this back restores the
-   * longer trail instantly. The selected aircraft always renders full.
+   * Approximate minutes of trail rendered per aircraft, truncated by
+   * sample timestamp. -1 = full (whatever the feed's own cap collected —
+   * unlimited on the local feed); 0 = none. Render-side only: history
+   * keeps being collected at the feed cap, so raising this back restores
+   * the longer trail instantly. The selected aircraft always renders
+   * full. (Pre-0.8.4 payloads stored a point count, 0 = full — migrated
+   * in load().)
    */
   trailLength: number;
   /** Concentric range rings every 50 NM out to RANGE_NM. */
@@ -189,7 +191,7 @@ const DEFAULTS: Settings = {
   groundSprites: true,
   altitudeLines: true,
   historyTrails: true,
-  trailLength: 0,
+  trailLength: -1,
   rangeRings: true,
   aircraftLabels: true,
   labelDensity: 0,
@@ -225,6 +227,15 @@ function load(): Settings {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
+    // trailLength migration (0.8.0-0.8.3 stored a POINT count with
+    // 0 = full; now minutes with -1 = full, 0 = none). Points landed at
+    // ~1/s, so points/60 ≈ minutes.
+    if (typeof parsed.trailLength === 'number') {
+      if (parsed.trailLength === 0) parsed.trailLength = -1;
+      else if (parsed.trailLength >= 50) {
+        parsed.trailLength = Math.max(1, Math.round(parsed.trailLength / 60));
+      }
+    }
     // Merge against defaults so a stored payload from an older version
     // doesn't drop new keys to undefined.
     return { ...DEFAULTS, ...parsed };

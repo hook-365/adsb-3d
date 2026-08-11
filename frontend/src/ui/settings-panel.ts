@@ -45,6 +45,12 @@ interface RangeRow {
   min: number;
   max: number;
   step: number;
+  /**
+   * Nonlinear stop list. When present the slider moves through these
+   * values left-to-right (min/max/step are ignored) — used where the
+   * useful scale isn't linear, e.g. trail length's minutes-to-infinity.
+   */
+  values?: readonly number[];
   /** Render the numeric value beside the slider. Defaults to a plain integer. */
   format?: (value: number) => string;
 }
@@ -155,9 +161,16 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         label: t('settings.trail_length'),
         description: t('settings.trail_length_desc'),
         min: 0,
-        max: 600,
-        step: 50,
-        format: (v) => (v === 0 ? t('settings.trail_length_full') : `${v}`),
+        max: 8,
+        step: 1,
+        // Approximate minutes of history; -1 = everything collected.
+        values: [0, 1, 2, 5, 10, 15, 30, 60, -1],
+        format: (v) =>
+          v < 0
+            ? t('settings.trail_length_full')
+            : v === 0
+              ? '0'
+              : t('settings.trail_length_min', { n: v }),
       },
       {
         kind: 'toggle',
@@ -626,16 +639,45 @@ export function mountSettingsPanel(): void {
         }
         rowEl.appendChild(btn);
       } else {
-        // Range slider with a live-updating numeric label beside it.
+        // Range slider with a live-updating numeric label beside it. With
+        // row.values the slider runs in index space over the stop list
+        // (nonlinear scales); otherwise it's the plain min/max/step range.
         const wrap = document.createElement('span');
         wrap.className = 'settings-range';
         const input = document.createElement('input');
         input.type = 'range';
-        input.min = String(row.min);
-        input.max = String(row.max);
-        input.step = String(row.step);
+        const stops = row.values ?? null;
+        const toSlider = (v: number): number => {
+          if (!stops) return v;
+          const exact = stops.indexOf(v);
+          if (exact >= 0) return exact;
+          // Migrated / out-of-list value: snap to the closest stop,
+          // treating the -1 "full" sentinel as larger than everything.
+          let best = 0;
+          let bestDist = Number.POSITIVE_INFINITY;
+          for (let i = 0; i < stops.length; i++) {
+            const sv = stops[i]!;
+            if (sv < 0 || v < 0) continue;
+            const d = Math.abs(sv - v);
+            if (d < bestDist) {
+              bestDist = d;
+              best = i;
+            }
+          }
+          return v < 0 ? stops.indexOf(-1) : best;
+        };
+        const fromSlider = (s: number): number => (stops ? (stops[s] ?? stops[0]!) : s);
+        if (stops) {
+          input.min = '0';
+          input.max = String(stops.length - 1);
+          input.step = '1';
+        } else {
+          input.min = String(row.min);
+          input.max = String(row.max);
+          input.step = String(row.step);
+        }
         const initial = Number(getSettings()[row.key]);
-        input.value = String(initial);
+        input.value = String(toSlider(initial));
         const valueEl = document.createElement('span');
         valueEl.className = 'settings-range-value';
         const fmt = row.format ?? ((v: number) => String(v));
@@ -656,7 +698,7 @@ export function mountSettingsPanel(): void {
         syncReset(initial);
 
         input.addEventListener('input', () => {
-          const v = Number(input.value);
+          const v = fromSlider(Number(input.value));
           valueEl.textContent = fmt(v);
           syncReset(v);
           updateSettings({ [row.key]: v } as Partial<Settings>);
@@ -665,7 +707,7 @@ export function mountSettingsPanel(): void {
         // stop the click from also retargeting the label to the input.
         resetBtn.addEventListener('click', (e) => {
           e.preventDefault();
-          input.value = String(defaultVal);
+          input.value = String(toSlider(defaultVal));
           valueEl.textContent = fmt(defaultVal);
           syncReset(defaultVal);
           updateSettings({ [row.key]: defaultVal } as Partial<Settings>);
@@ -674,7 +716,7 @@ export function mountSettingsPanel(): void {
         rowEl.appendChild(wrap);
         inputSyncs.push((s) => {
           const v = Number(s[row.key]);
-          input.value = String(v);
+          input.value = String(toSlider(v));
           valueEl.textContent = fmt(v);
           syncReset(v);
         });

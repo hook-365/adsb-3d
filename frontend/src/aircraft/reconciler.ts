@@ -754,13 +754,27 @@ function refreshTrail(
   trailLength: number,
 ): void {
   let points: readonly TrailPoint[] | undefined = store.trails(a.hex);
-  // User trail-length cap (settings.trailLength; 0 = full). Render-side
-  // slice so history keeps accumulating and a longer setting restores
-  // instantly. The selected aircraft is exempt — selection extends its
-  // trail to unlimited (extendTrailForSelection in main.ts) and that
-  // inspection feature outranks the clutter cap.
-  if (points && trailLength > 0 && !entry.isSelected && points.length > trailLength) {
-    points = points.slice(-trailLength);
+  // User trail-length cap (settings.trailLength, MINUTES; -1 = full,
+  // 0 = none). Truncated by sample timestamp — points arrive ~1/s in
+  // flight but only ~1/min parked, so time is the honest unit. Render-
+  // side slice so history keeps accumulating and a longer setting
+  // restores instantly. The selected aircraft is exempt — selection
+  // extends its trail to unlimited (extendTrailForSelection in main.ts)
+  // and that inspection feature outranks the clutter cap.
+  if (points && trailLength >= 0 && !entry.isSelected) {
+    if (trailLength === 0) {
+      points = undefined;
+    } else {
+      const cutoffMs = Date.now() - trailLength * 60_000;
+      let first = points.length;
+      for (let i = 0; i < points.length; i++) {
+        if (points[i]!.ms >= cutoffMs) {
+          first = i;
+          break;
+        }
+      }
+      if (first > 0) points = points.slice(first);
+    }
   }
   if (points && points.length >= 2 && xrMode) {
     points = decimateTrailForXr(points);
@@ -787,7 +801,7 @@ function refreshTrail(
   // on every append, which the append path can't represent.
   if (
     !xrMode &&
-    (trailLength === 0 || entry.isSelected) &&
+    (trailLength < 0 || entry.isSelected) &&
     entry.lastTrailLength >= 2 &&
     n > entry.lastTrailLength &&
     firstMs === entry.lastTrailFirstMs &&
@@ -1220,7 +1234,7 @@ export class AircraftReconciler {
     entry.selectionRing.visible = selected;
     // The selected aircraft is exempt from the user trail-length cap, so
     // selection flips need a trail rebuild to apply / lift the truncation.
-    if (getSettings().trailLength > 0) entry.lastTrailRev = -1;
+    if (getSettings().trailLength >= 0) entry.lastTrailRev = -1;
     entry.material.emissiveIntensity = selected ? 1.6 : 1.0;
     entry.labelEl.classList.toggle('selected', selected);
     entry.trailSolid.material = selected ? TRAIL_MAT_SOLID_SELECTED : TRAIL_MAT_SOLID;

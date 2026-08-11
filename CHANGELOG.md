@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-11
+
+### Changed
+
+- **Trail length is now in minutes.** The slider steps through 0, 1, 2,
+  5, 10, 15, 30, 60 minutes, and full, and truncation happens by sample
+  timestamp instead of point count — "5 min" means five real minutes of
+  history even for parked aircraft that sample sparsely. Stored
+  point-based values from 0.8.0-0.8.3 migrate automatically.
+
 ## [0.8.3] - 2026-08-11
 
 ### Added
