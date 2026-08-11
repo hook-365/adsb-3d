@@ -8,6 +8,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-11
+
+### Added
+
+- **Diorama clipping (issue #6).** New "Diorama clipping" toggle + size
+  slider (0.1-2.0 m): in VR/AR the airspace clips to an open-top box
+  anchored where the scope is placed, so passthrough AR reads as a desk
+  ornament. Zooming never moves the map vertically while the box is
+  active, free-fly works in AR with the box on (the world slides under
+  the fixed frame), and clipped-away aircraft can't be selected.
+- **XR follow mode.** "Follow selected aircraft" toggle: the world
+  slides horizontally so the selection holds position over the diorama
+  (or wherever it was when follow engaged). Both new toggles also live
+  on a new wrist-menu page 4.
+- **Stereo info panel.** In desktop side-by-side stereo, selecting an
+  aircraft shows a per-eye info card (callsign, type/operator, route,
+  altitude with climb/descent, speed, heading, squawk, range) — DOM
+  panels straddle the two halves and can't serve a phone viewer.
+
+### Fixed
+
+- The heatmap now mounts under the XR world root, so it moves and
+  scales with the scene in VR/AR instead of floating in room space.
+- The XR selection cone points down the laser instead of the controller
+  body.
+- Leaving VR/AR with diorama clipping enabled no longer leaves the
+  desktop view clipped (appeared as a darkened, empty scope).
+
 ## [0.8.2] - 2026-08-10
 
 ### Fixed

@@ -26,6 +26,8 @@ export const miscStrings = {
   'misc.xr_place': 'Place scope',
   'misc.xr_ground_icons': 'Ground icons',
   'misc.xr_trails': 'Trails',
+  'misc.xr_diorama': 'Diorama clip',
+  'misc.xr_follow': 'Follow',
   'misc.xr_shape': 'Aircraft shape',
   'misc.xr_shape_cone': 'Cone',
   'misc.xr_shape_sphere': 'Sphere',

@@ -24,6 +24,8 @@ export const miscStrings = {
   'misc.xr_place': 'Colocar radar',
   'misc.xr_ground_icons': 'Iconos de suelo',
   'misc.xr_trails': 'Estelas',
+  'misc.xr_diorama': 'Diorama',
+  'misc.xr_follow': 'Seguir',
   'misc.xr_shape': 'Forma de aeronave',
   'misc.xr_shape_cone': 'Cono',
   'misc.xr_shape_sphere': 'Esfera',

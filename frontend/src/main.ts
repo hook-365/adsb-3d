@@ -26,6 +26,8 @@ import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
 import { setWristMenuActions, XrWristMenu } from './world/xr-wrist-menu';
 import { XrArPlace } from './world/xr-ar-place';
+import { clearDiorama, dioramaCenter, setDioramaBox } from './world/diorama-clip';
+import { StereoPanel } from './ui/stereo-panel';
 import { faceWorldPoint, setupXrLocomotion } from './world/xr-locomotion';
 import { distanceFromHomeNm } from './core/coords';
 import { getActiveFeed, getFeeds, getFeedMode } from './feed/feeds';
@@ -136,6 +138,8 @@ subscribeSettings((s) => {
 // Controllers are inert until a session is presenting, so registering
 // them eagerly at boot is fine.
 const xrBillboard = new XrBillboard(world.xrRoot);
+// Desktop-stereo detail panel: camera child, one copy per eye for free.
+const stereoPanel = new StereoPanel(world.camera);
 const xrWristMenu = new XrWristMenu();
 // AR place mode (issue #6): armed from the wrist menu, a gaze reticle
 // tracks real surfaces via hit-test and the next trigger drops the
@@ -146,6 +150,55 @@ const xrArPlace = new XrArPlace({
   scene: world.scene,
   xrRoot: world.xrRoot,
 });
+
+// ── Diorama clipping (issue #6 "desk ornament") ─────────────────────
+// The clip box anchors in metre space: at the scope origin on session
+// start, re-anchored by AR placement and by toggling the setting on
+// (which also recovers from recenter jumps). Cleared on session end.
+const dioramaOrigin = new Vector3();
+function syncDiorama(): void {
+  const s = getSettings();
+  // Gate on OUR XrState flag, not renderer.xr.isPresenting: on the
+  // session-end edge three still reports presenting while our event
+  // fires, and reading it here re-armed the box instead of clearing it —
+  // leaving the desktop view clipped to a 0.9 m nothing (tyzbit's
+  // "display darkens until diorama is toggled off").
+  if (dioramaWasPresenting && s.dioramaClip) {
+    setDioramaBox(dioramaOrigin, s.dioramaSize);
+  } else {
+    clearDiorama();
+  }
+}
+xrArPlace.onPlaced((origin) => {
+  dioramaOrigin.copy(origin);
+  syncDiorama();
+});
+let dioramaWasPresenting = false;
+subscribeXr((s) => {
+  // Registered after the session-setup subscriber above, so on the
+  // start edge xrRoot.position already holds the session seed.
+  if (s.presenting && !dioramaWasPresenting) dioramaOrigin.copy(world.xrRoot.position);
+  dioramaWasPresenting = s.presenting;
+  syncDiorama();
+});
+let prevDioramaClip = getSettings().dioramaClip;
+let prevDioramaSize = getSettings().dioramaSize;
+subscribeSettings((s) => {
+  if (s.dioramaClip === prevDioramaClip && s.dioramaSize === prevDioramaSize) return;
+  if (s.dioramaClip && !prevDioramaClip) dioramaOrigin.copy(world.xrRoot.position);
+  prevDioramaClip = s.dioramaClip;
+  prevDioramaSize = s.dioramaSize;
+  syncDiorama();
+});
+
+// ── XR follow mode state (tick logic lives in the render loop) ──────
+const XR_FOLLOW_LERP = 0.12;
+const xrFollowTarget = new Vector3();
+let xrFollowAnchor: Vector3 | null = null;
+function xrFollowAnchorSeed(worldPos: Vector3): Vector3 {
+  xrFollowAnchor = worldPos.clone();
+  return xrFollowAnchor;
+}
 setWristMenuActions({
   toggleArPlace: () => {
     xrArPlace.toggle();
@@ -305,8 +358,14 @@ const xrLocomotion = setupXrLocomotion({
   // In AR with hit-test, free-fly translation would slide a placed
   // scope off its real surface (issue #6) — force scope-style movement
   // there. AR devices without hit-test keep free-fly (their only way
-  // to position the map manually). VR is unaffected.
-  freeflyAllowed: () => getXrState().presentingMode !== 'ar' || !xrArPlace.isSupported(),
+  // to position the map manually). VR is unaffected. With the diorama
+  // box active the world slides UNDER a fixed frame, so free-fly is the
+  // whole point — the placed illusion survives it (tyzbit's issue #6
+  // note that free-fly seemed intended to work).
+  freeflyAllowed: () =>
+    getXrState().presentingMode !== 'ar' ||
+    !xrArPlace.isSupported() ||
+    getSettings().dioramaClip,
   // Orbit the selected aircraft when one is picked (matches the desktop
   // follow-cam), else fall back to the scope center. positionOf returns a
   // fresh Vector3 in xrRoot-local space; localToWorld maps it into the
@@ -499,6 +558,9 @@ function applySelection(hex: string | null): void {
     seededSearchHex = null;
   }
   xrSelectedHex = hex;
+  // New target: drop the XR follow anchor so it re-captures at the new
+  // aircraft's current spot instead of yanking the world across the room.
+  xrFollowAnchor = null;
   reconciler.setSelected(hex);
   aircraftDetail.setSelected(hex);
   followHex = hex;
@@ -686,7 +748,9 @@ subscribeXr((s) => {
 
 const session = initSession({
   store,
-  scene: world.scene,
+  // xrRoot, not scene: the heatmap draws scene-unit airspace and must
+  // move/scale with the world in XR (and get diorama-clipped).
+  scene: world.xrRoot,
   hooks: {
     onFeedChanged(next) {
       // Selection is per-feed — routes/airframes won't carry over.
@@ -846,6 +910,14 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     xrBillboard.hide();
   }
 
+  // Stereo info panel (issue #6 "panels rendered in both eyes"): the
+  // detail-card essentials on a camera-parented canvas plane, so
+  // StereoEffect draws one correct copy per half. Desktop stereo only —
+  // in a real headset the wrist menu + billboard cover this.
+  stereoPanel.update(
+    stereoDesktop && xrSelectedHex ? (store.snapshot.get(xrSelectedHex) ?? null) : null,
+  );
+
   // Wrist-menu hover: each frame in XR, raycast the right controller's
   // forward axis against the menu and update its highlighted row. Cheap
   // (one intersectObject call against a single Plane).
@@ -856,6 +928,23 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     xrLocomotion.tick(dt);
     // AR place-mode reticle follows the gaze hit point.
     if (xrFrame) xrArPlace.tick(xrFrame);
+    // XR follow (issue #6): slide the world horizontally so the selected
+    // aircraft stays over its anchor — the diorama box center when
+    // clipping is on, else wherever the aircraft was when follow engaged
+    // (lazy capture handles every engagement path). Runs after locomotion
+    // so the two never fight within a frame; Y is untouched so the
+    // ground stays on the desk and altitude reads naturally.
+    if (getSettings().xrFollow && xrSelectedHex) {
+      const local = reconciler.positionOf(xrSelectedHex);
+      if (local) {
+        const worldPos = world.xrRoot.localToWorld(local);
+        const target = dioramaCenter(xrFollowTarget) ?? xrFollowAnchor ?? xrFollowAnchorSeed(worldPos);
+        world.xrRoot.position.x += (target.x - worldPos.x) * XR_FOLLOW_LERP;
+        world.xrRoot.position.z += (target.z - worldPos.z) * XR_FOLLOW_LERP;
+      }
+    } else if (xrFollowAnchor) {
+      xrFollowAnchor = null;
+    }
     // Perf telemetry (issue #6: "runs poorly at every quality"):
     // frame time + draw stats every 5 s, visible via the remote-
     // inspected headset console. Quality-independent slowness means

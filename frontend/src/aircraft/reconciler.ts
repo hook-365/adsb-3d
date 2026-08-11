@@ -43,6 +43,7 @@ import { getSettings, subscribeSettings, type AircraftShapeStyle } from '../core
 import { getTheme, subscribeTheme } from '../core/theme';
 import { passesFilter } from '../core/filter';
 import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
+import { DIORAMA_PLANES } from '../world/diorama-clip';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -104,6 +105,9 @@ const themeThree = () => getTheme().tokens.three;
 const LINE_MATERIALS: LineMaterial[] = [];
 function lineMaterial(params: ConstructorParameters<typeof LineMaterial>[0]): LineMaterial {
   const m = new LineMaterial(params);
+  // Diorama clipping (world/diorama-clip.ts): shared plane array, empty
+  // unless the XR desk-ornament box is active.
+  m.clippingPlanes = DIORAMA_PLANES;
   LINE_MATERIALS.push(m);
   return m;
 }
@@ -312,6 +316,7 @@ const EMERGENCY_RING_MATERIAL = new MeshBasicMaterial({
   opacity: 0.85,
   depthWrite: false,
   side: DoubleSide,
+  clippingPlanes: DIORAMA_PLANES,
 });
 
 // Per-entry materials (selection ring + ping ring) — tracked in Sets so the
@@ -437,6 +442,7 @@ function buildEntry(a: Aircraft): RenderEntry {
     metalness: 0.4,
     roughness: 0.3,
     transparent: true,
+    clippingPlanes: DIORAMA_PLANES,
   });
   material.emissive = headColor.clone().multiplyScalar(0.35);
 
@@ -491,6 +497,7 @@ function buildEntry(a: Aircraft): RenderEntry {
     opacity: 0.85,
     depthWrite: false,
     side: DoubleSide,
+    clippingPlanes: DIORAMA_PLANES,
   });
   SELECTION_MATERIALS.add(selectionMaterial);
   const selectionRing = new Mesh(SELECTION_RING_GEOMETRY, selectionMaterial);
@@ -514,6 +521,7 @@ function buildEntry(a: Aircraft): RenderEntry {
     opacity: 0,
     depthWrite: false,
     side: DoubleSide,
+    clippingPlanes: DIORAMA_PLANES,
   });
   PING_MATERIALS.add(pingMaterial);
   const pingRing = new Mesh(PING_RING_GEOMETRY, pingMaterial);

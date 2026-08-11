@@ -96,6 +96,20 @@ export interface Settings {
   /** Subscribe to the ACARS message stream + render its UI. */
   acarsMessages: boolean;
   /**
+   * XR "desk ornament" clipping: clip the airspace to an open-top box
+   * around the placed scope so it reads as a bounded diorama in
+   * passthrough AR (issue #6). No effect outside an XR session.
+   */
+  dioramaClip: boolean;
+  /** Diorama box width in metres (wall to wall). */
+  dioramaSize: number;
+  /**
+   * XR follow mode: while presenting with an aircraft selected, the
+   * world slides horizontally so the aircraft stays over the scope
+   * center (or the diorama box center when clipping is on).
+   */
+  xrFollow: boolean;
+  /**
    * Side-by-side stereo rendering (left/right eye halves) for Google
    * Cardboard or a phone VR headset. CSS2D labels are hidden while on —
    * a single DOM layer can't be split per-eye.
@@ -180,6 +194,9 @@ const DEFAULTS: Settings = {
   aircraftLabels: true,
   labelDensity: 0,
   acarsMessages: true,
+  dioramaClip: false,
+  dioramaSize: 0.9,
+  xrFollow: false,
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,

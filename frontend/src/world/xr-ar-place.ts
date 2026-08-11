@@ -18,6 +18,7 @@ import {
   Object3D,
   RingGeometry,
   type Group,
+  type Vector3,
   type WebGLRenderer,
 } from 'three';
 import { getTheme, subscribeTheme } from '../core/theme';
@@ -160,9 +161,19 @@ export class XrArPlace {
       this.xrRoot.position.copy(this.reticle.position);
       console.info(TAG, 'scope placed', this.reticle.position);
       this.stop();
+      // Notify after stop() so listeners see the disarmed state. The
+      // diorama clip box re-centers on the placed origin from this.
+      for (const cb of this.placedListeners) cb(this.xrRoot.position);
     }
     return true;
   }
+
+  /** Subscribe to successful placements (metre-space scope origin). */
+  onPlaced(cb: (origin: Vector3) => void): void {
+    this.placedListeners.add(cb);
+  }
+
+  private readonly placedListeners = new Set<(origin: Vector3) => void>();
 
   dispose(): void {
     this.stop();

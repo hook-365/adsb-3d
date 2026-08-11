@@ -112,6 +112,12 @@ export const settingsStrings = {
     'continuously.',
   'settings.xr_turn_snap': 'Snap (30°)',
   'settings.xr_turn_smooth': 'Smooth',
+  'settings.diorama_clip': 'Diorama clipping',
+  'settings.diorama_clip_desc': 'In VR/AR, clip the airspace to a box around the placed scope so it reads as a desk ornament.',
+  'settings.diorama_size': 'Diorama size',
+  'settings.diorama_size_desc': 'Width of the clipping box in metres.',
+  'settings.xr_follow': 'Follow selected aircraft',
+  'settings.xr_follow_desc': 'In VR/AR, the world slides so the selected aircraft stays put over the scope.',
   'settings.terrain_3d': '3D terrain',
   'settings.terrain_3d_desc':
     'Raise the basemap to real ground elevation. Rings and markers follow ' +

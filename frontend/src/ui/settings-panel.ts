@@ -361,6 +361,28 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'dioramaClip',
+        label: t('settings.diorama_clip'),
+        description: t('settings.diorama_clip_desc'),
+      },
+      {
+        kind: 'range',
+        key: 'dioramaSize',
+        label: t('settings.diorama_size'),
+        description: t('settings.diorama_size_desc'),
+        min: 0.1,
+        max: 2,
+        step: 0.1,
+        format: (v) => `${v.toFixed(1)} m`,
+      },
+      {
+        kind: 'toggle',
+        key: 'xrFollow',
+        label: t('settings.xr_follow'),
+        description: t('settings.xr_follow_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'stereo',
         label: t('settings.stereo'),
         description: t('settings.stereo_desc'),

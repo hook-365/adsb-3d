@@ -16,7 +16,7 @@
 // continuations compare their captured value and bail if the user
 // pivoted away mid-load.
 
-import type { Scene } from 'three';
+import type { Object3D } from 'three';
 import { AircraftStore, setDefaultTrailCap } from '../aircraft/store';
 import { addAcarsMessage, clearAcars } from '../aircraft/acars-store';
 import {
@@ -105,7 +105,9 @@ function formatWindowLabel(window: { startMs: number; endMs: number } | null): s
 
 export function initSession(opts: {
   store: AircraftStore;
-  scene: Scene;
+  // Root the heatmap mounts under — xrRoot so it moves/scales with the
+  // world in XR (it was previously the raw Scene: an XR placement bug).
+  scene: Object3D;
   hooks: SessionHooks;
 }): SessionApi {
   const { store, scene, hooks } = opts;

@@ -27,6 +27,7 @@
 import { Vector3, type Group, type PerspectiveCamera, type WebGLRenderer } from 'three';
 import { getSettings, updateSettings } from '../core/settings';
 import { getXrState } from '../core/xr';
+import { dioramaActive } from './diorama-clip';
 
 // ── Tunables (real-world units / radians / seconds) ────────────────────
 
@@ -127,7 +128,13 @@ export function setupXrLocomotion(opts: {
     if (fixedPoint) {
       const r = next / cur;
       xrRoot.position.x = fixedPoint.x - r * (fixedPoint.x - xrRoot.position.x);
-      xrRoot.position.y = fixedPoint.y - r * (fixedPoint.y - xrRoot.position.y);
+      // With the diorama box active, never move the world vertically:
+      // scaling about an elevated aircraft would sink the ground through
+      // the box floor (tyzbit's issue #6 video — "zooming clips the map
+      // out"). The desk height is part of the diorama illusion.
+      if (!dioramaActive()) {
+        xrRoot.position.y = fixedPoint.y - r * (fixedPoint.y - xrRoot.position.y);
+      }
       xrRoot.position.z = fixedPoint.z - r * (fixedPoint.z - xrRoot.position.z);
     }
   }

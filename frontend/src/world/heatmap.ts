@@ -16,6 +16,7 @@ import {
   altitudeLightness,
 } from '../core/altitude-color';
 import { toScene } from '../core/coords';
+import { DIORAMA_PLANES } from './diorama-clip';
 import type { HistoricalSample } from '../feed/historical';
 
 // 3D airway-density visualization. Renders every aircraft's path as
@@ -77,6 +78,7 @@ export class HeatmapLayer {
     geom.setAttribute('position', new BufferAttribute(new Float32Array(0), 3));
     geom.setAttribute('color', new BufferAttribute(new Float32Array(0), 3));
     this.material = new LineBasicMaterial({
+      clippingPlanes: DIORAMA_PLANES,
       vertexColors: true,
       transparent: true,
       opacity: SEGMENT_OPACITY,

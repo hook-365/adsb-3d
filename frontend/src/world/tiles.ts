@@ -14,6 +14,7 @@ import { HOME, RANGE_NM, TERRAIN_ENABLED } from '../core/config';
 import { toScene } from '../core/coords';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { elevationFtAt, ensureElevationTile } from './elevation';
+import { DIORAMA_PLANES } from './diorama-clip';
 
 // Web Mercator basemap. nginx proxies /tiles/{provider}/{z}/{y}/{x} with a
 // local on-disk cache pre-warmed by entrypoint.sh at zoom 8. Other zooms
@@ -144,7 +145,12 @@ function buildTileMesh(z: number, x: number, y: number, texture: Texture, dropY:
 
   // DoubleSide because our triangle winding produces a -y face normal;
   // the camera looks down at +y so without DoubleSide the tile is culled.
-  const material = new MeshBasicMaterial({ map: texture, depthWrite: false, side: DoubleSide });
+  const material = new MeshBasicMaterial({
+    map: texture,
+    depthWrite: false,
+    side: DoubleSide,
+    clippingPlanes: DIORAMA_PLANES,
+  });
   const mesh = new Mesh(geom, material);
   mesh.renderOrder = -10; // draw before transparent overlays (rings, trails, altitude lines)
   mesh.userData = { kind: 'tile', z, x, y };
@@ -193,7 +199,12 @@ function buildTerrainTileMesh(z: number, x: number, y: number, texture: Texture,
   geom.setAttribute('uv', new BufferAttribute(uvs, 2));
   geom.setIndex(new BufferAttribute(indices, 1));
 
-  const material = new MeshBasicMaterial({ map: texture, depthWrite: true, side: DoubleSide });
+  const material = new MeshBasicMaterial({
+    map: texture,
+    depthWrite: true,
+    side: DoubleSide,
+    clippingPlanes: DIORAMA_PLANES,
+  });
   const mesh = new Mesh(geom, material);
   mesh.renderOrder = -10;
   mesh.userData = { kind: 'tile', z, x, y };

@@ -21,6 +21,7 @@ import { getTheme, subscribeTheme } from '../core/theme';
 import { setRenderer as registerXrRenderer } from '../core/xr';
 import { groundSceneY, subscribeElevation } from './elevation';
 import { createTileLayer } from './tiles';
+import { DIORAMA_PLANES } from './diorama-clip';
 
 export interface World {
   scene: Scene;
@@ -60,6 +61,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // we render. For VR / desktop the scene.background Color still fills
   // the frame opaquely, so this doesn't change those modes.
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
+  // Per-material diorama clipping (world/diorama-clip.ts) needs this on;
+  // costs nothing while every material's plane array is empty.
+  renderer.localClippingEnabled = true;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
 
@@ -135,6 +139,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       transparent: true,
       opacity: isMajor ? 0.65 : 0.25,
       depthWrite: false,
+      clippingPlanes: DIORAMA_PLANES,
     });
     (isMajor ? ringMaterials.major : ringMaterials.minor).push(mat);
     // 256 theta segments (not 128): with 3D terrain the rings conform to
@@ -191,6 +196,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       color: new Color(initialTheme.homeMarker),
       transparent: true,
       opacity: 0.95,
+      clippingPlanes: DIORAMA_PLANES,
       depthWrite: false,
     });
     homeMesh = new Mesh(new CircleGeometry(1.2, 24), homeMaterial);
@@ -272,6 +278,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   const camera = new PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 4000);
   camera.position.set(0, 220, 280);
   camera.lookAt(0, 0, 0);
+  // In the scene graph so camera-parented objects render (the stereo
+  // info panel rides the camera to appear identically in both eyes).
+  scene.add(camera);
 
   // Passthrough state. We stash the opaque sky + fog so AR mode can
   // null them out and VR / desktop can restore identically. Tile layer

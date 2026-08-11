@@ -14,6 +14,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { getTheme, subscribeTheme } from '../core/theme';
+import { insideDiorama } from './diorama-clip';
 
 // XR controller wiring for Phase 2. Each controller gets a small cone
 // visualizer (so the user can see where the device is in space — no
@@ -128,6 +129,10 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
     for (const hit of hits) {
       const ud = hit.object.userData as { kind?: string; hex?: string };
       if (ud.kind === 'aircraft-pick' && typeof ud.hex === 'string') {
+        // Raycasting ignores clip planes, so aircraft the diorama walls
+        // hide would still be selectable through them — reject hits whose
+        // point lies outside the active box (no-op when clipping is off).
+        if (!insideDiorama(hit.point)) continue;
         onPick(ud.hex);
         return;
       }
@@ -139,17 +144,16 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
     const controller = renderer.xr.getController(i) as Group;
     controller.name = `xr-controller-${i}`;
 
-    // The cone marks the physical device, so it tracks gripSpace (the
-    // runtime's hand pose). The target ray originates offset from the
-    // grip on most controllers (Quest ~1-2 cm), which made a grip-parented
-    // cone sit visibly off the laser — issue #6's "selection cone is
-    // off-center" nitpick. Laser + raycast stay on targetRaySpace so aim
-    // is exactly what the runtime reports.
+    // Cone, laser, and raycast ALL live on targetRaySpace so what you see
+    // is exactly where you aim. The cone used to track gripSpace (the
+    // physical device pose), but grip and target ray diverge by a couple
+    // of degrees on Quest controllers, which read as the cone pointing
+    // away from its own laser (tyzbit's issue #6 video).
     const grip = renderer.xr.getControllerGrip(i) as Group;
     grip.name = `xr-controller-grip-${i}`;
     const cone = new Mesh(coneGeometry, coneMaterial);
     cone.name = 'xr-controller-cone';
-    grip.add(cone);
+    controller.add(cone);
 
     const laser = new Line(lineGeometry, lineMaterial);
     laser.name = 'xr-controller-laser';

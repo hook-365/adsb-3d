@@ -109,6 +109,12 @@ export const settingsStrings = {
     'kontinuierlich.',
   'settings.xr_turn_snap': 'Schrittweise (30°)',
   'settings.xr_turn_smooth': 'Fließend',
+  'settings.diorama_clip': 'Diorama-Beschnitt',
+  'settings.diorama_clip_desc': 'Beschneidet in VR/AR den Luftraum auf eine Box um das platzierte Radar, wie ein Schreibtisch-Diorama.',
+  'settings.diorama_size': 'Diorama-Größe',
+  'settings.diorama_size_desc': 'Breite der Beschnittbox in Metern.',
+  'settings.xr_follow': 'Ausgewähltem Flugzeug folgen',
+  'settings.xr_follow_desc': 'In VR/AR verschiebt sich die Welt, sodass das ausgewählte Flugzeug an Ort und Stelle bleibt.',
   'settings.terrain_3d': '3D-Gelände',
   'settings.terrain_3d_desc':
     'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +

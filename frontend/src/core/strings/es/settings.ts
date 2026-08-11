@@ -109,6 +109,12 @@ export const settingsStrings = {
     'Continuo gira sin pausas.',
   'settings.xr_turn_snap': 'Por pasos (30°)',
   'settings.xr_turn_smooth': 'Continuo',
+  'settings.diorama_clip': 'Recorte de diorama',
+  'settings.diorama_clip_desc': 'En RV/RA, recorta el espacio aéreo a una caja alrededor del radar colocado, como un adorno de escritorio.',
+  'settings.diorama_size': 'Tamaño del diorama',
+  'settings.diorama_size_desc': 'Ancho de la caja de recorte en metros.',
+  'settings.xr_follow': 'Seguir aeronave seleccionada',
+  'settings.xr_follow_desc': 'En RV/RA el mundo se desliza para que la aeronave seleccionada permanezca en su sitio.',
   'settings.terrain_3d': 'Terreno 3D',
   'settings.terrain_3d_desc':
     'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +

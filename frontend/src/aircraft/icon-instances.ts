@@ -11,6 +11,7 @@ import {
   Vector3,
 } from 'three';
 import { getShapeTexture } from './shapes';
+import { DIORAMA_PLANES } from '../world/diorama-clip';
 
 // Instanced ground-icon pool (issue #6). The per-aircraft ground silhouette
 // used to be its own Mesh + Material + 6x6 draped PlaneGeometry — one draw
@@ -111,6 +112,7 @@ function buildBucket(shapeName: string, capacity: number): ShapeBucket {
     depthWrite: false,
     side: DoubleSide,
     vertexColors: true,
+    clippingPlanes: DIORAMA_PLANES,
   });
   const mesh = new InstancedMesh(geometry, material, capacity);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);

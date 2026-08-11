@@ -45,6 +45,7 @@ import {
   subscribeTheme,
   THEME_OPTIONS,
 } from '../core/theme';
+import { roundRect, withAlpha } from './canvas-ui';
 // Aliased: `t` is the conventional local name for theme tokens in the draw
 // code below.
 import { t as tr } from '../core/i18n';
@@ -266,6 +267,11 @@ const PAGES: MenuRow[][] = [
     ]),
     toggleRow('historyTrails', () => tr('misc.xr_trails')),
   ],
+  [
+    // Diorama page (issue #6 desk-ornament + follow).
+    toggleRow('dioramaClip', () => tr('misc.xr_diorama')),
+    toggleRow('xrFollow', () => tr('misc.xr_follow')),
+  ],
 ];
 
 /** Settings keys the wrist menu drives — action rows (`__` ids) excluded. */
@@ -287,6 +293,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
+  dioramaSize: 'slider needs the stepper pattern; panel-only, clip toggle is on page 4',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */
@@ -556,44 +563,8 @@ export class XrWristMenu {
   }
 }
 
-// ── drawing helpers (duplicated from xr-billboard to keep the modules
-// independent — these would graduate to a shared file once we have a
-// third VR canvas surface) ──────────────────────────────────────────
-
-function withAlpha(color: string, alpha: number): string {
-  if (color.startsWith('#') && color.length === 7) {
-    const r = parseInt(color.slice(1, 3), 16);
-    const g = parseInt(color.slice(3, 5), 16);
-    const b = parseInt(color.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  const nums = color.match(/[\d.]+/g);
-  if (nums && nums.length >= 3) {
-    return `rgba(${nums[0]}, ${nums[1]}, ${nums[2]}, ${alpha})`;
-  }
-  return color;
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+// Drawing helpers live in world/canvas-ui.ts, shared with the XR
+// billboard and the stereo panel (the predicted third canvas surface).
 
 // Re-export Settings so consumers wiring this module don't also need
 // to import core/settings just for the type.
