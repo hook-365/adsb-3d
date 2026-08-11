@@ -45,6 +45,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   key) and returns 503 if either background task has actually died.
   Military-database JSON parsing (~15 MB) moved off the event loop via
   `asyncio.to_thread`.
+- **Bounded DB pool acquisition.** `asyncpg.Pool.acquire()` has no default
+  timeout at all (it waits forever, not the 30s a stale comment in
+  track-service claimed) — every `acquire()` call in both track-service
+  and acars-service now passes an explicit `DB_ACQUIRE_TIMEOUT` (10s;
+  3s on `/health` so the 5s Docker healthcheck curl gets a real 503
+  instead of hanging), which is what actually makes the existing
+  `except asyncio.TimeoutError -> 503` handlers reachable.
 
 ## [0.8.4] - 2026-08-11
 

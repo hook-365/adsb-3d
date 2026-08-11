@@ -70,6 +70,12 @@ ws_broadcast_task = None
 # be able to hold up the tick loop indefinitely.
 WS_SEND_TIMEOUT = 2.0
 
+# Pool.acquire() has no default timeout (it waits forever); every acquire
+# below passes this explicitly so a saturated pool surfaces as a 503 instead
+# of a hung request. /health uses a shorter timeout of its own (see below)
+# so the 5s Docker healthcheck curl gets a real answer.
+DB_ACQUIRE_TIMEOUT = 10.0
+
 
 def _default_poll_seconds(feeder_url: str) -> float:
     """
@@ -160,7 +166,7 @@ async def initialize_database_schema(db_pool):
     logger.info("=" * 60)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             # Check if our tables exist
             tables_exist = await conn.fetchval("""
                 SELECT EXISTS (
@@ -290,7 +296,7 @@ async def run_database_migrations(db_pool):
     logger.info("=" * 60)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             # Check if compression is enabled
             logger.info("Checking TimescaleDB compression status...")
             compression_enabled = await conn.fetchval("""
@@ -576,7 +582,7 @@ class AircraftTrackCollector:
             return
 
         try:
-            async with self.db_pool.acquire() as conn:
+            async with self.db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
                 async with conn.transaction():
                     # Bulk insert positions via COPY protocol (fastest bulk insert method)
                     await conn.copy_records_to_table(
@@ -711,8 +717,12 @@ async def startup():
         # bursty backfill requests when the frontend boots — a fresh
         # page on the Europe feed batches up to 200 hex backfills, plus
         # a per-aircraft selection-extension can fire while the bulk is
-        # still in flight. 20 was tight; 40 keeps us well under the
-        # default 30s acquire timeout even under multi-tab load.
+        # still in flight. 20 was tight; 40 keeps us comfortable even
+        # under multi-tab load. asyncpg's Pool.acquire() has no default
+        # timeout at all — it waits forever by default — so every
+        # acquire() call below passes DB_ACQUIRE_TIMEOUT explicitly,
+        # which is what actually makes the `except asyncio.TimeoutError
+        # -> 503` handlers reachable.
         db_pool = await asyncpg.create_pool(
             **DB_CONFIG,
             min_size=2,
@@ -727,7 +737,7 @@ async def startup():
         )
 
         # Test connection
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             version = await conn.fetchval('SELECT version()')
             logger.info(f"Connected to: {version}")
 
@@ -1000,7 +1010,7 @@ async def health_check():
     now = time.monotonic()
     if now - _health_cache["ts"] > HEALTH_CACHE_TTL:
         try:
-            async with db_pool.acquire() as conn:
+            async with db_pool.acquire(timeout=3.0) as conn:
                 await conn.fetchval("SELECT 1")
             _health_cache.update(ts=now, ok=True, err=None)
         except Exception as e:
@@ -1149,7 +1159,7 @@ async def get_aircraft_track(
         query_args = (icao.lower(), start, end)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, *query_args, timeout=30)
 
         positions = [
@@ -1223,7 +1233,7 @@ async def get_bulk_tracks_timelapse(
     )
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             filters = ["time BETWEEN $1 AND $2"]
             params: list = [start, end]
 
@@ -1380,7 +1390,7 @@ async def get_metadata_bulk(payload: dict):
         WHERE icao = ANY($1::text[])
     """
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, hexes)
         results = {
             row['icao']: {
@@ -1464,7 +1474,7 @@ async def get_heatmap(
         GROUP BY cy, cx
     """
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, *params, timeout=30)
         cells = [
             {
@@ -1524,7 +1534,7 @@ async def get_unique_aircraft(
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, start, end, min_sightings)
 
         return [
@@ -1567,7 +1577,7 @@ async def get_stats_summary(
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             row = await conn.fetchrow(query, start)
 
         return {
@@ -1617,7 +1627,7 @@ async def get_rarity_stats():
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             stats = await conn.fetchrow(query)
             examples = await conn.fetch(examples_query)
 
@@ -1673,7 +1683,7 @@ async def get_aircraft_type_stats(limit: int = Query(50, le=200)):
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, limit)
 
         return [
@@ -1713,7 +1723,7 @@ async def get_military_stats():
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             summary = await conn.fetchrow(summary_query)
             top_military = await conn.fetch(top_military_query)
 
@@ -1773,7 +1783,7 @@ async def get_records(days: int = Query(30, ge=1, le=365)):
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, start)
 
         records = {}
@@ -1828,7 +1838,7 @@ async def get_time_analysis(days: int = Query(7, ge=1, le=90)):
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             hourly = await conn.fetch(hourly_query, start)
             daily = await conn.fetch(daily_query, start)
 
@@ -1898,7 +1908,7 @@ async def get_database_stats():
     }
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             total_size = await conn.fetchrow(queries['total_size'])
             table_sizes = await conn.fetch(queries['table_sizes'])
             compression = await conn.fetchrow(queries['compression_stats'])

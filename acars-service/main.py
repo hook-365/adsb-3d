@@ -53,6 +53,12 @@ db_pool = None
 collector_instance = None
 collector_task = None
 
+# Pool.acquire() has no default timeout (it waits forever); every acquire
+# below passes this explicitly so a saturated pool surfaces as a 503 instead
+# of a hung request. /health uses a shorter timeout of its own so the
+# Docker healthcheck curl gets a real answer.
+DB_ACQUIRE_TIMEOUT = 10.0
+
 # WebSocket connection manager for real-time streaming
 class ConnectionManager:
     """Manages WebSocket connections for real-time message broadcasting."""
@@ -103,7 +109,7 @@ async def initialize_database_schema(db_pool):
     logger.info("=" * 60)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             # Check if our table exists
             table_exists = await conn.fetchval("""
                 SELECT EXISTS (
@@ -298,7 +304,7 @@ class ACARSCollector:
             return
 
         try:
-            async with self.db_pool.acquire() as conn:
+            async with self.db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
                 await conn.executemany('''
                     INSERT INTO acars_messages
                     (time, flight, reg, icao, label, block_id, msg_num, text,
@@ -477,7 +483,7 @@ async def startup():
             min_size=2,
             max_size=10,
             command_timeout=60,
-            timeout=10.0  # Connection acquisition timeout
+            timeout=10.0  # New-connection CONNECT timeout, not an acquire() timeout
         )
         logger.info(f"Database pool created: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
 
@@ -548,7 +554,7 @@ async def health_check():
     now = time.monotonic()
     if now - _acars_health_cache["ts"] > ACARS_HEALTH_CACHE_TTL:
         try:
-            async with db_pool.acquire() as conn:
+            async with db_pool.acquire(timeout=3.0) as conn:
                 # Lightweight liveness check first, then stats in same connection.
                 await conn.fetchval("SELECT 1")
                 row = await conn.fetchrow("""
@@ -621,7 +627,7 @@ async def get_recent_messages(
     params.append(limit)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, *params)
 
         return {
@@ -687,7 +693,7 @@ async def get_messages_by_flight(
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, f"%{flight}%", start, limit)
 
         return {
@@ -752,7 +758,7 @@ async def get_messages_by_aircraft(
     """
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             rows = await conn.fetch(query, f"%{identifier}%", start, limit)
 
         return {
@@ -832,7 +838,7 @@ async def get_stats(days: int = Query(7, ge=1, le=30)):
     }
 
     try:
-        async with db_pool.acquire() as conn:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
             summary = await conn.fetchrow(queries['summary'], start)
             by_label = await conn.fetch(queries['by_label'], start)
             by_hour = await conn.fetch(queries['by_hour'], start)
