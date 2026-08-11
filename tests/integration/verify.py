@@ -94,7 +94,7 @@ async def verify_nginx_and_config(session: aiohttp.ClientSession) -> None:
 
 async def verify_track_api(session: aiohttp.ClientSession) -> None:
     health = await get_json(session, f"{VIEWER_URL}/api/health")
-    check(health == {"status": "healthy", "database": "connected", "collector": "running"}, "track health through nginx")
+    check(health == {"status": "healthy", "database": "connected", "collector": "running", "broadcast": "running"}, "track health through nginx")
 
     track = await eventually_json(
         session,

@@ -31,6 +31,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   label/frequency now pass through a shared `escapeHtml` (new
   `ui/html.ts`); previously a hostile upstream could inject markup.
 
+### Fixed
+
+- **track-service broadcast loop and collector no longer die silently.**
+  `ws_broadcast_loop` tolerates a non-object feeder JSON body and non-dict
+  aircraft entries instead of crashing the tick loop, and the whole
+  fetch/diff/broadcast body is wrapped so one bad tick logs and continues
+  instead of killing the loop for the container's lifetime. The collector's
+  `run()` now restarts `collect_loop` with backoff (5s doubling to 300s)
+  on an unhandled exception instead of exiting once. WS sends get a 2s
+  per-socket timeout so a stalled browser tab can't hang the broadcast.
+  `/health` now reports task liveness (`collector` and a new `broadcast`
+  key) and returns 503 if either background task has actually died.
+  Military-database JSON parsing (~15 MB) moved off the event loop via
+  `asyncio.to_thread`.
+
 ## [0.8.4] - 2026-08-11
 
 ### Changed

@@ -62,9 +62,13 @@ collector_task = None
 
 # Live diff broadcast state (see /ws/live)
 ws_subscribers: set = set()
-_ws_subscribers_lock: asyncio.Lock | None = None  # initialized in startup; guards add/discard/snapshot
+_ws_subscribers_lock = asyncio.Lock()  # guards add/discard/snapshot
 ws_last_snapshot: dict = {}        # hex (lower) -> last seen RawAircraft dict
 ws_broadcast_task = None
+
+# Per-send timeout for WS broadcast fan-out; a stalled browser tab shouldn't
+# be able to hold up the tick loop indefinitely.
+WS_SEND_TIMEOUT = 2.0
 
 
 def _default_poll_seconds(feeder_url: str) -> float:
@@ -390,6 +394,26 @@ async def run_database_migrations(db_pool):
 # AIRCRAFT TRACK COLLECTOR (Background Task)
 # ============================================================================
 
+def _parse_military_db(content: str) -> dict:
+    """
+    Parse the ~15 MB tar1090-db JSON blob and extract military aircraft
+    (flag "10") into a compact hex -> info dict. Run off the event loop via
+    asyncio.to_thread — json.loads + this dict comprehension over ~15 MB
+    blocks the loop for long enough to stall WS ticks otherwise.
+    """
+    db_data = json.loads(content)
+    military_db = {}
+    for icao_hex, aircraft_info in db_data.items():
+        if len(aircraft_info) >= 3 and aircraft_info[2] == "10":
+            military_db[icao_hex.upper()] = {
+                "tail": aircraft_info[0],
+                "type": aircraft_info[1],
+                "flag": aircraft_info[2],
+                "description": aircraft_info[3] if len(aircraft_info) > 3 else ""
+            }
+    return military_db
+
+
 class AircraftTrackCollector:
     def __init__(self, db_pool):
         self.db_pool = db_pool  # Use shared pool
@@ -429,18 +453,7 @@ class AircraftTrackCollector:
                 ) as response:
                     if response.status == 200:
                         content = await response.text()
-                        db_data = json.loads(content)
-
-                        # Extract only military aircraft (flag "10")
-                        military_db = {}
-                        for icao_hex, aircraft_info in db_data.items():
-                            if len(aircraft_info) >= 3 and aircraft_info[2] == "10":
-                                military_db[icao_hex.upper()] = {
-                                    "tail": aircraft_info[0],
-                                    "type": aircraft_info[1],
-                                    "flag": aircraft_info[2],
-                                    "description": aircraft_info[3] if len(aircraft_info) > 3 else ""
-                                }
+                        military_db = await asyncio.to_thread(_parse_military_db, content)
 
                         self.military_database = military_db
                         self.military_db_last_updated = datetime.now(timezone.utc)
@@ -635,13 +648,36 @@ class AircraftTrackCollector:
                 await asyncio.sleep(self.collection_interval)
 
     async def run(self):
-        """Start the collector"""
-        try:
-            # Load military aircraft database (opens its own short-lived session)
-            await self.load_military_database()
-            await self.collect_loop()
-        except Exception as e:
-            logger.error(f"Collector fatal error: {e}", exc_info=True)
+        """
+        Start the collector, restarting collect_loop with backoff if it ever
+        exits via an unhandled exception. collect_loop already retries most
+        transient errors internally; this is the outer safety net so a bug
+        there doesn't permanently kill collection for the life of the
+        container.
+        """
+        delay = 5.0
+        max_delay = 300.0
+        while self.running:
+            started = time.monotonic()
+            try:
+                # Load military aircraft database (opens its own short-lived session)
+                await self.load_military_database()
+                await self.collect_loop()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Collector fatal error: {e}", exc_info=True)
+                if not self.running:
+                    break
+                if time.monotonic() - started > 60:
+                    delay = 5.0
+                else:
+                    delay = min(delay * 2, max_delay)
+                logger.info(f"Restarting collector in {delay:.0f}s...")
+                await asyncio.sleep(delay)
+            else:
+                # collect_loop returned normally (self.running went False)
+                break
 
     def stop(self):
         """Stop the collector gracefully"""
@@ -656,8 +692,7 @@ class AircraftTrackCollector:
 @app.on_event("startup")
 async def startup():
     """Initialize database connection pool and start collector"""
-    global db_pool, collector_instance, collector_task, _ws_subscribers_lock
-    _ws_subscribers_lock = asyncio.Lock()
+    global db_pool, collector_instance, collector_task
 
     # Database configuration
     DB_CONFIG = {
@@ -786,7 +821,7 @@ async def _ws_broadcast(message: dict):
             return
         targets = list(ws_subscribers)
     results = await asyncio.gather(
-        *(ws.send_json(message) for ws in targets),
+        *(asyncio.wait_for(ws.send_json(message), WS_SEND_TIMEOUT) for ws in targets),
         return_exceptions=True,
     )
     dead = [ws for ws, r in zip(targets, results) if isinstance(r, Exception)]
@@ -794,6 +829,11 @@ async def _ws_broadcast(message: dict):
         async with _ws_subscribers_lock:
             for ws in dead:
                 ws_subscribers.discard(ws)
+        for ws in dead:
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
 
 async def ws_broadcast_loop():
@@ -813,75 +853,87 @@ async def ws_broadcast_loop():
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         while True:
-            tick_started = time.monotonic()
-            tick_count += 1
-            is_heartbeat_tick = tick_count % WS_HEARTBEAT_EVERY == 0
-            fetch_ok = False
-            added: list = []
-            updated: list = []
-            removed: list = []
-            now_ts = time.time()
-
             try:
-                async with session.get(f"{feeder_url}/data/aircraft.json") as resp:
-                    if resp.status == 200:
-                        body = await resp.json()
-                        fetch_ok = True
+                tick_started = time.monotonic()
+                tick_count += 1
+                is_heartbeat_tick = tick_count % WS_HEARTBEAT_EVERY == 0
+                fetch_ok = False
+                added: list = []
+                updated: list = []
+                removed: list = []
+                now_ts = time.time()
+
+                try:
+                    async with session.get(f"{feeder_url}/data/aircraft.json") as resp:
+                        if resp.status == 200:
+                            body = await resp.json()
+                            if isinstance(body, dict):
+                                fetch_ok = True
+                            else:
+                                logger.warning("feeder returned non-object JSON body; ignoring tick")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.warning(f"ws broadcast feeder fetch failed: {e}")
+
+                if fetch_ok:
+                    # Publish to the shared latest-snapshot slot first so the DB
+                    # collector can sample it on its own cadence.
+                    latest_feeder_body = body
+                    latest_feeder_fetched_monotonic = time.monotonic()
+
+                    raw_aircraft_list = body.get('aircraft')
+                    aircraft_list = raw_aircraft_list if isinstance(raw_aircraft_list, list) else []
+                    now_ts = body.get('now') or now_ts
+
+                    current: dict = {}
+                    for a in aircraft_list:
+                        if not isinstance(a, dict):
+                            continue
+                        h = a.get('hex')
+                        if not h:
+                            continue
+                        current[h.lower()] = a
+
+                    prev = ws_last_snapshot
+                    added = [a for h, a in current.items() if h not in prev]
+                    removed = [h for h in prev if h not in current]
+
+                    if is_heartbeat_tick:
+                        # Heartbeat: every still-present hex counts as "updated"
+                        # so its fresh `seen` is shipped to clients.
+                        updated = [a for h, a in current.items() if h in prev]
+                    else:
+                        updated = [a for h, a in current.items()
+                                   if h in prev and _has_meaningful_change(prev[h], a)]
+
+                    ws_last_snapshot = current
+
+                # Emit on diff ticks AND on heartbeat ticks regardless of fetch
+                # outcome. The heartbeat path keeps feeder_age_s flowing to
+                # clients so they can detect a dead-upstream feeder (the
+                # otherwise-healthy WS would lie about being live forever).
+                has_diff_content = bool(added or updated or removed)
+                if ws_subscribers and (has_diff_content or is_heartbeat_tick):
+                    try:
+                        await _ws_broadcast({
+                            "type": "diff",
+                            "now": now_ts,
+                            "feeder_age_s": _feeder_age_seconds(),
+                            "added": added,
+                            "updated": updated,
+                            "removed": removed,
+                        })
+                    except Exception as e:
+                        logger.debug(f"ws broadcast send failed: {e}")
+
+                elapsed = time.monotonic() - tick_started
+                await asyncio.sleep(max(0.0, WS_TICK_SECONDS - elapsed))
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(f"ws broadcast feeder fetch failed: {e}")
-
-            if fetch_ok:
-                # Publish to the shared latest-snapshot slot first so the DB
-                # collector can sample it on its own cadence.
-                latest_feeder_body = body
-                latest_feeder_fetched_monotonic = time.monotonic()
-
-                aircraft_list = body.get('aircraft') or []
-                now_ts = body.get('now') or now_ts
-
-                current: dict = {}
-                for a in aircraft_list:
-                    h = a.get('hex')
-                    if not h:
-                        continue
-                    current[h.lower()] = a
-
-                prev = ws_last_snapshot
-                added = [a for h, a in current.items() if h not in prev]
-                removed = [h for h in prev if h not in current]
-
-                if is_heartbeat_tick:
-                    # Heartbeat: every still-present hex counts as "updated"
-                    # so its fresh `seen` is shipped to clients.
-                    updated = [a for h, a in current.items() if h in prev]
-                else:
-                    updated = [a for h, a in current.items()
-                               if h in prev and _has_meaningful_change(prev[h], a)]
-
-                ws_last_snapshot = current
-
-            # Emit on diff ticks AND on heartbeat ticks regardless of fetch
-            # outcome. The heartbeat path keeps feeder_age_s flowing to
-            # clients so they can detect a dead-upstream feeder (the
-            # otherwise-healthy WS would lie about being live forever).
-            has_diff_content = bool(added or updated or removed)
-            if ws_subscribers and (has_diff_content or is_heartbeat_tick):
-                try:
-                    await _ws_broadcast({
-                        "type": "diff",
-                        "now": now_ts,
-                        "feeder_age_s": _feeder_age_seconds(),
-                        "added": added,
-                        "updated": updated,
-                        "removed": removed,
-                    })
-                except Exception as e:
-                    logger.debug(f"ws broadcast send failed: {e}")
-
-            elapsed = time.monotonic() - tick_started
-            await asyncio.sleep(max(0.0, WS_TICK_SECONDS - elapsed))
+                logger.error(f"ws broadcast loop tick failed: {e}", exc_info=True)
+                continue
 
 
 @app.websocket("/ws/live")
@@ -957,11 +1009,19 @@ async def health_check():
     if not _health_cache["ok"]:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {_health_cache['err']}")
 
-    collector_status = "running" if collector_instance and collector_instance.running else "stopped"
+    # Task liveness, not just the `running` flag — a crashed/backoff-restarting
+    # collector still has `running` True, but a genuinely dead task (one that
+    # exited its while-loop after stop()) shows as .done().
+    collector_status = "running" if collector_task and not collector_task.done() else "stopped"
+    broadcast_status = "running" if ws_broadcast_task and not ws_broadcast_task.done() else "stopped"
+    if (collector_task and collector_task.done()) or (ws_broadcast_task and ws_broadcast_task.done()):
+        raise HTTPException(status_code=503, detail="Service unhealthy: background task exited")
+
     return {
         "status": "healthy",
         "database": "connected",
         "collector": collector_status,
+        "broadcast": broadcast_status,
     }
 
 
