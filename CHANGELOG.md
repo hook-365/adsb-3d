@@ -20,6 +20,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   write in `main.ts` is now gated on the count actually changing.
   `world/scene.ts` coalesces bursts of elevation-tile decodes into one
   `drapeGroundChrome()` call per animation frame instead of one per tile.
+- **Frontend perf: aircraft list sort and ACARS chip updates.**
+  `ui/aircraft-list.ts`'s `recomputeSorted` now precomputes each row's sort
+  key once (flight text, or a single `distanceFromHomeNm` call for the
+  distance column) instead of re-deriving it inside every pairwise
+  comparison of the sort. New ACARS messages no longer trigger a full
+  list re-render — a mounted row's tag chips repaint directly from its
+  recomputed mask, which also fixes ACARS chips previously appearing one
+  data-tick late (the mask recompute was gated on the store's rev counter,
+  which ACARS arrivals don't bump).
 
 ### Security
 

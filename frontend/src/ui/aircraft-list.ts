@@ -165,35 +165,54 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
     }
   }
 
-  function compare(a: Aircraft, b: Aircraft): number {
+  // Precomputed-key row: `key` is whatever compareRows needs for the active
+  // sort column, computed once per row up front instead of re-derived (trig
+  // for distance, string concat for flight) on every pairwise comparison
+  // inside the O(n log n) sort.
+  interface SortRow {
+    a: Aircraft;
+    emerg: boolean;
+    key: string | number;
+  }
+
+  function sortKeyFor(a: Aircraft): string | number {
+    switch (sort.key) {
+      case 'flight':
+        return rowText(a).primary;
+      case 'alt':
+        return a.altFt;
+      case 'spd':
+        return a.groundSpeedKt ?? -1;
+      case 'dist':
+      default:
+        return distanceFromHomeNm(a.lat, a.lon);
+    }
+  }
+
+  function compareRows(x: SortRow, y: SortRow): number {
     // Emergency aircraft pin to the top regardless of the user's chosen sort.
     // Within the emergency cohort and within the normal cohort, fall through
     // to the normal comparator.
-    if (!!a.emergency !== !!b.emergency) return a.emergency ? -1 : 1;
+    if (x.emerg !== y.emerg) return x.emerg ? -1 : 1;
     const dir = sort.asc ? 1 : -1;
-    switch (sort.key) {
-      case 'flight':
-        return dir * rowText(a).primary.localeCompare(rowText(b).primary);
-      case 'alt':
-        return dir * (a.altFt - b.altFt);
-      case 'spd':
-        return dir * ((a.groundSpeedKt ?? -1) - (b.groundSpeedKt ?? -1));
-      case 'dist':
-      default:
-        return dir * (distanceFromHomeNm(a.lat, a.lon) - distanceFromHomeNm(b.lat, b.lon));
-    }
+    if (typeof x.key === 'string') return dir * x.key.localeCompare(y.key as string);
+    return dir * (x.key - (y.key as number));
   }
 
   function recomputeSorted(snapshot: ReadonlyMap<string, Aircraft>): Aircraft[] {
     // passesFilter folds in both the status filter (filter buttons) and the
     // free-text search query, so the panel and the 3D scene stay in lockstep.
-    const arr: Aircraft[] = [];
+    const rows: SortRow[] = [];
     for (const a of snapshot.values()) {
-      if (passesFilter(a)) arr.push(a);
+      if (passesFilter(a)) rows.push({ a, emerg: !!a.emergency, key: sortKeyFor(a) });
     }
-    arr.sort(compare);
-    sortedHexes = new Array<string>(arr.length);
-    for (let i = 0; i < arr.length; i++) sortedHexes[i] = arr[i]!.hex;
+    rows.sort(compareRows);
+    sortedHexes = new Array<string>(rows.length);
+    const arr: Aircraft[] = new Array<Aircraft>(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      sortedHexes[i] = rows[i]!.a.hex;
+      arr[i] = rows[i]!.a;
+    }
     return arr;
   }
 
@@ -524,16 +543,35 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   applyFilterIndicator(getFilter());
   syncClearAffordances();
 
-  // Re-render when an ACARS message arrives so the new "A" chip on the
-  // affected aircraft appears immediately. We can't piggyback on the
-  // store's rev (ACARS state lives in a separate store), so invalidate
-  // the tag-mask cache for the affected row directly when it's mounted.
+  // Surface a new ACARS message's "A" chip immediately. We can't piggyback
+  // on the store's rev (ACARS state lives in a separate store) — but a full
+  // render() here was also a full re-sort + re-render of the whole visible
+  // window for a change that only ever affects one row's tag chips.
+  //
+  // hex === '' is acars-store's clear-all signal (feed switch): fall back
+  // to a full render since every row's ACARS chip may need to disappear.
+  // Otherwise: if the affected row happens to be mounted, recompute its
+  // tag mask against the current snapshot and paint the chips directly —
+  // no re-sort, no full-render. An unmounted row needs nothing; createRow
+  // seeds lastTagMask at -1, so it renders correctly the moment it scrolls
+  // into view. This also fixes the chip otherwise appearing one data-tick
+  // late: updateRowContents (and its tagMask recompute) only runs on a
+  // store rev bump, and ACARS arrivals don't bump the store rev.
   subscribeAcars((hex) => {
-    const li = liByHex.get(hex.toLowerCase());
-    if (li) {
-      li.__refs!.lastTagMask = -1; // force renderRowTags next visible-pass
+    if (hex === '') {
+      render(store.snapshot);
+      return;
     }
-    render(store.snapshot);
+    const li = liByHex.get(hex.toLowerCase());
+    if (!li) return;
+    const a = store.snapshot.get(hex.toLowerCase());
+    if (!a) return;
+    const refs = li.__refs!;
+    const mask = tagMask(a);
+    if (mask !== refs.lastTagMask) {
+      renderRowTags(refs.tags, mask, a.emergency);
+      refs.lastTagMask = mask;
+    }
   });
 
   applyColumnIndicator();
