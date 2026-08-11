@@ -62,6 +62,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Env-driven CORS and trusted-proxy real IP.** The hardcoded wildcard
+  `Access-Control-Allow-Origin: *` on `/data/`, `/api/`, `/voice/calls`, and
+  `/acars-api/` (and the equivalent blocks generated per remote feed) is
+  gone — CORS headers are now off by default (same-origin through nginx) and
+  only sent when `CORS_ALLOW_ORIGIN` is set (validated against `*` or a
+  single `http(s)://host` origin). `/api/` and `/acars-api/` now
+  `proxy_hide_header` the FastAPI backends' own wildcard CORS headers so
+  nginx's env-driven value is authoritative — a browser rejects a response
+  with two `Access-Control-Allow-Origin` headers. New `TRUSTED_PROXY_CIDR`
+  (comma-separated CIDRs, validated) configures `set_real_ip_from` +
+  `real_ip_header X-Forwarded-For` + `real_ip_recursive on` so per-client
+  rate limiting sees the real client IP when this container sits behind
+  another reverse proxy; empty/off by default. The public tile/image proxy
+  CORS headers (used for map imagery) are unchanged.
 - **Security response headers on every route; constrained third-party image
   proxies.** nginx now sends `X-Content-Type-Options: nosniff`,
   `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors

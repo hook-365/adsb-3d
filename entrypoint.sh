@@ -529,6 +529,64 @@ _validate_host "TRACK_API_HOST" "${TRACK_API_HOST}"
 _validate_host "ACARS_API_HOST" "${ACARS_API_HOST}"
 
 # =============================================================================
+# Env-driven CORS (CORS_ALLOW_ORIGIN)
+# =============================================================================
+# The app is same-origin through this nginx by default — CORS_HEADERS stays
+# empty (feature off) unless CORS_ALLOW_ORIGIN is explicitly set, e.g. when
+# another origin consumes /data/, /api/, /voice/calls, or /acars-api/
+# directly. When set, it replaces the hardcoded CORS triplets in the
+# template AND is embedded directly into the two generated feed blocks below.
+CORS_HEADERS=""
+if [ -n "${CORS_ALLOW_ORIGIN:-}" ]; then
+    if ! echo "${CORS_ALLOW_ORIGIN}" | grep -qE '^([*]|https?://[A-Za-z0-9.:-]+)$'; then
+        echo "[ERROR] CORS_ALLOW_ORIGIN must be '*' or an http(s) origin like https://example.com, got: '${CORS_ALLOW_ORIGIN}'"
+        exit 1
+    fi
+    CORS_ORIGIN_JS=$(_js_escape "${CORS_ALLOW_ORIGIN}")
+    CORS_HEADERS="add_header Access-Control-Allow-Origin \"${CORS_ORIGIN_JS}\" always;
+        add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS' always;
+        add_header Access-Control-Allow-Headers 'Origin, Content-Type, Accept' always;"
+    echo "[cors] CORS_ALLOW_ORIGIN set — nginx will send Access-Control-Allow-Origin: ${CORS_ALLOW_ORIGIN}"
+else
+    echo "[cors] CORS_ALLOW_ORIGIN not set — no CORS headers added (app is same-origin through nginx)"
+fi
+export CORS_HEADERS
+
+# =============================================================================
+# Trusted fronting reverse proxy (TRUSTED_PROXY_CIDR)
+# =============================================================================
+# Needed for per-client rate limiting (limit_req keys on $binary_remote_addr)
+# to see real client IPs when this container sits behind another reverse
+# proxy. Empty/off by default.
+REAL_IP_DIRECTIVES=""
+if [ -n "${TRUSTED_PROXY_CIDR:-}" ]; then
+    SET_REAL_IP_LINES=""
+    OLD_IFS="$IFS"
+    IFS=','
+    for CIDR in ${TRUSTED_PROXY_CIDR}; do
+        IFS="$OLD_IFS"
+        CIDR=$(echo "$CIDR" | sed 's/^ *//;s/ *$//')
+        [ -z "$CIDR" ] && continue
+        if ! echo "$CIDR" | grep -qE '^[0-9a-fA-F.:]+(/[0-9]{1,3})?$'; then
+            echo "[ERROR] TRUSTED_PROXY_CIDR entry is not a valid CIDR/IP: '${CIDR}'"
+            exit 1
+        fi
+        SET_REAL_IP_LINES="${SET_REAL_IP_LINES}    set_real_ip_from ${CIDR};
+"
+        IFS=','
+    done
+    IFS="$OLD_IFS"
+    if [ -n "$SET_REAL_IP_LINES" ]; then
+        REAL_IP_DIRECTIVES="${SET_REAL_IP_LINES}    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;"
+        echo "[real-ip] TRUSTED_PROXY_CIDR set — trusting X-Forwarded-For from: ${TRUSTED_PROXY_CIDR}"
+    fi
+else
+    echo "[real-ip] TRUSTED_PROXY_CIDR not set — using the direct connecting IP for rate limiting"
+fi
+export REAL_IP_DIRECTIVES
+
+# =============================================================================
 # Dynamic Feed Configuration (nginx proxy blocks generated from FEEDS_CONFIG)
 # =============================================================================
 # FEEDS_CONFIG JSON array defines feeds. For each remote feed (non-local),
@@ -608,9 +666,7 @@ if [ -n "${FEEDS_CONFIG}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
         proxy_cache_bypass \$http_upgrade;
         proxy_connect_timeout 10s;
         proxy_read_timeout 30s;
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods 'GET, OPTIONS';
-        add_header Access-Control-Allow-Headers 'Origin, Content-Type, Accept';
+        ${CORS_HEADERS}
     }
 "
 
@@ -663,9 +719,7 @@ if [ -n "${FEEDS_CONFIG}" ] && [ "${FEEDS_CONFIG}" != "null" ]; then
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods 'GET, OPTIONS';
-        add_header Access-Control-Allow-Headers 'Origin, Content-Type, Accept';
+        ${CORS_HEADERS}
     }
 "
 
@@ -704,7 +758,7 @@ export VFRMAP_CYCLE
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then
