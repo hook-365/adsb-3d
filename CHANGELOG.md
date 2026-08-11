@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **pytest suites for `track-service` and `acars-service`.** Pure-logic
+  coverage: WS diff gating, resolution/downsample math, feeder-poll
+  heuristics, the route cache + adsb.im circuit breaker, `ensure_utc`,
+  and 4xx validation paths for `track-service`; ACARS message field
+  mapping/coercion (including the `flight` whitespace/null fix), the
+  `/labels` endpoint, and the WS hub-status payload for `acars-service`.
+  Each service gets its own `requirements-dev.txt` + `pytest.ini`; both
+  name their module `main.py`; run pytest from inside each service
+  directory, never in one session across both.
 - **Unit test coverage for `aircraft/reconciler`.** Real Three.js objects
   under jsdom (no WebGL) exercise entry build/remove/re-add, rev-gating
   (label refresh skipped on a `lastSeenMs`-only resync), the emergency
