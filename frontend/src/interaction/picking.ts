@@ -1,5 +1,6 @@
 import { PerspectiveCamera, Raycaster, Vector2 } from 'three';
 import type { AircraftReconciler } from '../aircraft/reconciler';
+import { PICK_LAYER } from '../aircraft/reconciler';
 
 // Click/tap-to-select on the 3D scene, mouse + touch + pen.
 //
@@ -38,6 +39,10 @@ export function attachPicking(opts: PickingOptions): void {
   canvas.style.touchAction = 'none';
 
   const raycaster = new Raycaster();
+  // Scope to the pick layer: pick proxies (invisible spheres around each
+  // cone) and the ground-icon InstancedMesh. Skips triangle tests against
+  // the visible cone/silhouette meshes, whose hits pick() discards anyway.
+  raycaster.layers.set(PICK_LAYER);
   const ndc = new Vector2();
   const active = new Map<number, ActivePointer>();
   let aborted = false;

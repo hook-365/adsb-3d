@@ -29,6 +29,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   recomputed mask, which also fixes ACARS chips previously appearing one
   data-tick late (the mask recompute was gated on the store's rev counter,
   which ACARS arrivals don't bump).
+- **Frontend perf: reconciler pick layers, trail buffer disposal, windowed
+  trails.** Pick proxies and the ground-icon `InstancedMesh` now live on a
+  dedicated three.js render layer (`PICK_LAYER`), and both raycasters
+  (`interaction/picking.ts`, `world/xr-controllers.ts`) scope to it — a
+  click/tap/controller-select no longer triangle-tests every cone and
+  silhouette mesh on scope, only the (few) pickable proxies. `growTrailBuffer`
+  now allocates a fresh `LineSegmentsGeometry` on grow instead of rebinding
+  attributes onto the live one, so the old interleaved buffers actually get
+  disposed instead of orphaned. Trails under a length cap (settings.trailLength)
+  now track a windowed start index into the store's trail array instead of
+  slicing it down to the cap on every refresh — the tail-append fast path
+  applies under a cap too, and the window only advances (forcing one rebuild)
+  once enough head has actually expired (>64 points or >10% of the window).
 
 ### Security
 

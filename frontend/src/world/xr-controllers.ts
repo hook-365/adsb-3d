@@ -15,6 +15,7 @@ import {
 } from 'three';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { insideDiorama } from './diorama-clip';
+import { PICK_LAYER } from '../aircraft/reconciler';
 
 // XR controller wiring for Phase 2. Each controller gets a small cone
 // visualizer (so the user can see where the device is in space — no
@@ -109,6 +110,8 @@ export function setupXrControllers(opts: XrControllersOptions): XrControllersHan
   );
 
   const raycaster = new Raycaster();
+  // Scope to the pick layer — see interaction/picking.ts for why.
+  raycaster.layers.set(PICK_LAYER);
   const tmpOrigin = new Vector3();
   const tmpDir = new Vector3();
 

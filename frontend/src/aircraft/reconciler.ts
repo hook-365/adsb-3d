@@ -288,6 +288,16 @@ interface RenderEntry {
   lastTrailLastB: number;
   lastSolidIdx: number;
   lastDashedIdx: number;
+  // Windowed-trail state (trail-length cap). trailStartIdx is the first
+  // index of store.trails(hex) currently rendered — advanced only when
+  // enough head has expired to be worth a rebuild (see refreshTrail's
+  // hysteresis), so the common case (append at the tail, nothing expires)
+  // never re-walks or re-slices the full array. lastStoreFirstMs is the
+  // *store* array's points[0].ms (independent of any window), used purely
+  // to detect a store-side head mutation (trimToCap, mergeHistory prepend,
+  // setTrail replacement) that invalidates trailStartIdx outright.
+  trailStartIdx: number;
+  lastStoreFirstMs: number;
 }
 
 // Ground-projected aircraft shape icon. Sized in scene units; per-aircraft
@@ -343,6 +353,14 @@ subscribeTheme((tokens) => {
 // One shared material serves every proxy since it's never rendered.
 const PICK_GEOMETRY = new SphereGeometry(4.5, 12, 8);
 const PICK_MATERIAL = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+
+// Dedicated three.js render layer for everything a raycaster should be
+// allowed to hit: pick proxies and the ground-icon InstancedMesh. Both
+// interaction/picking.ts and world/xr-controllers.ts scope their raycaster
+// to this layer so it never tests triangles against cones/silhouettes —
+// pick() discards those hits anyway (see PICK_GEOMETRY's comment above),
+// but three still had to run the full triangle test to find that out.
+export const PICK_LAYER = 1;
 
 function aircraftLabelText(a: Aircraft): string {
   if (a.callsign) return a.callsign;
@@ -424,7 +442,17 @@ function growTrailBuffer(
 ): { side: TrailSide; verts: number } | null {
   if (requiredVerts <= currentVerts) return null;
   const newVerts = Math.max(currentVerts * 2, requiredVerts);
-  const side = bindTrailAttributes(line.geometry as LineSegmentsGeometry, newVerts);
+  // three has no attribute-level dispose — rebinding attributes onto the
+  // *existing* geometry orphaned the old interleaved buffers' GPU memory
+  // with nothing left pointing at them to free it. Allocate a fresh
+  // geometry, bind the new (larger) attributes onto that, then dispose the
+  // old geometry outright and swap it in. The caller always does a full
+  // trail rewrite after a grow, so there's no data to carry over.
+  const newGeom = new LineSegmentsGeometry();
+  const side = bindTrailAttributes(newGeom, newVerts);
+  const oldGeom = line.geometry as LineSegmentsGeometry;
+  line.geometry = newGeom;
+  oldGeom.dispose();
   return { side, verts: newVerts };
 }
 
@@ -489,6 +517,7 @@ function buildEntry(a: Aircraft): RenderEntry {
   const pickProxy = new Mesh(PICK_GEOMETRY, PICK_MATERIAL);
   pickProxy.userData = { kind: 'aircraft-pick', hex: a.hex };
   pickProxy.visible = false;
+  pickProxy.layers.set(PICK_LAYER);
   cone.add(pickProxy);
 
   const selectionMaterial = new MeshBasicMaterial({
@@ -582,7 +611,9 @@ function buildEntry(a: Aircraft): RenderEntry {
     lastTrailLastG: 0,
     lastTrailLastB: 0,
     lastSolidIdx: 0,
-    lastDashedIdx: 0
+    lastDashedIdx: 0,
+    trailStartIdx: 0,
+    lastStoreFirstMs: Number.NaN
   };
 }
 
@@ -746,80 +777,141 @@ function decimateTrailForXr(points: readonly TrailPoint[]): TrailPoint[] {
   return out.reverse();
 }
 
+/** Zero out the visible trail geometry and reset all append/window state —
+ *  shared by "no points at all" and "cap set to 0" (trail hidden). */
+function clearTrailVisual(entry: RenderEntry): void {
+  entry.trailSolid.geometry.instanceCount = 0;
+  entry.trailDashed.geometry.instanceCount = 0;
+  entry.lastTrailLength = 0;
+  entry.lastSolidIdx = 0;
+  entry.lastDashedIdx = 0;
+  entry.lastTrailFirstMs = Number.NaN;
+  entry.trailStartIdx = 0;
+}
+
+// Windowed trails (trail-length cap): instead of slicing store.trails(hex)
+// down to the cap window on every refresh (an O(n) allocation+copy every
+// time any point anywhere in the trail changes), we track trailStartIdx —
+// the first index of the *unsliced* store array currently on screen — and
+// only advance it when enough head has actually expired to be worth a
+// rebuild. A few stale points sitting just past the cutoff cost nothing
+// (they draw slightly past the requested window until the next rebuild);
+// re-walking and rewriting the whole trail on every single-point expiry
+// would cost a lot, for a cosmetic difference nobody would notice.
+const TRAIL_EXPIRE_SLACK_POINTS = 64;
+const TRAIL_EXPIRE_SLACK_FRACTION = 0.1;
+
 function refreshTrail(
   entry: RenderEntry,
   store: AircraftStore,
   a: Aircraft,
   xrMode: boolean,
   trailLength: number,
+  nowMs: number,
 ): void {
-  let points: readonly TrailPoint[] | undefined = store.trails(a.hex);
-  // User trail-length cap (settings.trailLength, MINUTES; -1 = full,
-  // 0 = none). Truncated by sample timestamp — points arrive ~1/s in
-  // flight but only ~1/min parked, so time is the honest unit. Render-
-  // side slice so history keeps accumulating and a longer setting
-  // restores instantly. The selected aircraft is exempt — selection
-  // extends its trail to unlimited (extendTrailForSelection in main.ts)
-  // and that inspection feature outranks the clutter cap.
-  if (points && trailLength >= 0 && !entry.isSelected) {
-    if (trailLength === 0) {
-      points = undefined;
-    } else {
-      const cutoffMs = Date.now() - trailLength * 60_000;
-      let first = points.length;
-      for (let i = 0; i < points.length; i++) {
-        if (points[i]!.ms >= cutoffMs) {
-          first = i;
-          break;
-        }
-      }
-      if (first > 0) points = points.slice(first);
-    }
-  }
-  if (points && points.length >= 2 && xrMode) {
-    points = decimateTrailForXr(points);
-  }
-  if (!points || points.length < 2) {
-    entry.trailSolid.geometry.instanceCount = 0;
-    entry.trailDashed.geometry.instanceCount = 0;
-    entry.lastTrailLength = 0;
-    entry.lastSolidIdx = 0;
-    entry.lastDashedIdx = 0;
-    entry.lastTrailFirstMs = Number.NaN;
+  const fullPoints = store.trails(a.hex);
+  if (!fullPoints || fullPoints.length === 0) {
+    clearTrailVisual(entry);
+    entry.lastStoreFirstMs = Number.NaN;
     return;
   }
 
-  const n = points.length;
-  const firstMs = points[0]!.ms;
+  // Store-side head mutation (trimToCap on append, mergeHistory prepend, or
+  // a wholesale setTrail replacement) invalidates any cached window start —
+  // the indices it was computed against no longer line up with this array.
+  const storeFirstMs = fullPoints[0]!.ms;
+  const storeHeadChanged = storeFirstMs !== entry.lastStoreFirstMs;
+  entry.lastStoreFirstMs = storeFirstMs;
 
-  // Fast path: trail grew only at the tail (firstMs unchanged, length up).
-  // Skips the per-point walk over the old portion of the trail, writing
-  // only the newly-arrived segments to the existing buffer slots. This is
-  // the common case post-Phase-1 since refreshTrail only fires when the
-  // store's trailRev advances and the typical mutation is appendTrail.
-  // Not in XR and not under a length cap: both re-phase the array head
-  // on every append, which the append path can't represent.
+  const prevStart = entry.trailStartIdx;
+  let start = storeHeadChanged || prevStart > fullPoints.length ? 0 : prevStart;
+  let forceRebuild = storeHeadChanged;
+
+  // User trail-length cap (settings.trailLength, MINUTES; -1 = full,
+  // 0 = none). The selected aircraft is exempt — selection extends its
+  // trail to unlimited (extendTrailForSelection in main.ts sets the
+  // store-side per-hex cap to infinity) and that inspection feature
+  // outranks the clutter cap, so the window is just the whole array.
+  if (trailLength >= 0 && !entry.isSelected) {
+    if (trailLength === 0) {
+      clearTrailVisual(entry);
+      return;
+    }
+    const cutoffMs = nowMs - trailLength * 60_000;
+    const windowLenBefore = fullPoints.length - start;
+    let s = start;
+    let expired = 0;
+    while (s < fullPoints.length && fullPoints[s]!.ms < cutoffMs) {
+      s++;
+      expired++;
+    }
+    if (expired > 0 && (expired > TRAIL_EXPIRE_SLACK_POINTS || expired > windowLenBefore * TRAIL_EXPIRE_SLACK_FRACTION)) {
+      start = s;
+      forceRebuild = true;
+    }
+    // Else: tolerate the stale expired head and keep the old `start` — the
+    // tail-append fast path below still applies.
+  } else {
+    start = 0;
+  }
+  entry.trailStartIdx = start;
+
+  const n = fullPoints.length;
+  if (n - start < 2) {
+    clearTrailVisual(entry);
+    entry.trailStartIdx = start;
+    return;
+  }
+
+  if (xrMode) {
+    // XR decimation always full-rebuilds off a fresh compact array — the
+    // stride re-phases on every append, which the tail-append fast path
+    // can't represent. Slicing here is fine: it only runs while presenting,
+    // where the vertex-budget win is worth the one allocation.
+    const decimated = decimateTrailForXr(start === 0 ? fullPoints : fullPoints.slice(start));
+    if (decimated.length < 2) {
+      clearTrailVisual(entry);
+      entry.trailStartIdx = start;
+      return;
+    }
+    rebuildTrailFull(entry, decimated, 0, decimated.length, decimated[0]!.ms);
+    return;
+  }
+
+  const firstMs = fullPoints[start]!.ms;
+
+  // Fast path: trail grew only at the tail (window start unchanged, length
+  // up). Skips the per-point walk over the rest of the trail, writing only
+  // the newly-arrived segments to the existing buffer slots. This is the
+  // common case since refreshTrail only fires when the store's trailRev
+  // advances and the typical mutation is appendTrail.
   if (
-    !xrMode &&
-    (trailLength < 0 || entry.isSelected) &&
+    !forceRebuild &&
+    start === prevStart &&
     entry.lastTrailLength >= 2 &&
     n > entry.lastTrailLength &&
     firstMs === entry.lastTrailFirstMs &&
-    tryAppendTrailTail(entry, points, n)
+    tryAppendTrailTail(entry, fullPoints, start, n)
   ) {
     return;
   }
 
   // Slow path: first refresh, mergeHistory prepended, setTrail replaced,
-  // head was trimmed by a bounded cap, or the fast path bailed because
-  // a buffer grow would lose the existing data.
-  rebuildTrailFull(entry, points, n, firstMs);
+  // the cap window advanced past its slack, or the fast path bailed
+  // because a buffer grow would lose the existing data.
+  rebuildTrailFull(entry, fullPoints, start, n, firstMs);
 }
 
 // Returns true on a successful tail-append; false if the new segments
 // would overflow the current buffer capacity (caller falls through to
 // rebuildTrailFull which handles buffer growth + full rewrite).
-function tryAppendTrailTail(entry: RenderEntry, points: readonly { lat: number; lon: number; altFt: number; ms: number }[], n: number): boolean {
+// `start` (the window's first rendered index) is accepted for symmetry with
+// rebuildTrailFull and as a reminder of the caller's invariant — the fast
+// path only runs when the window start hasn't moved since the last visit,
+// so entry.lastTrailLength (the previous n) is already >= start and the
+// append loop below (entry.lastTrailLength..n) never needs to consult it.
+function tryAppendTrailTail(entry: RenderEntry, points: readonly TrailPoint[], start: number, n: number): boolean {
+  void start;
   // Incremental pre-pass over only the new tail to size capacity needs.
   let extraSolid = 0;
   let extraDashed = 0;
@@ -924,7 +1016,7 @@ function markTrailUpdated(entry: RenderEntry, solidIdx: number, dashedIdx: numbe
   entry.trailDashed.geometry.instanceCount = dashedIdx / 2;
 }
 
-function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lon: number; altFt: number; ms: number }[], n: number, firstMs: number): void {
+function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], start: number, n: number, firstMs: number): void {
   // Pre-pass: count how many vertices each side actually needs. The
   // solid/dashed split depends on the time gap between consecutive samples,
   // so we have to classify before writing. The pass is cheap (one
@@ -934,8 +1026,8 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
   let neededSolidVerts = 0;
   let neededDashedVerts = 0;
   {
-    let prevMs = points[0]!.ms;
-    for (let i = 1; i < n; i++) {
+    let prevMs = points[start]!.ms;
+    for (let i = start + 1; i < n; i++) {
       const curMs = points[i]!.ms;
       if (curMs - prevMs >= TRAIL_GAP_THRESHOLD_MS) neededDashedVerts += 2;
       else neededSolidVerts += 2;
@@ -961,7 +1053,7 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
 
   let prevX = 0, prevY = 0, prevZ = 0, prevR = 0, prevG = 0, prevB = 0, prevMs = 0;
   {
-    const p0 = points[0]!;
+    const p0 = points[start]!;
     toScene(p0.lat, p0.lon, p0.altFt, tmpTrail);
     // altitudeColorCached returns a shared Color instance bucketed by
     // altitude — read .r/.g/.b directly into locals so we never have to
@@ -972,7 +1064,7 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly { lat: number; lo
     prevMs = p0.ms;
   }
 
-  for (let i = 1; i < n; i++) {
+  for (let i = start + 1; i < n; i++) {
     const p = points[i]!;
     toScene(p.lat, p.lon, p.altFt, tmpTrail);
     const cur = altitudeColorCached(p.altFt, false);
@@ -1432,7 +1524,7 @@ export class AircraftReconciler {
       }
       const trailRev = this.store.getTrailRev(a.hex);
       if (trailsOn && trailRev !== entry.lastTrailRev) {
-        refreshTrail(entry, this.store, a, this.xrMode, trailLen);
+        refreshTrail(entry, this.store, a, this.xrMode, trailLen, now);
         entry.lastTrailRev = trailRev;
       }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY

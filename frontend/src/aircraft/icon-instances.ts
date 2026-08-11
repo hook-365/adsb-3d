@@ -12,6 +12,7 @@ import {
 } from 'three';
 import { getShapeTexture } from './shapes';
 import { DIORAMA_PLANES } from '../world/diorama-clip';
+import { PICK_LAYER } from './reconciler';
 
 // Instanced ground-icon pool (issue #6). The per-aircraft ground silhouette
 // used to be its own Mesh + Material + 6x6 draped PlaneGeometry — one draw
@@ -124,6 +125,11 @@ function buildBucket(shapeName: string, capacity: number): ShapeBucket {
   mesh.frustumCulled = false;
   mesh.count = 0;
   mesh.userData = { kind: POOL_KIND, shapeName };
+  // Ground icons are pickable (click-to-select on the map icon, not just
+  // the 3D cone) — enable the dedicated pick layer alongside the default
+  // render layer (0) so interaction/picking.ts's scoped raycaster still
+  // finds it without every cone/silhouette triangle also being tested.
+  mesh.layers.enable(PICK_LAYER);
   return { mesh, colorAttr, hexes: [], cursor: 0, capacity };
 }
 
