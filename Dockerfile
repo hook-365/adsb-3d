@@ -27,9 +27,6 @@ RUN mkdir -p /var/cache/nginx/tiles
 # Built frontend
 COPY --from=frontend-build /app/frontend/dist/ /usr/share/nginx/html/
 
-# Tests directory
-COPY tests/ /usr/share/nginx/html/tests/
-
 # nginx configurations
 COPY nginx/http.conf /etc/nginx/conf.d/00-http.conf
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
@@ -46,9 +43,10 @@ RUN chmod +x /docker-healthcheck.sh
 
 # Non-root note: nginx master must run as root to bind port 80. Worker processes
 # automatically drop to the `nginx` user (uid 101) via the `user nginx;` directive
-# in the default config. File ownership is set accordingly.
-RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx/tiles \
-    && chown nginx:nginx /entrypoint.sh /docker-healthcheck.sh
+# in the default config. Workers only READ the webroot, so it stays root-owned
+# (world-readable) — a compromised worker must not be able to rewrite served JS
+# or the root-executed entrypoint. Only the proxy cache needs worker writes.
+RUN chown -R nginx:nginx /var/cache/nginx/tiles
 
 EXPOSE 80
 
