@@ -944,6 +944,8 @@ async def ws_broadcast_loop():
                 raise
             except Exception as e:
                 logger.error(f"ws broadcast loop tick failed: {e}", exc_info=True)
+                # A failure before the tick's own sleep must not busy-loop.
+                await asyncio.sleep(WS_TICK_SECONDS)
                 continue
 
 
