@@ -163,29 +163,6 @@ function stepRow(
   };
 }
 
-/** Quantized range over a continuous min/max/step (rather than stepRow's
- *  explicit value list) — each press nudges up by `stepM`, wrapping back
- *  to `min` past `max`. Used for dioramaSize, whose range comes from
- *  DIORAMA_SIZE_MIN_M/MAX_M (world/diorama-clip.ts) rather than a short
- *  hand-picked list. */
-function adjustRow(
-  key: NumberSettingKey,
-  label: () => string,
-  opts: { min: number; max: number; stepM: number; format: (v: number) => string },
-): MenuRow {
-  return {
-    id: key,
-    label,
-    value: () => opts.format(getSettings()[key]),
-    activate: () => {
-      const cur = getSettings()[key];
-      const next = cur + opts.stepM > opts.max + 1e-9 ? opts.min : cur + opts.stepM;
-      // Round to millimetres — repeated float addition (0.03 + 0.05 + …)
-      // otherwise drifts the displayed value (0.35999999999999996 m).
-      updateSettings({ [key]: Math.round(next * 1000) / 1000 } as Partial<Settings>);
-    },
-  };
-}
 
 // Terse per-value labels. Record<Basemap, …> so adding a basemap without
 // a wrist label is a compile error, mirroring the settings panel's map.
@@ -223,6 +200,14 @@ const themeRow: MenuRow = {
     updateSettings({ theme: next.value });
   },
 };
+
+// Diorama-size wrist row steps (issue #6 round 3 — see the row's own
+// comment below). Hand-picked so a full sweep is ~10 presses; floor and
+// ceiling are the shared constants (world/diorama-clip.ts) rather than
+// restated literals, so they can't drift apart.
+const DIORAMA_SIZE_STEPS: readonly number[] = [
+  DIORAMA_SIZE_MIN_M, 0.05, 0.1, 0.15, 0.25, 0.4, 0.6, 0.9, 1.3, DIORAMA_SIZE_MAX_M,
+];
 
 // ── pages ─────────────────────────────────────────────────────────────
 // Grouped deliberately: what you see / how VR behaves / units. Unit
@@ -310,13 +295,21 @@ const PAGES: MenuRow[][] = [
     // it when the clip toggle above it is already hidden (issue #6
     // follow-up: put the diorama-size control the wrist menu never had,
     // panel-only until now, within reach without pulling out a phone).
+    //
+    // Round 3 (tyzbit): a fixed-step version of this row (0.05 m/press
+    // over 0.03..2 m) took ~40 presses to cycle the full range — too slow
+    // for a laser menu with no hold-to-repeat input. DIORAMA_SIZE_STEPS
+    // is a short hand-picked list instead (stepRow, same idiom as
+    // labelDensity), so a full sweep is 10 presses; also fixes the value
+    // reading "0.0" at the 0.03 m floor (was toFixed(1) on the desktop
+    // panel — see settings-panel.ts).
     {
-      ...adjustRow('dioramaSize', () => tr('misc.xr_diorama_size'), {
-        min: DIORAMA_SIZE_MIN_M,
-        max: DIORAMA_SIZE_MAX_M,
-        stepM: 0.05,
-        format: (v) => `${v.toFixed(2)} m`,
-      }),
+      ...stepRow(
+        'dioramaSize',
+        () => tr('misc.xr_diorama_size'),
+        DIORAMA_SIZE_STEPS,
+        (v) => `${v.toFixed(2)} m`,
+      ),
       visible: () => getXrState().presentingMode === 'ar',
     },
     toggleRow('xrFollow', () => tr('misc.xr_follow')),

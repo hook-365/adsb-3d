@@ -25,6 +25,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Diorama pan height drift and the follow-mode zoom rubber-band, round
+  3 of issue #6 hardware feedback (Quest 3, tyzbit).** Diorama pan-only
+  free-fly (added last round) still let the headset's pitch leak into
+  panning — looking down while moving the left stick tilted the
+  translation vector downward, raising and lowering the map through the
+  box's fixed floor. Panning now flattens the forward vector to yaw only
+  before moving, so height stays constant regardless of head tilt.
+  Separately, the round-2 follow-zoom fix (anchor null-on-scale-change)
+  turned out to be a no-op: zoom's own pivot-pin compensation already
+  held the followed aircraft's world position bit-for-bit constant across
+  every scale tick — there was nothing for the anchor re-seed to catch,
+  since the position never moved in the first place. Zoom while following
+  now skips that pin and scales the aircraft (and the follow anchor, kept
+  in lockstep) around the world root instead, so the stick produces a
+  real, lasting change in viewing distance. Also: the wrist-menu
+  diorama-size row switched from a fixed 0.05 m step (~40 presses to
+  sweep the range) to a 10-value list for a quick full sweep, and the
+  desktop panel's slider readout switched from 1 to 2 decimals — it was
+  rounding the 0.03 m floor down to a misleading "0.0 m".
+
 - **VR/AR diorama interaction, from issue #6 hardware feedback (Quest 3,
   tyzbit).** Free-fly locomotion is pan-only while the diorama clip box
   is active — left-stick X/Y still slides the world under the fixed box,

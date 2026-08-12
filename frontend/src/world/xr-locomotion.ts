@@ -100,8 +100,17 @@ export function setupXrLocomotion(opts: {
    * free-fly as their only way to position the map manually.
    */
   freeflyAllowed?: () => boolean;
+  /**
+   * XR follow zoom fix (issue #6 round 3). Called instead of the normal
+   * fixedPoint pin whenever a scale change happens while xrFollow is on
+   * — see the call site in main.ts for the full root-cause writeup.
+   * `rootOrigin` is xrRoot.position at the moment of the tick (main.ts
+   * rescales its own stored follow anchor around the same point); `r` is
+   * the same next/cur scale ratio applyScale always computes.
+   */
+  onFollowScale?: (rootOrigin: Vector3, r: number) => void;
 }): XrLocomotion {
-  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft, freeflyAllowed } = opts;
+  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft, freeflyAllowed, onFollowScale } = opts;
 
   // Edge-trigger state: snap-turn, A and B fire once per press.
   let snapTurnArmed = true;
@@ -116,8 +125,24 @@ export function setupXrLocomotion(opts: {
     // Push UP (negative axis) → grow scale; exponential keeps it symmetric.
     const next = clamp(cur * Math.exp(-stickY * SCALE_RATE_PER_S * dtS), SCALE_MIN, SCALE_MAX);
     if (next === cur) return;
+    const r = next / cur;
     // main.ts applies the new xrRoot.scale synchronously inside this call.
     updateSettings({ [key]: next });
+
+    // XR follow zoom fix (issue #6 round 3 — see the onFollowScale doc
+    // comment at the main.ts call site for the full root-cause writeup).
+    // Skip the fixedPoint pin below entirely while following: the pin's
+    // whole job is to hold the pivot's world position exactly constant
+    // across a scale tick, which for a followed aircraft means zoom can
+    // never move it — nothing to "zoom toward". onFollowScale lets scale
+    // act root-anchored instead (unpinned, like any other point in the
+    // scene) and keeps main.ts's stored follow anchor in lockstep so it
+    // doesn't fight the aircraft's new, genuinely-different position.
+    if (getSettings().xrFollow) {
+      onFollowScale?.(xrRoot.position, r);
+      return;
+    }
+
     // Scaling xrRoot alone expands about the ROOT origin, which drags
     // everything else across the room — "zoom while orbiting translates
     // you and you lose your place" (issue #6). Compensate position so
@@ -126,7 +151,6 @@ export function setupXrLocomotion(opts: {
     // pos' = w − r·(w − pos), r = next/cur. Null = scope center (the
     // root origin), where the correction is a no-op by construction.
     if (fixedPoint) {
-      const r = next / cur;
       xrRoot.position.x = fixedPoint.x - r * (fixedPoint.x - xrRoot.position.x);
       // With the diorama box active, never move the world vertically:
       // scaling about an elevated aircraft would sink the ground through
@@ -147,7 +171,7 @@ export function setupXrLocomotion(opts: {
     const freefly = s.xrMoveMode === 'freefly' && (freeflyAllowed?.() ?? true);
     const xrCam = renderer.xr.getCamera();
 
-    // Diorama pan-only (issue #6 hardware feedback — tyzbit: "Free-fly in
+    // Diorama pan-only (issue #6 hardware feedback — tyzbit round 2: "Free-fly in
     // AR moves the map while diorama mode is activated... I think it
     // should probably only move the diorama viewport and keep the map
     // stationary - only X, Y translation with the left thumbstick").
@@ -162,8 +186,22 @@ export function setupXrLocomotion(opts: {
     // stationary walls. Both read as "the map moves" in a way plain
     // horizontal panning doesn't. So: keep left-stick X/Y horizontal pan,
     // drop right-stick height and turning while the box is active. Scope
-    // mode and non-diorama free-fly are untouched. If this isn't what
-    // tyzbit meant, this is the one flag to flip.
+    // mode and non-diorama free-fly are untouched.
+    //
+    // Round 3 (tyzbit): the round-2 fix above wasn't sufficient — "Free-fly
+    // translates according to the headset tilt which modifies height as
+    // you move ... in diorama mode it raises and lowers the map in and out
+    // of bounds. The tilt of the headset should not be taken into account,
+    // only the rotation so the height of the map remains constant while
+    // panning." headsetBasis()'s forward vector is the FULL gaze direction
+    // (pitch included, see its own doc comment) — leaning the head down to
+    // look at the desk tilts that vector downward, and moveUser() then
+    // drags xrRoot.position.y along with it even though no per-axis
+    // vertical drive was engaged. Flattened forward (below) fixes this by
+    // zeroing the pitch component and renormalizing before it's used to
+    // pan, matching tmpRight (already horizontal-only). Only applied in
+    // diorama pan-only mode — ordinary free-fly keeps flying along the
+    // full gaze, unchanged.
     const dioramaPanOnly = freefly && dioramaActive();
 
     for (const src of session.inputSources) {
@@ -188,6 +226,13 @@ export function setupXrLocomotion(opts: {
           // Free-fly translation. Forward follows the full gaze (fly
           // where you look); strafe is the horizontal right vector.
           headsetBasis(xrCam);
+          // Diorama pan-only (round 3, see the doc comment above): drop
+          // the pitch component of forward so looking up/down while
+          // panning can't drift the map's height in or out of the box.
+          if (dioramaPanOnly && tmpFwd.y !== 0) {
+            tmpFwd.y = 0;
+            if (tmpFwd.lengthSq() > 1e-9) tmpFwd.normalize();
+          }
           if (Math.abs(y) > DEADZONE) {
             moveUser(xrRoot, tmpFwd, -y * MOVE_SPEED_M_PER_S * dtS);
           }

@@ -388,7 +388,9 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         min: DIORAMA_SIZE_MIN_M,
         max: DIORAMA_SIZE_MAX_M,
         step: 0.1,
-        format: (v) => `${v.toFixed(1)} m`,
+        // 2 decimals (issue #6 round 3 — tyzbit): toFixed(1) rounded the
+        // 0.03 m floor down to "0.0 m", reading as broken/zero.
+        format: (v) => `${v.toFixed(2)} m`,
       },
       {
         kind: 'toggle',

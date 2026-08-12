@@ -323,34 +323,17 @@ subscribeXr((s) => {
 // xr-locomotion module drives this via updateSettings on every frame
 // the user is pushing the thumbstick; subscribing here keeps the
 // wrist-menu display + persistence as the single source of truth.
-let prevVrScaleForFollow = getSettings().vrScale;
-let prevArScaleForFollow = getSettings().arScale;
+//
+// The round-2 "fix" that used to live here (null the follow anchor
+// whenever vrScale/arScale changed while following) did not work — see
+// onFollowScale below for the actual mechanism and why nulling the
+// anchor here was a no-op in practice.
 subscribeSettings((s) => {
   if (world.renderer.xr.isPresenting) {
     world.xrRoot.scale.setScalar(
       getXrState().presentingMode === 'ar' ? s.arScale : s.vrScale,
     );
   }
-  // XR follow "zoom fights follow" fix (issue #6 hardware feedback:
-  // "zooming in or out encounters resistance as the mode tries to keep a
-  // constant distance from the aircraft"). The left thumbstick's zoom
-  // (applyScale in xr-locomotion.ts) and the follow correction below both
-  // drive xrRoot.position; a scale change leaves xrFollowAnchor pointing
-  // at its pre-zoom location, so the very next follow tick lerps the view
-  // back toward the stale anchor — felt as resistance fighting the
-  // gesture. Whenever the active scale changes while following, drop the
-  // anchor so the follow loop re-seeds it at the post-zoom position
-  // instead of dragging back to the old one. Net effect: the stick keeps
-  // doing exactly what it always did (scale, clamped to the same
-  // SCALE_MIN/SCALE_MAX in xr-locomotion.ts), but while following it now
-  // reads as "set how close the aircraft sits" rather than fighting an
-  // invisible tether. No-op outside follow mode (guarded on s.xrFollow),
-  // so ordinary zoom is unchanged.
-  if (s.xrFollow && (s.vrScale !== prevVrScaleForFollow || s.arScale !== prevArScaleForFollow)) {
-    xrFollowAnchor = null;
-  }
-  prevVrScaleForFollow = s.vrScale;
-  prevArScaleForFollow = s.arScale;
   applyVrQuality(s.vrQuality);
 });
 
@@ -433,6 +416,44 @@ const xrLocomotion = setupXrLocomotion({
     if (!xrSelectedHex) return null;
     const local = reconciler.positionOf(xrSelectedHex);
     return local ? world.xrRoot.localToWorld(local) : null;
+  },
+  // XR follow zoom fix (issue #6 round 3 — tyzbit: "moving towards or
+  // away from an aircraft still rubber bands back to the distance you
+  // were at when you started following. I think the origin updates as
+  // the aircraft moves just fine.")
+  //
+  // ROOT CAUSE: applyScale's own fixedPoint compensation (xr-locomotion.ts)
+  // is deliberately designed to hold a selected pivot's WORLD position
+  // bit-for-bit identical across a scale tick — that's the "zoom without
+  // losing your place" behavior from issue #6's first round. getOrbitPivot
+  // above always returns the followed aircraft while one is selected, so
+  // with follow on, every zoom tick pinned the aircraft exactly back
+  // where it started. There was never anything to "rubber band" away
+  // from: the pin cancelled the motion before it happened. The round-2
+  // "fix" (nulling xrFollowAnchor in the vrScale/arScale settings
+  // subscriber) didn't touch this — the anchor re-seeded to whatever
+  // worldPos the pin had already forced back to its old value, so the
+  // re-seed was a no-op that reproduced the exact same position.
+  //
+  // FIX: while following, applyScale skips the pin entirely (passes no
+  // fixedPoint) and calls this instead. With no pin, scale changes
+  // xrRoot's content around the ROOT origin like anything else in the
+  // scene — the followed aircraft's real position moves, same as any
+  // unpinned point would. rootOrigin is xrRoot.position at the moment of
+  // the tick (unchanged, since skipping the pin means applyScale never
+  // rewrites .position); r is the same next/cur ratio applyScale always
+  // uses. Rescaling the stored anchor by the identical formation
+  // (anchor' = rootOrigin + r·(anchor − rootOrigin)) keeps it in
+  // lockstep with where the aircraft's own position just moved to, so
+  // the follow lerp below has nothing left to fight — and because the
+  // headset itself isn't part of xrRoot, a real, lasting change in
+  // distance from the headset to the aircraft is exactly what scaling
+  // an off-origin point around a fixed root produces.
+  onFollowScale: (rootOrigin, r) => {
+    if (!xrFollowAnchor) return;
+    xrFollowAnchor.x = rootOrigin.x + r * (xrFollowAnchor.x - rootOrigin.x);
+    xrFollowAnchor.y = rootOrigin.y + r * (xrFollowAnchor.y - rootOrigin.y);
+    xrFollowAnchor.z = rootOrigin.z + r * (xrFollowAnchor.z - rootOrigin.z);
   },
 });
 
