@@ -26,18 +26,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   another visible one instead of sitting on a stale selection. All three
   have wrist-menu rows and desktop panel rows; i18n in en/de/es.
 
-- **Diorama-size control on the wrist menu, and follow-mode distance on
-  the left stick (issue #6 hardware feedback).** The diorama box's width
-  was previously desktop-panel-only; page 4 of the wrist menu now has an
-  AR-only +/- row next to the clip toggle, writing through the same
-  `dioramaSize` setting the panel and the live box already read. While
-  XR follow is active, the left stick's zoom gesture no longer fights
-  the follow correction — it used to feel like resistance because a
-  scale change left the follow anchor pointing at its pre-zoom spot, so
-  the very next follow tick dragged the view back toward it; the anchor
-  now re-seeds at the post-zoom position whenever the active scale
-  changes while following, so the stick reads as directly setting how
-  close the aircraft sits. Zoom outside follow mode is unchanged.
+- **Diorama-size control on the wrist menu (issue #6 hardware
+  feedback).** The diorama box's width was previously desktop-panel-only;
+  page 4 of the wrist menu now has an AR-only row next to the clip
+  toggle, writing through the same `dioramaSize` setting the panel and
+  the live box already read. (The follow-mode zoom fix that originally
+  shipped alongside this row turned out to be a no-op — see the round-3
+  entry under Fixed for the real one.)
 
 ### Fixed
 
