@@ -45,20 +45,27 @@ and translations count just as much as code.
 
 ## What's new
 
+- **AR diorama mode, matured.** The scope clips to an open-top box you
+  place on real furniture and resize from the wrist menu; panning
+  slides the map beneath the fixed frame (yaw-only, so a tilted head
+  never lifts the floor). New **auto-orbit** slowly circles the scope
+  center or a followed aircraft for a proper desk-ornament view, with
+  an optional **follow-random-aircraft** mode that re-targets the chase
+  when the followed aircraft drops off the feed. A **high-res basemap**
+  option fetches tiles one zoom level sharper — low-res tiles are the
+  first thing a headset makes obvious.
+- **v0.9.0: the hardening release.** A full-project audit in one drop:
+  security headers with a configurable CORS lockdown, per-client rate
+  limiting behind reverse proxies, backend loops that survive bad
+  upstream data and report honest healthchecks, a broad frontend
+  performance pass, keyboard and screen-reader access for the aircraft
+  list, and test coverage from one placeholder test to 750+ real ones
+  with eslint, ruff, and pytest wired into CI.
 - **v0.7.0: aircraft that look like aircraft.** Every common silhouette
   now has a real 3D body built from its own tar1090 drawing: a lofted
   fuselage that follows the drawn width, engines with intake lips on
   the drawn pods, tail fins, a proper T-tail on the C-17, and rotor
-  blades on helicopters at the angles the artist drew. Plus a
-  minimizable aircraft card and smarter camera following (pan to look
-  around, recenter to resume the chase).
-- **v0.6.0: much more complete VR & AR support.** AR place mode (look
-  at a surface, pull the trigger, the scope parks there), a wrist menu
-  with full settings parity, and free-fly locomotion, all
-  hardware-tested on a Quest 3. See [VR & AR](#vr--ar) for the demo.
-- **Mobile redesign of the aircraft detail card**: a bottom sheet that
-  keeps the map visible, with the photo docked beside the airframe data
-  at its natural aspect ratio.
+  blades on helicopters at the angles the artist drew.
 
 Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 [releases page](https://github.com/hook-365/adsb-3d/releases).
@@ -116,9 +123,21 @@ position.
 **VR / AR** — immersive WebXR sessions with laser-pointer controllers,
 a wrist menu with full settings parity, comfort locomotion (scope or
 free-fly, snap or smooth turning), and AR placement of the scope onto
-real furniture. Hardware-tested on a Quest 3; see
-[VR & AR](#vr--ar) below for the demo video. Side-by-side stereo
-(Cardboard) is still there for anything without WebXR.
+real furniture. The diorama clip box turns AR into a desk ornament:
+airspace confined to a placeable, resizable open-top box, with follow
+mode, slow auto-orbit, and an optional random-aircraft chase.
+Hardware-tested on a Quest 3; see [VR & AR](#vr--ar) below for the
+demo video. Side-by-side stereo (Cardboard) is still there for
+anything without WebXR.
+
+**High-res basemaps** — an optional sharper-tile mode fetches the
+basemap one zoom level deeper (4× the tiles for the same coverage).
+Worth it on a headset or a 4K display; costs bandwidth accordingly.
+
+**Keyboard & screen readers** — the aircraft list is a real listbox:
+arrow keys move, Enter/Space selects, and screen readers get proper
+roles, a focus-trapped ACARS dialog, and a throttled live aircraft
+count instead of per-second chatter.
 
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
@@ -171,7 +190,10 @@ ready to uncomment; the `ENABLE_*` flags below switch each on.
 Put the airspace on your desk. With a WebXR headset the scope becomes a
 walkable diorama: orbit a selected aircraft, free-fly through the
 traffic, change settings from a wrist menu, or enter AR and drop the map
-onto real furniture with a glance and a trigger pull.
+onto real furniture with a glance and a trigger pull. Diorama clipping
+keeps it desk-sized — the map pans beneath a fixed, resizable open-top
+box — and auto-orbit slowly circles the scope (or your followed
+aircraft) like a live model.
 
 https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
 
@@ -235,7 +257,11 @@ Parsing stops at the first missing `FEEDN_NAME`.
 `FEEDN_URL`, `FEEDN_COLOR`, `FEEDN_ACARS` — see [Multi-feed](#multi-feed).
 
 **Reverse proxy:** `BASE_PATH` overrides the auto-detected subpath
-(see [Reverse proxy](#reverse-proxy)).
+(see [Reverse proxy](#reverse-proxy)). `TRUSTED_PROXY_CIDR` (comma-
+separated CIDRs) makes rate limiting key on the real client IP behind
+a fronting proxy instead of one shared bucket. `CORS_ALLOW_ORIGIN`
+(default empty = no CORS headers) opts a specific origin — or `*` —
+back in if another site consumes the API directly.
 
 ## Controls
 
