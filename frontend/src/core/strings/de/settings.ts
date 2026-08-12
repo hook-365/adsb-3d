@@ -116,10 +116,22 @@ export const settingsStrings = {
   'settings.diorama_size_desc': 'Breite der Beschnittbox in Metern.',
   'settings.xr_follow': 'Ausgewähltem Flugzeug folgen',
   'settings.xr_follow_desc': 'In VR/AR verschiebt sich die Welt, sodass das ausgewählte Flugzeug an Ort und Stelle bleibt.',
+  'settings.follow_random': 'Zufälligem Flugzeug folgen',
+  'settings.follow_random_desc':
+    'Bei aktiviertem „Folgen“: Verschwindet das gefolgte Flugzeug aus dem ' +
+    'Feed, automatisch ein anderes sichtbares auswählen statt an der alten Auswahl festzuhalten.',
+  'settings.auto_orbit': 'Automatische Umkreisung',
+  'settings.auto_orbit_desc':
+    'Langsam um das gefolgte Flugzeug (oder die Radarmitte) kreisen. ' +
+    'Jede Bewegungseingabe pausiert dies.',
   'settings.terrain_3d': '3D-Gelände',
   'settings.terrain_3d_desc':
     'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +
     'Gelände. Änderung lädt die Seite neu.',
+  'settings.hi_res_tiles': 'Kacheln in hoher Auflösung',
+  'settings.hi_res_tiles_desc':
+    'Kartenkacheln eine Zoomstufe schärfer laden (4x so viele Kacheln bei ' +
+    'gleicher Abdeckung). Kostet Bandbreite und Speicher; gilt auch am Desktop.',
   'settings.altitude_curve': 'Höhenskala',
   'settings.altitude_curve_desc':
     'Niedriger = Fokus auf niedrige Höhen, höher = Fokus auf große Höhen. ' +

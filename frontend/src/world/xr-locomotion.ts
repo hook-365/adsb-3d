@@ -70,6 +70,13 @@ const SMOOTH_TURN_RAD_PER_S = Math.PI / 2;
 const RECENTER_FORWARD_M = 1.5;
 const RECENTER_DOWN_M = 0.5;
 
+/** Auto-orbit rate (issue #6: "starting with slow orbit speeds might be
+ *  the most effective... spinning around aircraft really fast gets
+ *  rapidly less fun"). 3°/s is a full revolution every two minutes —
+ *  deliberately conservative for the first round; there's no user-facing
+ *  speed control yet. */
+const AUTO_ORBIT_RAD_PER_S = (Math.PI * 3) / 180;
+
 // WebXR standard gamepad layout.
 const BUTTON_SQUEEZE = 1;
 const BUTTON_A_OR_X = 4;
@@ -204,6 +211,13 @@ export function setupXrLocomotion(opts: {
     // full gaze, unchanged.
     const dioramaPanOnly = freefly && dioramaActive();
 
+    // Auto-orbit (issue #6: "starting with slow orbit speeds might be the
+    // most effective"). Tracked across both controllers this tick so any
+    // deliberate stick input — scale, pan, turn, height, even an axis a
+    // mode suppresses — pauses the orbit for the frame rather than fighting
+    // it; the orbit itself is applied once after the input loop below.
+    let userInputActive = false;
+
     for (const src of session.inputSources) {
       const gp = src.gamepad;
       if (!gp) continue;
@@ -212,6 +226,7 @@ export function setupXrLocomotion(opts: {
       if (src.handedness === 'left') {
         const x = gp.axes[2] ?? 0;
         const y = gp.axes[3] ?? 0;
+        if (Math.abs(x) > DEADZONE || Math.abs(y) > DEADZONE) userInputActive = true;
         const gripHeld = gp.buttons[BUTTON_SQUEEZE]?.pressed ?? false;
 
         if (!freefly || gripHeld) {
@@ -246,6 +261,7 @@ export function setupXrLocomotion(opts: {
       if (src.handedness === 'right') {
         const x = gp.axes[2] ?? 0;
         const y = gp.axes[3] ?? 0;
+        if (Math.abs(x) > DEADZONE || Math.abs(y) > DEADZONE) userInputActive = true;
 
         // Turn pivot: scope orbits the selection/center; free-fly turns
         // about the user like a first-person app.
@@ -297,6 +313,17 @@ export function setupXrLocomotion(opts: {
         if (bPressed && !bButtonWasPressed) onCycleAircraft?.();
         bButtonWasPressed = bPressed;
       }
+    }
+
+    // Auto-orbit: slow, continuous yaw about the follow target (xrFollow
+    // on) or the scope center — same pivot-preserving rotation snap-turn
+    // uses, just a small continuous angle instead of a discrete step.
+    // Paused by any stick input this frame (userInputActive above) and by
+    // an active diorama box (same reasoning as turn suppression above: it
+    // would spin the world inside stationary walls).
+    if (s.autoOrbit && !userInputActive && !dioramaActive()) {
+      const pivot = (s.xrFollow ? getOrbitPivot?.() : null) ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld);
+      snapTurnWorld(xrRoot, pivot, AUTO_ORBIT_RAD_PER_S * dtS);
     }
   }
 

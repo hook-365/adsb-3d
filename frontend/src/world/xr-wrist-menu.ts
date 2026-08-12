@@ -280,6 +280,10 @@ const PAGES: MenuRow[][] = [
       { value: 'km', label: () => 'km' },
     ]),
     toggleRow('historyTrails', () => tr('misc.xr_trails')),
+    // Page 3 is at its 6-slot cap with this — issue #6 hi-res tiles
+    // applies everywhere (not XR-gated, see core/settings.ts), so it's
+    // reachable from the headset like everything else here.
+    toggleRow('hiResTiles', () => tr('misc.xr_hi_res_tiles')),
   ],
   [
     // Diorama page (issue #6 desk-ornament + follow). The clip toggle is
@@ -313,6 +317,15 @@ const PAGES: MenuRow[][] = [
       visible: () => getXrState().presentingMode === 'ar',
     },
     toggleRow('xrFollow', () => tr('misc.xr_follow')),
+    // Companion to xrFollow (issue #6): re-pick automatically if the
+    // followed aircraft drops off the feed, instead of sitting on a
+    // stale selection. No effect with xrFollow off, but shown
+    // unconditionally like xrFollow itself rather than nested visibility.
+    toggleRow('followRandomAircraft', () => tr('misc.xr_follow_random')),
+    // Slow auto-orbit around the follow target / scope center (issue #6:
+    // "starting with slow orbit speeds might be the most effective").
+    // Any stick input pauses it for that frame — xr-locomotion.ts.
+    toggleRow('autoOrbit', () => tr('misc.xr_auto_orbit')),
   ],
 ];
 

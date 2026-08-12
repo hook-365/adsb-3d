@@ -232,6 +232,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'hiResTiles',
+        label: t('settings.hi_res_tiles'),
+        description: t('settings.hi_res_tiles_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'rangeRings',
         label: t('settings.range_rings'),
         description: t('settings.range_rings_desc'),
@@ -397,6 +403,18 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'xrFollow',
         label: t('settings.xr_follow'),
         description: t('settings.xr_follow_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'followRandomAircraft',
+        label: t('settings.follow_random'),
+        description: t('settings.follow_random_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'autoOrbit',
+        label: t('settings.auto_orbit'),
+        description: t('settings.auto_orbit_desc'),
       },
       {
         kind: 'toggle',

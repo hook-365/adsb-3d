@@ -112,6 +112,30 @@ export interface Settings {
    */
   xrFollow: boolean;
   /**
+   * With `xrFollow` on: if the followed aircraft disappears from the
+   * feed (goes out of range, signal lost), automatically pick another
+   * visible aircraft to follow instead of just sitting on a stale
+   * selection (issue #6). No effect without xrFollow.
+   */
+  followRandomAircraft: boolean;
+  /**
+   * Slowly auto-orbit the view around the followed aircraft (xrFollow
+   * on) or the scope center (issue #6: "starting with slow orbit speeds
+   * might be the most effective"). Any locomotion input pauses it for
+   * that frame (xr-locomotion.ts). Also drives desktop OrbitControls'
+   * built-in autoRotate around the same target (world/controls.ts) —
+   * cheap enough on desktop to enable there too rather than XR-gating it.
+   */
+  autoOrbit: boolean;
+  /**
+   * Basemap tile zoom +1 over the default (world/tiles.ts DEFAULT_ZOOM):
+   * 4x the tile count for the same ground coverage, sharper imagery at
+   * the cost of ~4x the tile fetches/textures. Applies everywhere
+   * (desktop and XR) — there's no XR-specific reason to gate it, sharper
+   * basemap detail is equally desirable zoomed in on a monitor.
+   */
+  hiResTiles: boolean;
+  /**
    * Side-by-side stereo rendering (left/right eye halves) for Google
    * Cardboard or a phone VR headset. CSS2D labels are hidden while on —
    * a single DOM layer can't be split per-eye.
@@ -199,6 +223,9 @@ const DEFAULTS: Settings = {
   dioramaClip: false,
   dioramaSize: 0.9,
   xrFollow: false,
+  followRandomAircraft: false,
+  autoOrbit: false,
+  hiResTiles: false,
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,

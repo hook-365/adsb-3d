@@ -116,10 +116,22 @@ export const settingsStrings = {
   'settings.diorama_size_desc': 'Ancho de la caja de recorte en metros.',
   'settings.xr_follow': 'Seguir aeronave seleccionada',
   'settings.xr_follow_desc': 'En RV/RA el mundo se desliza para que la aeronave seleccionada permanezca en su sitio.',
+  'settings.follow_random': 'Seguir aeronave al azar',
+  'settings.follow_random_desc':
+    'Con "Seguir" activado: si la aeronave seguida desaparece de la señal, ' +
+    'elige automáticamente otra visible en vez de mantener una selección obsoleta.',
+  'settings.auto_orbit': 'Órbita automática',
+  'settings.auto_orbit_desc':
+    'Orbita lentamente alrededor de la aeronave seguida (o el centro del ' +
+    'radar). Cualquier entrada de movimiento la pausa.',
   'settings.terrain_3d': 'Terreno 3D',
   'settings.terrain_3d_desc':
     'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +
     'siguen el terreno. Cambiarlo recarga la página.',
+  'settings.hi_res_tiles': 'Mosaicos de alta resolución',
+  'settings.hi_res_tiles_desc':
+    'Carga el mapa base un nivel de zoom más nítido (4x más mosaicos para ' +
+    'la misma cobertura). Cuesta ancho de banda y memoria; también se aplica en escritorio.',
   'settings.altitude_curve': 'Escala de altitud',
   'settings.altitude_curve_desc':
     'Más bajo = enfoque en altitudes bajas, más alto = enfoque en altitudes ' +

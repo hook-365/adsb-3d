@@ -60,6 +60,18 @@ const PROVIDER_META: Record<TileProvider, { tms: boolean }> = {
 
 const DEFAULT_ZOOM = 8;
 
+/**
+ * Effective basemap tile zoom for the current Settings.hiResTiles value
+ * (issue #6). +1 zoom level halves each tile's geographic span in both
+ * axes — 4x the tile count (and fetches/textures) for the same ground
+ * coverage, sharper imagery at that bandwidth/memory cost. Applies
+ * everywhere (desktop and XR), see the setting's own doc comment in
+ * core/settings.ts.
+ */
+export function currentTileZoom(): number {
+  return DEFAULT_ZOOM + (getSettings().hiResTiles ? 1 : 0);
+}
+
 // 3D terrain (issue #7): with the toggle on, each tile becomes an N×N
 // vertex grid displaced by terrarium elevation instead of a flat quad.
 // This module is the single gate — when terrainActive() is false no
@@ -97,13 +109,17 @@ function tileYToLat(y: number, z: number): number {
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
 
-const TILE_NM_AT_HOME = (() => {
-  // Approximate tile span at home latitude in NM. At z=8 lat=45° this is ~60 NM.
+// Approximate tile span at home latitude in NM, for a given zoom level. At
+// z=8 lat=45° this is ~60 NM; z=9 (hiResTiles) is half that, so the tile
+// grid below must cover twice as many tiles per axis for the same
+// RANGE_NM — parametrized on zoom (not a DEFAULT_ZOOM-only constant) so
+// currentTileZoom()'s +1 bump doesn't silently under-cover the range.
+function tileNmAtHome(z: number): number {
   const lat = HOME.lat;
-  const tileLonDeg = 360 / Math.pow(2, DEFAULT_ZOOM);
+  const tileLonDeg = 360 / Math.pow(2, z);
   const nmPerLonDeg = 60 * Math.cos((lat * Math.PI) / 180);
   return tileLonDeg * nmPerLonDeg;
-})();
+}
 
 const tmpV = new Vector3();
 function projectCorner(lat: number, lon: number, target: Float32Array, offset: number, dropY: number): void {
@@ -235,7 +251,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
 
   // Cover RANGE_NM in each direction, +1 tile padding so the range ring is
   // never at a tile boundary.
-  const half = Math.ceil(RANGE_NM / TILE_NM_AT_HOME) + 1;
+  const half = Math.ceil(RANGE_NM / tileNmAtHome(zoom)) + 1;
 
   const loader = new TextureLoader();
   loader.crossOrigin = 'anonymous';

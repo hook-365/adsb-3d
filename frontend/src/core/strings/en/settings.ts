@@ -119,10 +119,22 @@ export const settingsStrings = {
   'settings.diorama_size_desc': 'Width of the clipping box in metres.',
   'settings.xr_follow': 'Follow selected aircraft',
   'settings.xr_follow_desc': 'In VR/AR, the world slides so the selected aircraft stays put over the scope.',
+  'settings.follow_random': 'Follow random aircraft',
+  'settings.follow_random_desc':
+    'With Follow on: if the followed aircraft drops off the feed, ' +
+    'automatically pick another visible one instead of sitting on a stale selection.',
+  'settings.auto_orbit': 'Auto-orbit view',
+  'settings.auto_orbit_desc':
+    'Slowly orbit around the followed aircraft (or the scope center). ' +
+    'Any movement input pauses it.',
   'settings.terrain_3d': '3D terrain',
   'settings.terrain_3d_desc':
     'Raise the basemap to real ground elevation. Rings and markers follow ' +
     'the ground. Changing it reloads the page.',
+  'settings.hi_res_tiles': 'High-resolution tiles',
+  'settings.hi_res_tiles_desc':
+    'Fetch the basemap one zoom level sharper (4x the tiles for the same ' +
+    'coverage). Costs bandwidth and memory; applies on desktop too.',
   'settings.altitude_curve': 'Altitude scale',
   'settings.altitude_curve_desc':
     'Lower = low-altitude focus, higher = high-altitude focus. ' +

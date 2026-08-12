@@ -19,7 +19,7 @@ import { getSettings, subscribeSettings } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { setRenderer as registerXrRenderer } from '../core/xr';
 import { groundSceneY, subscribeElevation } from './elevation';
-import { createTileLayer, disposeTileLayer } from './tiles';
+import { createTileLayer, currentTileZoom, disposeTileLayer } from './tiles';
 import { DIORAMA_PLANES } from './diorama-clip';
 
 export interface World {
@@ -95,13 +95,13 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // meshes at y = -0.4 with renderOrder = -10 so the range rings and
   // trails draw cleanly on top. Stored so recenter() can swap it on
   // feed switch or when the user picks a different basemap provider.
-  let tileLayer: Group = createTileLayer({ provider: getSettings().basemap });
+  let tileLayer: Group = createTileLayer({ provider: getSettings().basemap, zoom: currentTileZoom() });
   xrRoot.add(tileLayer);
 
   function recenter(): void {
     xrRoot.remove(tileLayer);
     disposeTileLayer(tileLayer);
-    tileLayer = createTileLayer({ provider: getSettings().basemap });
+    tileLayer = createTileLayer({ provider: getSettings().basemap, zoom: currentTileZoom() });
     xrRoot.add(tileLayer);
     // New home, new ground: re-drape immediately for elevation tiles that
     // are already cached; freshly-fetched ones re-fire via the elevation
@@ -254,14 +254,18 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   });
 
   // Apply settings changes live. Visibility-only flags toggle directly;
-  // a basemap change requires rebuilding the tile layer (textures and
-  // mesh sources are baked at construction time).
+  // a basemap OR hiResTiles change requires rebuilding the tile layer
+  // (textures, mesh sources, and the zoom level are all baked in at
+  // construction time — issue #6 hi-res tiles reuses the same rebuild
+  // path a basemap switch already needed).
   // Unsubscribe handle intentionally discarded — page-lifetime singleton.
   let lastBasemap = getSettings().basemap;
+  let lastHiResTiles = getSettings().hiResTiles;
   subscribeSettings((s) => {
     ringsGroup.visible = s.rangeRings;
-    if (s.basemap !== lastBasemap) {
+    if (s.basemap !== lastBasemap || s.hiResTiles !== lastHiResTiles) {
       lastBasemap = s.basemap;
+      lastHiResTiles = s.hiResTiles;
       recenter();
     }
   });

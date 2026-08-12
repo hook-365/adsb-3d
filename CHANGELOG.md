@@ -10,6 +10,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **High-resolution basemap tiles and XR auto-orbit (issue #6 round 3,
+  Quest 3 hardware feedback).** New `hiResTiles` setting fetches the
+  basemap one zoom level sharper (4x the tiles for the same coverage,
+  desktop and XR alike — no reason to gate a sharper map to headsets
+  only); the tile grid's coverage math is now parametrized on the actual
+  zoom requested instead of a `DEFAULT_ZOOM`-only constant, so the bump
+  doesn't silently under-cover `RANGE_NM`. New `autoOrbit` setting slowly
+  yaws the view around the followed aircraft (or the scope center) in
+  XR — reusing the existing pivot-preserving turn math, paused by any
+  stick input for that frame — and drives desktop OrbitControls' own
+  `autoRotate` around the same follow-cam target for near-free desktop
+  parity. New `followRandomAircraft` companion setting: with XR follow
+  on, if the followed aircraft drops off the feed, automatically pick
+  another visible one instead of sitting on a stale selection. All three
+  have wrist-menu rows and desktop panel rows; i18n in en/de/es.
+
 - **Diorama-size control on the wrist menu, and follow-mode distance on
   the left stick (issue #6 hardware feedback).** The diorama box's width
   was previously desktop-panel-only; page 4 of the wrist menu now has an

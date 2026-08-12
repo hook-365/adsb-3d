@@ -55,7 +55,7 @@ import { attachPicking } from './interaction/picking';
 import { setHome } from './core/config';
 import { groundSceneY } from './world/elevation';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
-import { getSearchQuery, setSearchQuery } from './core/filter';
+import { getFilter, getSearchQuery, passesFilter, setSearchQuery } from './core/filter';
 import { initSession } from './app/session';
 import {
   getTimeContext,
@@ -90,6 +90,28 @@ mountHud();
 const world = createWorld(canvas);
 const controls = attachControls(world.camera, world.renderer);
 const labelRenderer = createLabelRenderer();
+
+// Auto-orbit (issue #6), desktop half: OrbitControls already has
+// autoRotate/autoRotateSpeed built in, and it orbits controls.target —
+// which the desktop follow-cam below already keeps on the followed
+// aircraft (or eases back to the origin when nothing's followed) — so
+// wiring the setting through is nearly free, no bespoke pivot math
+// needed like the XR side (world/xr-locomotion.ts). autoRotateSpeed is
+// in "revolutions per 30s at 60fps"-ish units per three's own docs;
+// 0.6 lands in the same conservative, slow-orbit ballpark as the XR
+// rate. autoRotate only advances inside controls.update(), which the
+// render loop below already calls every frame regardless of XR state,
+// but three also applies it while a drag is in progress — harmless, it
+// just adds a small extra delta on top of the user's own drag. XR
+// presenting is excluded: the headset owns the camera there, and
+// xr-locomotion.ts drives its own orbit instead.
+controls.autoRotateSpeed = 0.6;
+function syncDesktopAutoOrbit(): void {
+  controls.autoRotate = getSettings().autoOrbit && !world.renderer.xr.isPresenting;
+}
+subscribeSettings(syncDesktopAutoOrbit);
+subscribeXr(syncDesktopAutoOrbit);
+syncDesktopAutoOrbit();
 
 // Side-by-side stereo rendering — Tier 1 of the VR support request
 // (issue #6). No WebXR; just a split left/right-eye view that works on
@@ -506,6 +528,30 @@ subscribeAcars((hex) => {
 
 const aircraftList = createAircraftList(store);
 attachPanelToggle(store);
+
+// Follow-random companion (issue #6): with xrFollow AND this on, if the
+// followed aircraft drops off the feed (out of range, signal lost),
+// automatically pick another visible aircraft instead of sitting on a
+// stale selection. Store-driven (fires on every snapshot) rather than a
+// per-frame check — the store's own polling cadence is plenty responsive
+// for "the plane is gone, pick a new one".
+//
+// Minimal version (issue #6 round 3): filter-passing only (matches what
+// the aircraft list itself would show). Does NOT additionally check the
+// diorama clip box — that would need a reconciler position lookup per
+// candidate here, and diorama is AR-only, making "diorama + follow +
+// follow-random" a narrow combination not worth the extra plumbing for a
+// first pass; a candidate clipped by the box can still be picked and
+// simply won't be visible until it (or the box) moves.
+store.subscribe((snapshot) => {
+  if (!getSettings().xrFollow || !getSettings().followRandomAircraft) return;
+  if (!xrSelectedHex || snapshot.has(xrSelectedHex)) return;
+  const candidates = [...snapshot.values()].filter((a) => passesFilter(a, getFilter()));
+  if (candidates.length === 0) return;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
+  aircraftList.setSelected(pick.hex);
+  applySelection(pick.hex);
+});
 
 // Voice scanner panel — VHF AM monitor. Opt-in via ENABLE_VOICE on
 // the server (entrypoint.sh emits window.VOICE_CONFIG). When disabled
