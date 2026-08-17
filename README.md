@@ -253,9 +253,25 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |
 | `VOICE_STREAM_HOST` | — | required when voice is on; point at any reachable `host:port` (legacy Icecast block, not played by the frontend) |
 | `DNS_RESOLVER` | `127.0.0.11` | nginx `resolver` address(es) for upstream lookups; override on runtimes without Docker's embedded DNS (e.g. Kubernetes CoreDNS) |
+| `MAP_ZOOM` / `MAP_GRID_SIZE` | `8` / `21` | boot-time tile pre-cache around the station (zoom level / grid width); only active with the `/tiles` volume mounted |
 
 **Multi-feed:** `FEEDN_NAME`, `FEEDN_LAT`, `FEEDN_LON`, `FEEDN_ALT`,
 `FEEDN_URL`, `FEEDN_COLOR`, `FEEDN_ACARS` — see [Multi-feed](#multi-feed).
+(`FEEDS_CONFIG` accepts the raw JSON feed array directly and skips the
+`FEEDN_*` synthesis — see `.env.example` for the shape.)
+
+**Backend services** (`track-service` / `acars-service` containers, not
+the main image — see the compose example):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FEEDER_URL` | `http://ultrafeeder` | same feeder the frontend uses; both services poll it |
+| `FEEDER_POLL_SECONDS` | heuristic | live-stream poll cadence override (defaults per feeder type) |
+| `COLLECTION_INTERVAL` | `5` | seconds between DB track snapshots (track-service) |
+| `RETENTION_DAYS` | `90` | TimescaleDB retention for tracks and ACARS messages |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `timescaledb-adsb` / `5432` / `adsb_tracks` / `adsb` / — | TimescaleDB connection; password has no default on purpose |
+| `ACARS_HOST` / `ACARS_PORT` | `acarshub` / `15550` | acarshub JSON-over-TCP feed (acars-service) |
+| `STATION_ID` | `adsb-3d` | station identifier stamped on stored ACARS messages |
 
 **Reverse proxy:** `BASE_PATH` overrides the auto-detected subpath
 (see [Reverse proxy](#reverse-proxy)). `TRUSTED_PROXY_CIDR` (comma-
