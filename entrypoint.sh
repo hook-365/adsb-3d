@@ -753,12 +753,26 @@ else
 fi
 export VFRMAP_CYCLE
 
+# Custom DNS resolver for nginx's dynamic upstream resolution (issue #6:
+# Kubernetes deployments were hand-editing the generated config to swap
+# Docker's embedded DNS for CoreDNS, and the template re-render on every
+# boot clobbered the edit). Accepts one or more space-separated addresses,
+# as the nginx resolver directive does. Restricted to IP-address characters
+# — this is interpolated into the config, and `nginx -t` below is the
+# backstop, not the first line of defense.
+DNS_RESOLVER="${DNS_RESOLVER:-127.0.0.11}"
+if [ -z "$DNS_RESOLVER" ] || [ -n "$(printf '%s' "$DNS_RESOLVER" | tr -d '0-9a-fA-F:. ')" ]; then
+    echo "[ERROR] DNS_RESOLVER must be one or more IP addresses (got: ${DNS_RESOLVER})"
+    exit 1
+fi
+export DNS_RESOLVER
+
 # Render nginx config from the pristine template on every boot (never read
 # conf.d/default.conf back in) — this is what makes `docker restart`
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then
