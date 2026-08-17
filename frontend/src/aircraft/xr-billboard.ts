@@ -9,7 +9,11 @@ import {
 import type { Aircraft } from '../core/types';
 import { toScene } from '../core/coords';
 import { getTheme, subscribeTheme, type ThemeTokens } from '../core/theme';
-import { roundRect, withAlpha } from '../world/canvas-ui';
+import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
+// ui/ import from aircraft/ is unusual but deliberate: the photo cache +
+// same-origin proxy rewrite live with the DOM detail panel that grew
+// them, and the billboard is presentation code either way.
+import { CanvasPhoto } from '../ui/aircraft-photo';
 
 // Phase 2 world-space replacement for the DOM detail panel — a Sprite
 // with a canvas-backed texture that hovers above the currently selected
@@ -45,6 +49,16 @@ const CANVAS_H = 256;
 // airspace-tied size.
 const MIN_WIDTH_PER_METER = 0.3;
 
+// Photo box (issue #6 round 4 — tyzbit: "Maybe more info on the label,
+// like the aircraft picture"): top-right corner, clear of the headline
+// (max 8 monospace chars ends ≈ x339) and the telemetry row (y144+).
+// 3:2 landscape, matching the planespotters thumbnail shape closely
+// enough that cover-cropping loses only slivers.
+const PHOTO_X = 344;
+const PHOTO_Y = 24;
+const PHOTO_W = 152;
+const PHOTO_H = 102;
+
 const tmpWorldPos = new Vector3();
 const tmpEyePos = new Vector3();
 const tmpParentScale = new Vector3();
@@ -57,6 +71,13 @@ export class XrBillboard {
   private readonly material: SpriteMaterial;
   private readonly unsubscribeTheme: () => void;
   private current: Aircraft | null = null;
+  // Photo for the current hex, loaded async through the same-origin
+  // /photos/ proxy (a cross-origin image would taint the canvas and the
+  // WebGL texture upload would throw). Loader shared with the desktop
+  // HUD card — ui/aircraft-photo.ts CanvasPhoto.
+  private readonly photo = new CanvasPhoto(() => {
+    if (this.current) this.draw(this.current, getTheme().tokens);
+  });
 
   constructor(parent: Object3D) {
     this.canvas = document.createElement('canvas');
@@ -112,6 +133,7 @@ export class XrBillboard {
       this.current.altFt !== aircraft.altFt ||
       this.current.groundSpeedKt !== aircraft.groundSpeedKt ||
       this.current.trackDeg !== aircraft.trackDeg;
+    this.photo.track(aircraft.hex, aircraft.registration);
     if (needsRedraw) {
       this.draw(aircraft, getTheme().tokens);
       this.current = aircraft;
@@ -188,6 +210,17 @@ export class XrBillboard {
       ctx.fillStyle = t.emergency;
       ctx.font = 'bold 24px ui-monospace, monospace';
       ctx.fillText(`! ${a.emergency.toUpperCase()}`, 32, 200);
+    }
+
+    // Photo box, top-right (issue #6 round 4). The credit rides a shaded
+    // strip inside the photo so it never collides with the telemetry row
+    // below the box.
+    if (this.photo.image) {
+      drawCoverPhoto(
+        ctx, this.photo.image,
+        PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H, 10,
+        this.photo.credit, t.accent,
+      );
     }
 
     this.texture.needsUpdate = true;

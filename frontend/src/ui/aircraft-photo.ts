@@ -73,4 +73,72 @@ export async function fetchPhoto(hex: string, registration: string | null): Prom
   return result;
 }
 
+/**
+ * Rewrite a planespotters CDN photo URL to the same-origin nginx proxy
+ * (`/photos/...` → t.plnspttrs.net, see nginx.conf). DOM `<img>` consumers
+ * don't need this, but anything drawing the photo into a canvas that feeds
+ * a WebGL texture does — a cross-origin image taints the canvas and the
+ * texture upload throws. Returns null for hosts the proxy doesn't cover.
+ */
+export function sameOriginPhotoUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 't.plnspttrs.net') return null;
+    return `/photos${u.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Photo-for-a-canvas loader shared by the XR billboard and the desktop
+ * HUD card (stereo panel): tracks one hex at a time, fetches + decodes
+ * its photo through the same-origin proxy, and calls `onLoad` when a
+ * drawable image is ready. Every await is guarded against the tracked
+ * hex moving on, so a late arrival can never clobber a newer aircraft's
+ * (absent or different) photo. A hex change drops the old image
+ * immediately — a stale picture is worse than none.
+ */
+export class CanvasPhoto {
+  private hex: string | null = null;
+  private img: HTMLImageElement | null = null;
+  private creditStr = '';
+
+  constructor(private readonly onLoad: () => void) {}
+
+  /** Ready-to-draw image for the tracked hex, or null while loading/absent. */
+  get image(): HTMLImageElement | null {
+    return this.img;
+  }
+
+  /** Attribution line ("© photographer"), empty when unknown. */
+  get credit(): string {
+    return this.creditStr;
+  }
+
+  track(hex: string, registration: string | null): void {
+    if (hex === this.hex) return;
+    this.hex = hex;
+    this.img = null;
+    this.creditStr = '';
+    void this.load(hex, registration);
+  }
+
+  private async load(hex: string, registration: string | null): Promise<void> {
+    const info = await fetchPhoto(hex, registration);
+    if (this.hex !== hex || !info) return;
+    const url = sameOriginPhotoUrl(info.thumbUrl);
+    if (!url) return;
+    const img = new Image();
+    img.onload = () => {
+      if (this.hex !== hex) return;
+      this.img = img;
+      this.creditStr = info.photographer ? `© ${info.photographer}` : '';
+      this.onLoad();
+    };
+    // onerror deliberately unhandled: no photo box is the fallback state.
+    img.src = url;
+  }
+}
+
 export type { PhotoInfo };

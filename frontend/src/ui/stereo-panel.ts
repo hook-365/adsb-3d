@@ -11,19 +11,24 @@ import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact, fmtVerticalRate } from '../core/units';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { getRoute } from '../feed/routes';
-import { roundRect, withAlpha } from '../world/canvas-ui';
+import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
+import { CanvasPhoto } from './aircraft-photo';
 
 // Selected-aircraft info panel for desktop side-by-side stereo (issue #6:
 // "panels rendered in both eyes"). DOM panels overlay the whole window and
 // straddle the two stereo halves; this is a canvas plane parented to the
 // scene camera, so StereoEffect renders one correctly-placed copy per eye
 // for free — the same trick the XR billboard uses, but screen-anchored and
-// carrying the detail-card essentials instead of a nameplate.
+// carrying the detail-card essentials (photo included, via the same-origin
+// /photos/ proxy — a cross-origin image would taint the canvas).
 //
-// Deliberately not interactive and photo-free (planespotters images are
-// cross-origin; a tainted canvas can't upload as a texture). The wrist
-// menu + billboard continue to serve real headset sessions — this panel
-// hides while presenting.
+// Stereo only, on purpose: a round-4 trial as a plain-desktop bottom card
+// was retired — it duplicated the CSS2D label + detail panel, a camera
+// plane sized for one eye-half renders huge across a full monitor, and
+// DOM labels always paint on top of WebGL, so they sat on the card.
+//
+// Deliberately not interactive. The wrist menu + billboard continue to
+// serve real headset sessions — this panel hides while presenting.
 
 const CANVAS_W = 640;
 const CANVAS_H = 300;
@@ -34,12 +39,26 @@ const PANEL_H = PANEL_W * (CANVAS_H / CANVAS_W);
 const PANEL_Z = -2;
 const PANEL_Y = -0.62;
 
+// Photo box, top-right. 3:2 landscape — the planespotters thumbnail
+// shape — so the cover-crop loses only slivers. Text rows that share its
+// y-range (headline, identity) clamp their maxWidth against PHOTO_X.
+const PHOTO_W = 160;
+const PHOTO_H = 107;
+const PHOTO_X = CANVAS_W - 28 - PHOTO_W;
+const PHOTO_Y = 24;
+
 export class StereoPanel {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly texture: CanvasTexture;
   readonly mesh: Mesh;
   private lastKey = '';
+  // Clearing lastKey on photo arrival forces a repaint on the next
+  // per-frame update() tick — cheaper than threading route state into a
+  // direct draw call from the async callback.
+  private readonly photo = new CanvasPhoto(() => {
+    this.lastKey = '';
+  });
 
   constructor(camera: Camera) {
     this.canvas = document.createElement('canvas');
@@ -77,6 +96,7 @@ export class StereoPanel {
       return;
     }
     this.mesh.visible = true;
+    this.photo.track(a.hex, a.registration);
     const route = a.callsign ? getRoute(a.callsign) : null;
     const key = [
       a.hex, a.callsign, a.altFt, a.groundSpeedKt, a.trackDeg, a.verticalRateFpm,
@@ -103,11 +123,17 @@ export class StereoPanel {
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left';
 
+    // Rows sharing the photo box's y-range stop short of it; without a
+    // photo (still loading, none found) they get the full width back.
+    // Ellipsis truncation, not fillText's maxWidth — maxWidth squishes
+    // glyphs horizontally, which reads as broken on long operator names.
+    const topRowMax = this.photo.image ? PHOTO_X - 40 : CANVAS_W - 56;
+
     // Headline: callsign / registration / hex.
     const headline = a.callsign || a.registration || a.hex.toUpperCase();
     ctx.fillStyle = t.fgBright;
     ctx.font = 'bold 52px ui-monospace, "JetBrains Mono", Menlo, monospace';
-    ctx.fillText(headline, 28, 66);
+    ctx.fillText(truncateToWidth(ctx, headline, topRowMax), 28, 66);
 
     // Identity line: registration · type · operator (what fits).
     const identity = [
@@ -119,7 +145,7 @@ export class StereoPanel {
       .join(' · ');
     ctx.fillStyle = t.fgSoft;
     ctx.font = '26px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(identity, 28, 104, CANVAS_W - 56);
+    ctx.fillText(truncateToWidth(ctx, identity, topRowMax), 28, 104);
 
     // Route, when the cache has it.
     if (route?.origin || route?.destination) {
@@ -140,7 +166,7 @@ export class StereoPanel {
     ].filter(Boolean);
     ctx.fillStyle = t.fg;
     ctx.font = '30px ui-monospace, "JetBrains Mono", Menlo, monospace';
-    ctx.fillText(parts.join('   '), 28, 206, CANVAS_W - 56);
+    ctx.fillText(truncateToWidth(ctx, parts.join('   '), CANVAS_W - 56), 28, 206);
 
     // Vertical rate detail on its own line when meaningful.
     if (vs !== null && Math.abs(vs) >= 100) {
@@ -149,15 +175,36 @@ export class StereoPanel {
       ctx.fillText(fmtVerticalRate(vs), 28, 244);
     }
 
-    // Emergency banner.
+    // Emergency banner — steps left of the photo box when one is shown.
     if (a.emergency) {
       ctx.fillStyle = t.emergency;
       ctx.font = 'bold 26px ui-sans-serif, system-ui, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(a.emergency.toUpperCase(), CANVAS_W - 28, 66);
+      ctx.fillText(a.emergency.toUpperCase(), this.photo.image ? PHOTO_X - 16 : CANVAS_W - 28, 66);
       ctx.textAlign = 'left';
+    }
+
+    // Photo box, top-right (issue #6 round 4 — same treatment as the XR
+    // billboard, via the shared helper).
+    if (this.photo.image) {
+      drawCoverPhoto(
+        ctx, this.photo.image,
+        PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H, 10,
+        this.photo.credit, t.accent,
+      );
     }
 
     this.texture.needsUpdate = true;
   }
+}
+
+/** Trim `text` with a trailing ellipsis until it fits `maxW` in the
+ *  ctx's current font. */
+function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) {
+    t = t.slice(0, -1);
+  }
+  return `${t.trimEnd()}…`;
 }

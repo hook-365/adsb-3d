@@ -44,3 +44,53 @@ export function roundRect(
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
+
+/**
+ * Cover-crop `img` into a rounded box with an optional attribution strip
+ * along the bottom edge and an accent border. Shared by the XR billboard
+ * and the desktop HUD card so the photo treatment can't drift between
+ * the two surfaces.
+ */
+export function drawCoverPhoto(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number,
+  credit: string,
+  accent: string,
+): void {
+  const boxAspect = w / h;
+  const imgAspect = img.naturalWidth / img.naturalHeight;
+  let sx = 0;
+  let sy = 0;
+  let sw = img.naturalWidth;
+  let sh = img.naturalHeight;
+  if (imgAspect > boxAspect) {
+    sw = img.naturalHeight * boxAspect;
+    sx = (img.naturalWidth - sw) / 2;
+  } else {
+    sh = img.naturalWidth / boxAspect;
+    sy = (img.naturalHeight - sh) / 2;
+  }
+  ctx.save();
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  if (credit) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(x, y + h - 20, w, 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText(credit, x + 6, y + h - 10, w - 12);
+  }
+  ctx.restore();
+  ctx.strokeStyle = withAlpha(accent, 0.4);
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.stroke();
+}
