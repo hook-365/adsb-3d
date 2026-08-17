@@ -38,6 +38,9 @@ services:
       - ENABLE_HISTORICAL=false       # true to enable historical playback
       - ENABLE_ACARS=false            # true to enable ACARS (needs acars-service)
       - HIDE_TOWER=false              # true to hide home tower (privacy)
+      # - DNS_RESOLVER=10.96.0.10     # nginx upstream DNS; default is Docker's
+      #                               # embedded 127.0.0.11 — override on runtimes
+      #                               # without it (e.g. Kubernetes CoreDNS)
 
       # ── Voice scanner (opt-in, requires a voice-services stack) ──────
       # When ENABLE_VOICE=true the frontend renders a call-feed Voice panel
