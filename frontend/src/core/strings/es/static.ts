@@ -16,6 +16,8 @@ export const staticStrings = {
   'static.share': 'compartir',
   'static.share_title': 'Copiar un enlace para compartir',
   'static.recenter': 'centrar',
+  'static.orbit': 'orbitar',
+  'static.orbit_title': 'Orbitar lentamente la aeronave seleccionada (o el centro del radar)',
   'static.recenter_title': 'Centrar la vista en la ubicación base',
   'static.github_title': 'Código fuente en GitHub',
   'static.github_aria': 'Repositorio de GitHub',
@@ -38,6 +40,8 @@ export const staticStrings = {
   'static.col_alt': 'Alt',
   'static.col_spd': 'Vel',
   'static.col_dist': 'Dist',
+  'static.list_minimize_aria': 'Minimizar lista de aeronaves',
+  'static.list_minimize_title': 'Minimizar',
   // Aircraft detail panel
   'static.detail_minimize_aria': 'Minimizar panel',
   'static.detail_minimize_title': 'Minimizar',

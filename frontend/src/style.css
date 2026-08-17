@@ -1448,13 +1448,16 @@ body.xr-on .acars-browser {
 }
 
 #status .status-btn {
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  color: var(--muted);
+  /* Brighter than the surrounding status text on purpose — these are
+     the footer's only interactive elements and muted-on-translucent
+     made them near-invisible (feedback: "kinda hard to see"). */
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--fg);
   font: inherit;
   font-size: 11px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: 4px;
-  padding: 2px 8px;
+  padding: 3px 10px;
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
@@ -1463,6 +1466,14 @@ body.xr-on .acars-browser {
   color: var(--fg);
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Latched state (orbit while auto-orbit is running) — the lit button is
+   what makes the ongoing camera motion legible and stoppable. */
+#status .status-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 #status .status-btn.copied {
@@ -1571,6 +1582,13 @@ body.xr-on .acars-browser {
   box-shadow: 0 0 0 1px var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
+/* display: flex below would beat the UA's [hidden] rule — the chip must
+   actually vanish while the panel is open (the header minimize takes
+   over; see ui/panel-toggle.ts). */
+#panel-toggle[hidden] {
+  display: none;
+}
+
 #panel-toggle {
   position: fixed;
   top: 16px;
@@ -1622,25 +1640,9 @@ body.xr-on .acars-browser {
   transition: transform 200ms ease, opacity 200ms ease;
 }
 
-#panel-toggle[aria-expanded='true'] .icon {
-  border-color: transparent;
-}
-
-#panel-toggle[aria-expanded='true'] .icon::before {
-  transform: rotate(45deg) translateY(-1px);
-  top: 50%;
-  box-shadow: 0 0 0 0 currentColor;
-}
-
-#panel-toggle[aria-expanded='true'] .icon::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 2px solid currentColor;
-  transform: rotate(-45deg) translateY(-1px);
-}
+/* No [aria-expanded='true'] styling: the chip is hidden entirely while
+   the panel is open (the header minimize is the close control), so the
+   old hamburger-to-X morph became unreachable and was removed. */
 
 #panel-toggle .badge {
   position: absolute;
@@ -1659,10 +1661,6 @@ body.xr-on .acars-browser {
   justify-content: center;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
-}
-
-#panel-toggle[aria-expanded='true'] .badge {
-  display: none;
 }
 
 #aircraft-panel {
@@ -1708,6 +1706,32 @@ body.xr-on .acars-browser {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-size: 11px;
+  color: var(--fg);
+}
+
+#aircraft-panel .panel-title-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Header minimize — same chrome as the detail panel's .detail-minimize,
+   so the two sidebars share one collapse grammar. */
+#aircraft-panel .panel-minimize {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--muted);
+  border-radius: 3px;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+#aircraft-panel .panel-minimize:hover {
+  border-color: var(--accent);
   color: var(--fg);
 }
 

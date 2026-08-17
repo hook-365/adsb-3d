@@ -10,6 +10,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Aircraft photo on the XR billboard and stereo panel (issue #6 round
+  4).** The in-headset label and the desktop-stereo card now show the
+  selected aircraft's planespotters photo with photographer credit,
+  cover-cropped into a corner box. Canvas textures need same-origin
+  images (cross-origin taints the canvas and the WebGL upload throws),
+  so photo URLs are rewritten onto the existing nginx `/photos/` proxy;
+  the loader and the drawing treatment are shared between both surfaces
+  (`CanvasPhoto`, `drawCoverPhoto`) so they can't drift.
+
+- **Auto-orbit speed steps and a footer orbit button.** `autoOrbit` is
+  now a speed in deg/s (off / 3 / 6 — issue #6 round 4: "Maybe 2
+  speeds?") instead of a boolean, with a localStorage migration; the
+  wrist row cycles the steps and the desktop panel got a stop-list
+  slider. Desktop also gained a labeled "orbit" button next to
+  share/recenter that toggles the same setting and stays lit while
+  orbiting — a first cut lived in the detail panel header, which
+  disappears on deselect and left the camera "stuck orbiting" with no
+  control in sight. Clearing the selection on desktop now stops the
+  orbit outright (XR's selection-independent desk-ornament orbit is
+  exempt).
+
+- **Aircraft-list minimize button (sidebar consistency).** The list
+  header now has the same minimize (–) control as the detail panel;
+  the floating top-right button no longer morphs into an ✕ while the
+  panel is open — it hides entirely and returns as the live-count chip
+  when collapsed, so both sidebars share one grammar: header button to
+  shrink, compact chip to restore.
+
+- **`DNS_RESOLVER` environment variable.** Overrides the nginx
+  `resolver` address (default `127.0.0.11`, Docker's embedded DNS) for
+  runtimes like Kubernetes where hand-edits to the generated config were
+  being clobbered by the template re-render on every boot (issue #6
+  feedback).
+
 - **High-resolution basemap tiles and XR auto-orbit (issue #6 round 3,
   Quest 3 hardware feedback).** New `hiResTiles` setting fetches the
   basemap one zoom level sharper (4x the tiles for the same coverage,
@@ -35,6 +69,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   entry under Fixed for the real one.)
 
 ### Fixed
+
+- **Diorama auto-orbit, placement vs follow, clipped-label linger, and
+  follow-random ergonomics (issue #6 round 4, Quest 3 hardware feedback,
+  tyzbit).** Auto-orbit now works inside the diorama box, spinning the
+  map turntable-style about the box center (round 3 suppressed it as
+  "rotating the world inside stationary walls" — which is exactly the
+  desk-ornament effect the feedback asked for); manual right-stick
+  turning in diorama free-fly is re-enabled the same way, height still
+  locked. Arming AR scope placement force-disables follow so the freshly
+  placed map isn't immediately dragged away re-centering the aircraft.
+  The XR billboard now hides when the diorama walls clip its aircraft
+  out of view (selection kept, so it pops back on re-entry). Toggling
+  "follow random aircraft" (renamed from "Follow random") with follow
+  off now enables follow and picks a target immediately instead of
+  waiting for an already-followed plane to drop off the feed.
+
+- **Stereo-panel text squish.** Long operator names were horizontally
+  compressed by canvas `fillText` maxWidth; they now truncate with an
+  ellipsis.
 
 - **Diorama pan height drift and the follow-mode zoom rubber-band, round
   3 of issue #6 hardware feedback (Quest 3, tyzbit).** Diorama pan-only

@@ -67,6 +67,7 @@
       <span id="clocks" class="clocks" title="Local · UTC" data-i18n-title="static.clocks_title">—:— · —:—Z</span>
       <button id="share-btn" type="button" class="status-btn" title="Copy a shareable link" data-i18n="static.share" data-i18n-title="static.share_title">share</button>
       <button id="recenter-btn" type="button" class="status-btn" title="Recenter view on home" data-i18n="static.recenter" data-i18n-title="static.recenter_title">recenter</button>
+      <button id="orbit-btn" type="button" class="status-btn" title="Slowly circle the selected aircraft (or the scope center)" data-i18n="static.orbit" data-i18n-title="static.orbit_title">orbit</button>
       <span class="footer-links">
         <a href="https://github.com/hook-365/adsb-3d" target="_blank" rel="noopener noreferrer" class="footer-link" title="Source on GitHub" data-i18n-title="static.github_title" aria-label="GitHub repository" data-i18n-aria-label="static.github_aria">github</a>
         <a href="https://buymeacoffee.com/anthonyhook" target="_blank" rel="noopener noreferrer" class="footer-link footer-link-coffee" title="Support development" data-i18n-title="static.coffee_title" aria-label="Buy me a coffee" data-i18n-aria-label="static.coffee_aria">☕</a>
@@ -81,7 +82,10 @@
       <header>
         <div class="panel-title">
           <span data-i18n="static.aircraft_heading">Aircraft</span>
-          <span id="panel-count" class="panel-count">0</span>
+          <span class="panel-title-right">
+            <span id="panel-count" class="panel-count">0</span>
+            <button type="button" class="panel-minimize" id="panel-minimize" aria-label="Minimize aircraft list" data-i18n-aria-label="static.list_minimize_aria" title="Minimize" data-i18n-title="static.list_minimize_title">–</button>
+          </span>
         </div>
         <div class="panel-search-wrap">
           <input id="panel-search" type="search" placeholder="filter callsign / reg / hex" data-i18n-placeholder="static.list_search_placeholder" autocomplete="off" />

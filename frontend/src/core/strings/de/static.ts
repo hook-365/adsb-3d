@@ -16,6 +16,8 @@ export const staticStrings = {
   'static.share': 'teilen',
   'static.share_title': 'Teilbaren Link kopieren',
   'static.recenter': 'zentrieren',
+  'static.orbit': 'umkreisen',
+  'static.orbit_title': 'Langsam um das ausgewählte Flugzeug (oder die Radarmitte) kreisen',
   'static.recenter_title': 'Ansicht auf Heimposition zentrieren',
   'static.github_title': 'Quellcode auf GitHub',
   'static.github_aria': 'GitHub-Repository',
@@ -38,6 +40,8 @@ export const staticStrings = {
   'static.col_alt': 'Höhe',
   'static.col_spd': 'Geschw.',
   'static.col_dist': 'Entf.',
+  'static.list_minimize_aria': 'Flugzeugliste minimieren',
+  'static.list_minimize_title': 'Minimieren',
   // Aircraft detail panel
   'static.detail_minimize_aria': 'Panel minimieren',
   'static.detail_minimize_title': 'Minimieren',

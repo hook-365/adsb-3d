@@ -42,7 +42,7 @@ import { attachControls } from './world/controls';
 import { createLabelRenderer } from './world/labels';
 import { createAircraftList } from './ui/aircraft-list';
 import { createAircraftDetail } from './ui/aircraft-detail';
-import { attachPanelToggle } from './ui/panel-toggle';
+import { attachPanelToggle, setAircraftListExpanded } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
 import { mountShapeChip } from './ui/shape-chip';
@@ -668,18 +668,13 @@ controls.addEventListener('end', () => {
 // edge — when an aircraft is selected, the detail card's close × ends
 // up sitting over the list's sort headers / filter pills. Auto-collapse
 // the list on small viewports so the detail card has the screen to
-// itself; the user can reopen the list via the hamburger toggle.
+// itself; the user can reopen the list via the count chip. Goes through
+// panel-toggle's own transition so the chip's visibility stays in sync.
 const MOBILE_BREAKPOINT_PX = 768;
 
 function autoCollapseListOnMobile(hex: string | null): void {
   if (window.innerWidth >= MOBILE_BREAKPOINT_PX) return;
-  const panel = document.getElementById('aircraft-panel');
-  const toggle = document.getElementById('panel-toggle');
-  if (!panel || !toggle) return;
-  if (hex) {
-    panel.classList.add('collapsed');
-    toggle.setAttribute('aria-expanded', 'false');
-  }
+  if (hex) setAircraftListExpanded(false);
 }
 
 // Tracks the current selection so the per-frame XR billboard update can
@@ -698,6 +693,15 @@ function applySelection(hex: string | null): void {
   if (hex === null && seededSearchHex !== null) {
     if (getSearchQuery() === seededSearchHex) aircraftList.clearSearch();
     seededSearchHex = null;
+  }
+  // Desktop: clearing the selection also stops auto-orbit — the camera
+  // silently spinning around home after the plane you were circling is
+  // gone reads as "stuck orbiting". XR is exempt: the desk-ornament
+  // orbit around the scope center is deliberately selection-independent
+  // (issue #6). Ambient no-selection orbit on desktop remains available
+  // by pressing the footer orbit button with nothing selected.
+  if (hex === null && !world.renderer.xr.isPresenting && getSettings().autoOrbit > 0) {
+    updateSettings({ autoOrbit: 0 });
   }
   xrSelectedHex = hex;
   // New target: drop the XR follow anchor so it re-captures at the new
@@ -818,6 +822,27 @@ function panView(dx: number, dz: number): void {
 }
 
 document.getElementById('recenter-btn')!.addEventListener('click', recenterView);
+
+// Orbit button — footer toggle for the same Settings.autoOrbit the
+// settings panel's speed slider drives (desktop OrbitControls circles
+// the follow target; XR orbits its own pivot). Lives next to recenter —
+// it's a camera action, and it must stay visible while orbiting: a
+// first cut put it in the detail panel header, which disappears on
+// deselect and left the camera "stuck orbiting" with no control in
+// sight. Off → the last non-zero speed seen this session (3°/s before
+// any); the settings slider still picks the speed.
+const orbitBtn = document.getElementById('orbit-btn') as HTMLButtonElement;
+let lastOrbitSpeed = getSettings().autoOrbit || 3;
+orbitBtn.addEventListener('click', () => {
+  updateSettings({ autoOrbit: getSettings().autoOrbit > 0 ? 0 : lastOrbitSpeed });
+});
+subscribeSettings((s) => {
+  // Capture on every change, not just button toggles, so speed picked in
+  // settings (or from the wrist menu) is what an off/on cycle restores.
+  if (s.autoOrbit > 0) lastOrbitSpeed = s.autoOrbit;
+  orbitBtn.classList.toggle('active', s.autoOrbit > 0);
+});
+orbitBtn.classList.toggle('active', getSettings().autoOrbit > 0);
 
 // Share button — copies the current URL (feed param + selected-hex hash)
 // to the clipboard. Pairs with the click-to-copy callsign in the detail

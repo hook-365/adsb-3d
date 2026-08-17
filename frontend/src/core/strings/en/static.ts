@@ -17,6 +17,8 @@ export const staticStrings = {
   'static.share': 'share',
   'static.share_title': 'Copy a shareable link',
   'static.recenter': 'recenter',
+  'static.orbit': 'orbit',
+  'static.orbit_title': 'Slowly circle the selected aircraft (or the scope center)',
   'static.recenter_title': 'Recenter view on home',
   'static.github_title': 'Source on GitHub',
   'static.github_aria': 'GitHub repository',
@@ -39,6 +41,8 @@ export const staticStrings = {
   'static.col_alt': 'Alt',
   'static.col_spd': 'Spd',
   'static.col_dist': 'Dist',
+  'static.list_minimize_aria': 'Minimize aircraft list',
+  'static.list_minimize_title': 'Minimize',
   // Aircraft detail panel
   'static.detail_minimize_aria': 'Minimize panel',
   'static.detail_minimize_title': 'Minimize',
