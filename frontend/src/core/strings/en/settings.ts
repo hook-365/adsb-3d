@@ -127,6 +127,8 @@ export const settingsStrings = {
   'settings.auto_orbit_desc':
     'Slowly orbit around the followed aircraft (or the scope center). ' +
     'Any movement input pauses it.',
+  // Slider label for the 0°/s stop.
+  'settings.auto_orbit_off': 'Off',
   'settings.terrain_3d': '3D terrain',
   'settings.terrain_3d_desc':
     'Raise the basemap to real ground elevation. Rings and markers follow ' +

@@ -124,6 +124,7 @@ export const settingsStrings = {
   'settings.auto_orbit_desc':
     'Langsam um das gefolgte Flugzeug (oder die Radarmitte) kreisen. ' +
     'Jede Bewegungseingabe pausiert dies.',
+  'settings.auto_orbit_off': 'Aus',
   'settings.terrain_3d': '3D-Gelände',
   'settings.terrain_3d_desc':
     'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +

@@ -29,7 +29,7 @@ export const miscStrings = {
   'misc.xr_diorama': 'Diorama clip',
   'misc.xr_diorama_size': 'Diorama size',
   'misc.xr_follow': 'Follow',
-  'misc.xr_follow_random': 'Follow random',
+  'misc.xr_follow_random': 'Follow random aircraft',
   'misc.xr_auto_orbit': 'Auto orbit',
   'misc.xr_hi_res_tiles': 'Hi-res tiles',
   'misc.xr_shape': 'Aircraft shape',

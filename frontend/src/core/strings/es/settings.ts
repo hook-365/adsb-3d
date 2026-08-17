@@ -124,6 +124,7 @@ export const settingsStrings = {
   'settings.auto_orbit_desc':
     'Orbita lentamente alrededor de la aeronave seguida (o el centro del ' +
     'radar). Cualquier entrada de movimiento la pausa.',
+  'settings.auto_orbit_off': 'Desactivada',
   'settings.terrain_3d': 'Terreno 3D',
   'settings.terrain_3d_desc':
     'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +

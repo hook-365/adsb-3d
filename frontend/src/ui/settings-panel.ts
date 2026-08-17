@@ -1,4 +1,5 @@
 import {
+  AUTO_ORBIT_SPEEDS,
   BASEMAP_VALUES,
   getSettings,
   getDefaultSettings,
@@ -411,10 +412,16 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.follow_random_desc'),
       },
       {
-        kind: 'toggle',
+        kind: 'range',
         key: 'autoOrbit',
         label: t('settings.auto_orbit'),
         description: t('settings.auto_orbit_desc'),
+        // Stop list, not a linear slider (issue #6 round 4: two speeds).
+        min: 0,
+        max: 6,
+        step: 3,
+        values: AUTO_ORBIT_SPEEDS,
+        format: (v) => (v === 0 ? t('settings.auto_orbit_off') : `${v}°/s`),
       },
       {
         kind: 'toggle',

@@ -27,7 +27,7 @@ export const miscStrings = {
   'misc.xr_diorama': 'Diorama',
   'misc.xr_diorama_size': 'Diorama-Größe',
   'misc.xr_follow': 'Folgen',
-  'misc.xr_follow_random': 'Zufällig folgen',
+  'misc.xr_follow_random': 'Zufälligem Flugzeug folgen',
   'misc.xr_auto_orbit': 'Auto-Umkreisung',
   'misc.xr_hi_res_tiles': 'Kacheln in HD',
   'misc.xr_shape': 'Flugzeugform',

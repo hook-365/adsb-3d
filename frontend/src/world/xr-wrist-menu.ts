@@ -32,6 +32,7 @@ import {
   Vector3,
 } from 'three';
 import {
+  AUTO_ORBIT_SPEEDS,
   BASEMAP_VALUES,
   getSettings,
   subscribeSettings,
@@ -322,10 +323,19 @@ const PAGES: MenuRow[][] = [
     // stale selection. No effect with xrFollow off, but shown
     // unconditionally like xrFollow itself rather than nested visibility.
     toggleRow('followRandomAircraft', () => tr('misc.xr_follow_random')),
-    // Slow auto-orbit around the follow target / scope center (issue #6:
-    // "starting with slow orbit speeds might be the most effective").
-    // Any stick input pauses it for that frame — xr-locomotion.ts.
-    toggleRow('autoOrbit', () => tr('misc.xr_auto_orbit')),
+    // Auto-orbit around the follow target / diorama center / scope
+    // center. Cycles off → 3°/s → 6°/s (issue #6 round 4: "Maybe 2
+    // speeds?"). Any stick input pauses it for that frame —
+    // xr-locomotion.ts. Degree-per-second values are unit labels, not
+    // prose, so they're deliberately untranslated like the unit rows.
+    cycleRow(
+      'autoOrbit',
+      () => tr('misc.xr_auto_orbit'),
+      AUTO_ORBIT_SPEEDS.map((v) => ({
+        value: v,
+        label: () => (v === 0 ? tr('misc.xr_off') : `${v}°/s`),
+      })),
+    ),
   ],
 ];
 

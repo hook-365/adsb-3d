@@ -26,7 +26,13 @@ import { setupXrControllers } from './world/xr-controllers';
 import { XrBillboard } from './aircraft/xr-billboard';
 import { setWristMenuActions, XrWristMenu } from './world/xr-wrist-menu';
 import { XrArPlace } from './world/xr-ar-place';
-import { clearDiorama, dioramaCenter, setDioramaBox } from './world/diorama-clip';
+import {
+  clearDiorama,
+  dioramaActive,
+  dioramaCenter,
+  insideDiorama,
+  setDioramaBox,
+} from './world/diorama-clip';
 import { StereoPanel } from './ui/stereo-panel';
 import { faceWorldPoint, setupXrLocomotion } from './world/xr-locomotion';
 import { distanceFromHomeNm } from './core/coords';
@@ -97,17 +103,19 @@ const labelRenderer = createLabelRenderer();
 // aircraft (or eases back to the origin when nothing's followed) — so
 // wiring the setting through is nearly free, no bespoke pivot math
 // needed like the XR side (world/xr-locomotion.ts). autoRotateSpeed is
-// in "revolutions per 30s at 60fps"-ish units per three's own docs;
-// 0.6 lands in the same conservative, slow-orbit ballpark as the XR
-// rate. autoRotate only advances inside controls.update(), which the
-// render loop below already calls every frame regardless of XR state,
-// but three also applies it while a drag is in progress — harmless, it
-// just adds a small extra delta on top of the user's own drag. XR
-// presenting is excluded: the headset owns the camera there, and
-// xr-locomotion.ts drives its own orbit instead.
-controls.autoRotateSpeed = 0.6;
+// in "revolutions per 30s at 60fps"-ish units per three's own docs —
+// 2.0 ≈ 12°/s, so Settings.autoOrbit (deg/s) divides by 6 to land the
+// desktop orbit at the same real rate as the XR one. autoRotate only
+// advances inside controls.update(), which the render loop below
+// already calls every frame regardless of XR state, but three also
+// applies it while a drag is in progress — harmless, it just adds a
+// small extra delta on top of the user's own drag. XR presenting is
+// excluded: the headset owns the camera there, and xr-locomotion.ts
+// drives its own orbit instead.
 function syncDesktopAutoOrbit(): void {
-  controls.autoRotate = getSettings().autoOrbit && !world.renderer.xr.isPresenting;
+  const degPerS = getSettings().autoOrbit;
+  controls.autoRotate = degPerS > 0 && !world.renderer.xr.isPresenting;
+  controls.autoRotateSpeed = degPerS / 6;
 }
 subscribeSettings(syncDesktopAutoOrbit);
 subscribeXr(syncDesktopAutoOrbit);
@@ -235,6 +243,8 @@ subscribeSettings((s) => {
 // ── XR follow mode state (tick logic lives in the render loop) ──────
 const XR_FOLLOW_LERP = 0.12;
 const xrFollowTarget = new Vector3();
+// Scratch for the billboard's diorama-clip visibility probe (render loop).
+const xrClipProbe = new Vector3();
 let xrFollowAnchor: Vector3 | null = null;
 function xrFollowAnchorSeed(worldPos: Vector3): Vector3 {
   xrFollowAnchor = worldPos.clone();
@@ -243,6 +253,14 @@ function xrFollowAnchorSeed(worldPos: Vector3): Vector3 {
 setWristMenuActions({
   toggleArPlace: () => {
     xrArPlace.toggle();
+    // Arming placement force-disables follow (issue #6 round 4 — tyzbit:
+    // "Follow mode should be force disabled before activating the scope
+    // placement ... because after being placed, the map immediately moves
+    // away as it re-centers the aircraft"). Left off after placing — the
+    // follow row is on the same wrist page when the user wants it back.
+    if (xrArPlace.isActive() && getSettings().xrFollow) {
+      updateSettings({ xrFollow: false });
+    }
     xrWristMenu.refresh();
   },
   arPlaceActive: () => xrArPlace.isActive(),
@@ -543,14 +561,31 @@ attachPanelToggle(store);
 // follow-random" a narrow combination not worth the extra plumbing for a
 // first pass; a candidate clipped by the box can still be picked and
 // simply won't be visible until it (or the box) moves.
-store.subscribe((snapshot) => {
-  if (!getSettings().xrFollow || !getSettings().followRandomAircraft) return;
-  if (!xrSelectedHex || snapshot.has(xrSelectedHex)) return;
-  const candidates = [...snapshot.values()].filter((a) => passesFilter(a, getFilter()));
+function pickRandomFollowTarget(): void {
+  const candidates = [...store.snapshot.values()].filter((a) => passesFilter(a, getFilter()));
   if (candidates.length === 0) return;
   const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
   aircraftList.setSelected(pick.hex);
   applySelection(pick.hex);
+}
+store.subscribe((snapshot) => {
+  if (!getSettings().xrFollow || !getSettings().followRandomAircraft) return;
+  if (xrSelectedHex && snapshot.has(xrSelectedHex)) return;
+  pickRandomFollowTarget();
+});
+// Turning follow-random ON is enough by itself (issue #6 round 4 —
+// tyzbit: '"Follow random" without follow enabled could pick a random
+// aircraft and then follow it, enabling the follow option at the same
+// time as well'): switch follow on and pick immediately rather than
+// waiting for the next store snapshot. Rising-edge only — the re-entrant
+// updateSettings fanout returns straight away on the unchanged value.
+let prevFollowRandom = getSettings().followRandomAircraft;
+subscribeSettings((s) => {
+  if (s.followRandomAircraft === prevFollowRandom) return;
+  prevFollowRandom = s.followRandomAircraft;
+  if (!s.followRandomAircraft) return;
+  if (!s.xrFollow) updateSettings({ xrFollow: true });
+  if (!xrSelectedHex || !store.snapshot.has(xrSelectedHex)) pickRandomFollowTarget();
 });
 
 // Voice scanner panel — VHF AM monitor. Opt-in via ENABLE_VOICE on
@@ -1022,15 +1057,27 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // correctly in both eyes (CSS2D labels are a single DOM overlay and get
   // hidden; issue #6 asked for UI presence in both halves). In plain
   // desktop view the CSS2D label + #panel-detail already cover the same
-  // information, so skip the per-frame canvas work there.
+  // information, so skip the per-frame canvas work there (a trial run of
+  // the billboard on desktop sat on top of the aircraft and doubled the
+  // CSS2D label; a bottom-card trial just duplicated the sidebar).
   const stereoDesktop = !world.renderer.xr.isPresenting && getSettings().stereo;
   if ((world.renderer.xr.isPresenting || stereoDesktop) && xrSelectedHex) {
     const a = store.snapshot.get(xrSelectedHex);
     const pos = reconciler.positionOf(xrSelectedHex);
+    // The billboard's material is exempt from diorama clipping (text
+    // sliced by a wall would be unreadable), so hide it manually when
+    // the box has clipped its aircraft away — selection is kept, so
+    // it pops back the moment the aircraft re-enters the walls (issue #6
+    // round 4 — tyzbit: "Label remains after aircraft is not visible in
+    // diorama ... maybe hide the label but leave aircraft selected").
+    const clippedAway =
+      pos !== null &&
+      dioramaActive() &&
+      !insideDiorama(world.xrRoot.localToWorld(xrClipProbe.copy(pos)));
     // The wrist menu's Labels row maps to aircraftLabels; in a headset the
     // billboard IS the label, so the toggle governs it (issue #6, VR#7 —
     // CSS2D labels are hidden in XR, making the toggle appear dead).
-    xrBillboard.update(getSettings().aircraftLabels ? (a ?? null) : null, pos);
+    xrBillboard.update(getSettings().aircraftLabels && !clippedAway ? (a ?? null) : null, pos);
     // Angular-size floor measures from the eye actually in use.
     xrBillboard.keepReadable(
       world.renderer.xr.isPresenting ? world.renderer.xr.getCamera() : world.camera,
@@ -1040,9 +1087,12 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   }
 
   // Stereo info panel (issue #6 "panels rendered in both eyes"): the
-  // detail-card essentials on a camera-parented canvas plane, so
+  // detail-card essentials + photo on a camera-parented canvas plane, so
   // StereoEffect draws one correct copy per half. Desktop stereo only —
-  // in a real headset the wrist menu + billboard cover this.
+  // in a real headset the wrist menu + billboard cover this, and in plain
+  // desktop view the CSS2D label + #panel-detail already do (a round-4
+  // trial of showing a card there was retired: pure duplication, and a
+  // camera plane renders huge on a monitor and under the DOM labels).
   stereoPanel.update(
     stereoDesktop && xrSelectedHex ? (store.snapshot.get(xrSelectedHex) ?? null) : null,
   );

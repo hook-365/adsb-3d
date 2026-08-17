@@ -27,7 +27,7 @@
 import { Vector3, type Group, type PerspectiveCamera, type WebGLRenderer } from 'three';
 import { getSettings, updateSettings } from '../core/settings';
 import { getXrState } from '../core/xr';
-import { dioramaActive } from './diorama-clip';
+import { dioramaActive, dioramaCenter } from './diorama-clip';
 
 // ── Tunables (real-world units / radians / seconds) ────────────────────
 
@@ -70,12 +70,9 @@ const SMOOTH_TURN_RAD_PER_S = Math.PI / 2;
 const RECENTER_FORWARD_M = 1.5;
 const RECENTER_DOWN_M = 0.5;
 
-/** Auto-orbit rate (issue #6: "starting with slow orbit speeds might be
- *  the most effective... spinning around aircraft really fast gets
- *  rapidly less fun"). 3°/s is a full revolution every two minutes —
- *  deliberately conservative for the first round; there's no user-facing
- *  speed control yet. */
-const AUTO_ORBIT_RAD_PER_S = (Math.PI * 3) / 180;
+// Auto-orbit rate comes straight from Settings.autoOrbit (deg/s, 0 = off,
+// stops in core/settings.ts AUTO_ORBIT_SPEEDS) — issue #6 round 4 asked
+// for a second speed, so the old module constant became a setting.
 
 // WebXR standard gamepad layout.
 const BUTTON_SQUEEZE = 1;
@@ -192,8 +189,10 @@ export function setupXrLocomotion(opts: {
     // the box's fixed floor, and turning spins the whole world inside
     // stationary walls. Both read as "the map moves" in a way plain
     // horizontal panning doesn't. So: keep left-stick X/Y horizontal pan,
-    // drop right-stick height and turning while the box is active. Scope
-    // mode and non-diorama free-fly are untouched.
+    // drop right-stick height while the box is active. Scope mode and
+    // non-diorama free-fly are untouched. (Round 2 also dropped turning;
+    // round 4 re-enabled it as a turntable orbit of the box center — see
+    // the pivot selection in the right-controller block.)
     //
     // Round 3 (tyzbit): the round-2 fix above wasn't sufficient — "Free-fly
     // translates according to the headset tilt which modifies height as
@@ -264,31 +263,34 @@ export function setupXrLocomotion(opts: {
         if (Math.abs(x) > DEADZONE || Math.abs(y) > DEADZONE) userInputActive = true;
 
         // Turn pivot: scope orbits the selection/center; free-fly turns
-        // about the user like a first-person app.
-        const pivot = freefly
-          ? tmpPivot.setFromMatrixPosition(xrCam.matrixWorld)
-          : (getOrbitPivot?.() ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld));
+        // about the user like a first-person app. Diorama pan-only mode
+        // turns about the BOX center — the map spins turntable-style
+        // inside the fixed walls, height untouched (issue #6 round 4 —
+        // tyzbit: "Free fly could allow turning left&right if you wanted
+        // (just no height changes still)"; round 3 suppressed turning
+        // here entirely).
+        const pivot = dioramaPanOnly
+          ? (dioramaCenter(tmpPivot) ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld))
+          : freefly
+            ? tmpPivot.setFromMatrixPosition(xrCam.matrixWorld)
+            : (getOrbitPivot?.() ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld));
 
         // Turn sense differs by model (issue #6 hardware feedback):
         // scope is an orbit, push right → scene orbits left past you;
         // free-fly is first-person, push right → YOU yaw right, which
-        // is the world rotating the other way.
-        const turnSign = (x > 0 ? -1 : 1) * (freefly ? -1 : 1);
-        // Turning suppressed in diorama pan-only free-fly (issue #6, see
-        // dioramaPanOnly above) — it would spin the world inside the
-        // stationary box walls.
-        if (!dioramaPanOnly) {
-          if (s.xrTurnStyle === 'smooth') {
-            if (Math.abs(x) > DEADZONE) {
-              snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * turnSign);
-            }
-          } else {
-            if (Math.abs(x) < DEADZONE) {
-              snapTurnArmed = true;
-            } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
-              snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * turnSign);
-              snapTurnArmed = false;
-            }
+        // is the world rotating the other way. Diorama turning is an
+        // orbit of the box contents, so it keeps the scope sense.
+        const turnSign = (x > 0 ? -1 : 1) * (freefly && !dioramaPanOnly ? -1 : 1);
+        if (s.xrTurnStyle === 'smooth') {
+          if (Math.abs(x) > DEADZONE) {
+            snapTurnWorld(xrRoot, pivot, SMOOTH_TURN_RAD_PER_S * Math.abs(x) * dtS * turnSign);
+          }
+        } else {
+          if (Math.abs(x) < DEADZONE) {
+            snapTurnArmed = true;
+          } else if (snapTurnArmed && Math.abs(x) > SNAP_TURN_TRIGGER) {
+            snapTurnWorld(xrRoot, pivot, SNAP_TURN_STEP * turnSign);
+            snapTurnArmed = false;
           }
         }
 
@@ -316,14 +318,20 @@ export function setupXrLocomotion(opts: {
     }
 
     // Auto-orbit: slow, continuous yaw about the follow target (xrFollow
-    // on) or the scope center — same pivot-preserving rotation snap-turn
-    // uses, just a small continuous angle instead of a discrete step.
-    // Paused by any stick input this frame (userInputActive above) and by
-    // an active diorama box (same reasoning as turn suppression above: it
-    // would spin the world inside stationary walls).
-    if (s.autoOrbit && !userInputActive && !dioramaActive()) {
-      const pivot = (s.xrFollow ? getOrbitPivot?.() : null) ?? tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld);
-      snapTurnWorld(xrRoot, pivot, AUTO_ORBIT_RAD_PER_S * dtS);
+    // on), the diorama box center, or the scope center — same pivot-
+    // preserving rotation snap-turn uses, just a small continuous angle
+    // instead of a discrete step. Paused by any stick input this frame
+    // (userInputActive above). With the diorama box active the map spins
+    // turntable-style inside the fixed walls — round 3 suppressed this
+    // as "spinning the world inside stationary walls", round 4 feedback
+    // wants exactly that for the desk ornament ("Auto-orbit doesn't work
+    // in diorama, otherwise it's awesome").
+    if (s.autoOrbit > 0 && !userInputActive) {
+      const pivot =
+        (s.xrFollow ? getOrbitPivot?.() : null) ??
+        dioramaCenter(tmpPivot) ??
+        tmpPivot.setFromMatrixPosition(xrRoot.matrixWorld);
+      snapTurnWorld(xrRoot, pivot, ((Math.PI * s.autoOrbit) / 180) * dtS);
     }
   }
 

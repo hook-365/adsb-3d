@@ -119,14 +119,16 @@ export interface Settings {
    */
   followRandomAircraft: boolean;
   /**
-   * Slowly auto-orbit the view around the followed aircraft (xrFollow
-   * on) or the scope center (issue #6: "starting with slow orbit speeds
-   * might be the most effective"). Any locomotion input pauses it for
-   * that frame (xr-locomotion.ts). Also drives desktop OrbitControls'
-   * built-in autoRotate around the same target (world/controls.ts) —
-   * cheap enough on desktop to enable there too rather than XR-gating it.
+   * Auto-orbit speed in degrees/second around the followed aircraft
+   * (xrFollow on), the diorama box center, or the scope center. 0 = off;
+   * the UI offers AUTO_ORBIT_SPEEDS (issue #6: "starting with slow orbit
+   * speeds might be the most effective", round 4: "Maybe 2 speeds?").
+   * Any locomotion input pauses it for that frame (xr-locomotion.ts).
+   * Also drives desktop OrbitControls' built-in autoRotate around the
+   * same target — cheap enough on desktop to enable there too rather
+   * than XR-gating it.
    */
-  autoOrbit: boolean;
+  autoOrbit: number;
   /**
    * Basemap tile zoom +1 over the default (world/tiles.ts DEFAULT_ZOOM):
    * 4x the tile count for the same ground coverage, sharper imagery at
@@ -208,6 +210,13 @@ export interface Settings {
   terrain3d: boolean;
 }
 
+// Auto-orbit speed stops (deg/s), shared by the desktop slider
+// (ui/settings-panel.ts) and the wrist-menu cycler (world/xr-wrist-menu.ts)
+// so the two controls can't drift apart. Off → slow → double (issue #6
+// round 4 — tyzbit: "Maybe 2 speeds? ... 3 deg/s is definitely a setting
+// that should stay though").
+export const AUTO_ORBIT_SPEEDS: readonly number[] = [0, 3, 6];
+
 const DEFAULTS: Settings = {
   // Silhouette by default: the 3D type shapes are the product's best first
   // impression, and the top-right chip / settings row are the opt-out.
@@ -224,7 +233,7 @@ const DEFAULTS: Settings = {
   dioramaSize: 0.9,
   xrFollow: false,
   followRandomAircraft: false,
-  autoOrbit: false,
+  autoOrbit: 0,
   hiResTiles: false,
   stereo: false,
   stereoStrength: 50,
@@ -262,6 +271,12 @@ function load(): Settings {
       else if (parsed.trailLength >= 50) {
         parsed.trailLength = Math.max(1, Math.round(parsed.trailLength / 60));
       }
+    }
+    // autoOrbit migration (≤0.9.0 stored a boolean; now deg/s with
+    // 0 = off). true maps to 3, the only speed the boolean era had.
+    const legacyAutoOrbit: unknown = parsed.autoOrbit;
+    if (typeof legacyAutoOrbit === 'boolean') {
+      parsed.autoOrbit = legacyAutoOrbit ? 3 : 0;
     }
     // Merge against defaults so a stored payload from an older version
     // doesn't drop new keys to undefined.
