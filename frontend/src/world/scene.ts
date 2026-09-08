@@ -20,6 +20,7 @@ import { getTheme, subscribeTheme } from '../core/theme';
 import { setRenderer as registerXrRenderer } from '../core/xr';
 import { groundSceneY, subscribeElevation } from './elevation';
 import { createTileLayer, currentTileZoom, disposeTileLayer } from './tiles';
+import { effectiveBasemap } from '../core/basemaps';
 import { DIORAMA_PLANES } from './diorama-clip';
 
 export interface World {
@@ -95,13 +96,13 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   // meshes at y = -0.4 with renderOrder = -10 so the range rings and
   // trails draw cleanly on top. Stored so recenter() can swap it on
   // feed switch or when the user picks a different basemap provider.
-  let tileLayer: Group = createTileLayer({ provider: getSettings().basemap, zoom: currentTileZoom() });
+  let tileLayer: Group = createTileLayer({ provider: effectiveBasemap(getSettings().basemap), zoom: currentTileZoom() });
   xrRoot.add(tileLayer);
 
   function recenter(): void {
     xrRoot.remove(tileLayer);
     disposeTileLayer(tileLayer);
-    tileLayer = createTileLayer({ provider: getSettings().basemap, zoom: currentTileZoom() });
+    tileLayer = createTileLayer({ provider: effectiveBasemap(getSettings().basemap), zoom: currentTileZoom() });
     xrRoot.add(tileLayer);
     // New home, new ground: re-drape immediately for elevation tiles that
     // are already cached; freshly-fetched ones re-fire via the elevation

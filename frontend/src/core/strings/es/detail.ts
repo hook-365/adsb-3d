@@ -32,6 +32,7 @@ export const detailStrings = {
   'detail.acars_on': 'ON {time}',
   'detail.acars_in': 'IN {time}',
   'detail.acars_pos': 'pos {coords}',
+  'detail.acars_last': 'último {label} · {age}',
   'detail.acars_no_text': '(sin texto)',
   'detail.category_light': 'Ligera (< 7t)',
   'detail.category_small': 'Pequeña (< 34t)',

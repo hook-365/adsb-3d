@@ -67,7 +67,7 @@ export interface SessionHooks {
    * stores are cleared and before the new bundle boots.
    */
   onFeedChanged(next: Feed): void;
-  /** Called when leaving live mode (close the ACARS browser, etc.). */
+  /** Called when leaving live mode (after the stores are cleared). */
   onEnterHistorical(): void;
 }
 

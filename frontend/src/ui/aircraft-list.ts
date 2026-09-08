@@ -542,7 +542,7 @@ export function createAircraftList(store: AircraftStore): AircraftListHandle {
   search.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && search.value !== '') {
       // Consume the key so document-level Escape handlers (settings panel,
-      // ACARS browser) don't also fire off a half-typed search clear.
+      // ACARS panel) don't also fire off a half-typed search clear.
       e.stopPropagation();
       clearSearch();
     }

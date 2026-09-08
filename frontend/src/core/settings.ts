@@ -97,6 +97,8 @@ export interface Settings {
   labelDensity: number;
   /** Subscribe to the ACARS message stream + render its UI. */
   acarsMessages: boolean;
+  /** Drop a fading ping on the map where a positioned ACARS message reports. */
+  acarsPings: boolean;
   /**
    * XR "desk ornament" clipping: clip the airspace to an open-top box
    * around the placed scope so it reads as a bounded diorama in
@@ -229,6 +231,7 @@ const DEFAULTS: Settings = {
   aircraftLabels: true,
   labelDensity: 0,
   acarsMessages: true,
+  acarsPings: true,
   dioramaClip: false,
   dioramaSize: 0.9,
   xrFollow: false,
@@ -257,6 +260,7 @@ const DEFAULTS: Settings = {
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';
+const ACARS_RESET_KEY = 'adsb3d_acars_reset_v1';
 
 function load(): Settings {
   try {
@@ -277,6 +281,19 @@ function load(): Settings {
     const legacyAutoOrbit: unknown = parsed.autoOrbit;
     if (typeof legacyAutoOrbit === 'boolean') {
       parsed.autoOrbit = legacyAutoOrbit ? 3 : 0;
+    }
+    // acarsMessages one-time reset (0.9.x → 0.10). The toggle spent months
+    // meaningless (no ACARS backend anywhere), during which a stored
+    // `false` could linger unnoticed; it now also gates the label badge,
+    // the docked panel and the stereo/XR summary. Re-apply the default
+    // exactly once per browser so an available feed shows its chip; the
+    // user's next toggle persists normally.
+    if (window.localStorage.getItem(ACARS_RESET_KEY) !== '1') {
+      parsed.acarsMessages = DEFAULTS.acarsMessages;
+      window.localStorage.setItem(ACARS_RESET_KEY, '1');
+      // Persist now: the marker is set, so a later load would otherwise
+      // re-read the stale value with no migration left to fix it.
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...DEFAULTS, ...parsed }));
     }
     // Merge against defaults so a stored payload from an older version
     // doesn't drop new keys to undefined.

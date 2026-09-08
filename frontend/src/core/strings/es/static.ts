@@ -61,8 +61,12 @@ export const staticStrings = {
   'static.detail_range': 'Dist.',
   'static.detail_seen': 'Visto',
   'static.autopilot_heading': 'Piloto automático',
-  // ACARS browser
-  'static.acars_browser_aria': 'Explorador de mensajes ACARS',
+  // ACARS panel
+  'static.map_attribution_aria': 'Atribución del mapa',
+  'static.acars_toggle_aria': 'Mostrar mensajes ACARS',
+  'static.acars_toggle_title': 'Mensajes ACARS',
+  'static.acars_panel_aria': 'Mensajes ACARS',
+  'static.acars_minimize_aria': 'Minimizar panel ACARS',
   'static.acars_messages_heading': 'Mensajes ACARS',
   'static.close_aria': 'Cerrar',
   'static.acars_search_placeholder': 'filtrar texto · vuelo · matrícula · etiqueta',

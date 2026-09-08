@@ -36,6 +36,10 @@
     <span id="settings-slot" class="settings-slot"></span>
     <button id="shape-chip" class="shape-chip" type="button" aria-label="Aircraft shape" data-i18n-aria-label="static.shape_chip_aria">✈</button>
     <div id="voice-panel" class="voice-panel" hidden></div>
+    <!-- Basemap attribution. Required by the tile providers' terms (CARTO
+         insists on prominent OpenStreetMap + CARTO credit); content is set
+         by ui/map-attribution.ts from the active basemap. -->
+    <div id="map-attribution" class="map-attribution" aria-label="Map attribution" data-i18n-aria-label="static.map_attribution_aria"></div>
     <footer id="status">
       <div id="time-controls" class="time-controls" data-mode="live">
         <div class="tc-mode" role="tablist" aria-label="Time mode" data-i18n-aria-label="static.time_mode_aria">
@@ -74,6 +78,10 @@
       </span>
       <span id="altitude-legend" class="altitude-legend"></span>
     </footer>
+    <button id="acars-toggle" class="acars-toggle" type="button" hidden aria-label="Show ACARS messages" data-i18n-aria-label="static.acars_toggle_aria" aria-controls="acars-panel" aria-expanded="false" title="ACARS messages" data-i18n-title="static.acars_toggle_title">
+      <span class="icon" aria-hidden="true">📡</span>
+      <span class="badge" id="acars-toggle-count" hidden>0</span>
+    </button>
     <button id="panel-toggle" aria-label="Toggle aircraft list" data-i18n-aria-label="static.toggle_aircraft_list_aria" aria-controls="aircraft-panel" aria-expanded="true">
       <span class="icon" aria-hidden="true"></span>
       <span class="badge" id="panel-toggle-count">0</span>
@@ -166,7 +174,7 @@
         </dl>
       </section>
       <section class="acars" id="detail-acars" hidden>
-        <h3>ACARS <span class="count" id="detail-acars-count">0</span></h3>
+        <h3>ACARS <span class="count" id="detail-acars-count">0</span> <span class="last" id="detail-acars-last"></span></h3>
         <ul id="detail-acars-list"></ul>
       </section>
     </section>
@@ -174,25 +182,22 @@
       <span class="pill-callsign" id="detail-pill-callsign"></span>
       <span class="pill-stats" id="detail-pill-stats"></span>
     </button>
-    <div id="acars-browser" class="acars-browser" hidden role="dialog" aria-modal="true" aria-label="ACARS message browser" data-i18n-aria-label="static.acars_browser_aria">
-      <div class="acars-backdrop" id="acars-backdrop"></div>
-      <section class="acars-panel">
-        <header>
-          <div class="acars-title">
-            <h2 data-i18n="static.acars_messages_heading">ACARS messages</h2>
-            <span class="acars-counts" id="acars-browser-counts">0 / 0</span>
-          </div>
-          <button class="acars-close" id="acars-browser-close" type="button" aria-label="Close" data-i18n-aria-label="static.close_aria">×</button>
-        </header>
-        <div class="acars-toolbar">
-          <input type="search" id="acars-browser-search" placeholder="filter text · flight · reg · label" data-i18n-placeholder="static.acars_search_placeholder" autocomplete="off" />
-          <select id="acars-browser-label" aria-label="Filter by label" data-i18n-aria-label="static.filter_by_label_aria">
-            <option value="" data-i18n="acars.all_labels">All labels</option>
-          </select>
+    <section id="acars-panel" class="acars-panel" hidden role="region" aria-label="ACARS messages" data-i18n-aria-label="static.acars_panel_aria">
+      <header>
+        <div class="acars-title">
+          <h2 data-i18n="static.acars_messages_heading">ACARS messages</h2>
+          <span class="acars-counts" id="acars-panel-counts">0 / 0</span>
         </div>
-        <ul class="acars-rows" id="acars-browser-rows" role="list"></ul>
-      </section>
-    </div>
+        <button class="panel-minimize" id="acars-panel-minimize" type="button" aria-label="Minimize ACARS panel" data-i18n-aria-label="static.acars_minimize_aria" title="Minimize" data-i18n-title="static.list_minimize_title">–</button>
+      </header>
+      <div class="acars-toolbar">
+        <input type="search" id="acars-panel-search" placeholder="filter text · flight · reg · label" data-i18n-placeholder="static.acars_search_placeholder" autocomplete="off" />
+        <select id="acars-panel-label" aria-label="Filter by label" data-i18n-aria-label="static.filter_by_label_aria">
+          <option value="" data-i18n="acars.all_labels">All labels</option>
+        </select>
+      </div>
+      <ul class="acars-rows" id="acars-panel-rows" role="list"></ul>
+    </section>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

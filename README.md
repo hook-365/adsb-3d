@@ -54,6 +54,14 @@ and translations count just as much as code.
   when the followed aircraft drops off the feed. A **high-res basemap**
   option fetches tiles one zoom level sharper — low-res tiles are the
   first thing a headset makes obvious.
+- **v0.9.2: ACARS lands on the map, CARTO goes legit.** ACARS is now a
+  panel docked under the HUD instead of a modal, aircraft with datalink
+  messages wear an `A` badge on their 3D label, and every selected-
+  aircraft surface (detail card, stereo panel, XR billboard) shows the
+  latest message. Message-to-aircraft matching finally works on the
+  VDL Mode 2 lane, whose decoder spells addresses in decimal. CARTO
+  basemaps moved to browser-direct fetching under your own free
+  `CARTO_API_KEY` with on-screen attribution, as their terms require.
 - **v0.9.0: the hardening release.** A full-project audit in one drop:
   security headers with a configurable CORS lockdown, per-client rate
   limiting behind reverse proxies, backend loops that survive bad
@@ -92,8 +100,19 @@ sky.
 
 **ACARS** (needs acars-service) — per-aircraft datalink messages in the
 detail card with an OOOI flight-phase chip (taxi-out / airborne / taxi-in
-/ at gate), a searchable full-page browser, and a 3D ping ring when a
-message lands for an aircraft on scope.
+/ at gate) and a searchable message panel docked under the HUD, opened
+from a 📡 button in the top-right cluster (the HUD's ACARS chip is a
+status indicator). Aircraft with messages get an `A` badge on the 3D
+label and list row, and a ping ring fires on-scope when a message lands.
+Message content is decoded into a plain-language summary shown above the
+raw text — position reports (with a `#DFB`/`#M1x` route + lat/lon +
+temperature/wind), arrivals, weather requests, and CPDLC/ADS-C/AFN
+datalink; see [acars-service/README.md](acars-service/README.md#message-decoding).
+Any message carrying GPS coordinates also drops a fading **position
+ping** on the map at that spot, even for aircraft outside ADS-B range
+(toggle: *ACARS position pings*, Map settings). Messages are matched to
+aircraft by ICAO hex (decimal addresses from vdlm2dec are normalized),
+then by flight number or registration.
 
 **Multi-feed** — point at several receivers and the status bar grows a
 feed picker. Switching is in-place — no page reload.
@@ -130,14 +149,25 @@ Hardware-tested on a Quest 3; see [VR & AR](#vr--ar) below for the
 demo video. Side-by-side stereo (Cardboard) is still there for
 anything without WebXR.
 
+**Basemaps** — OpenStreetMap (default), OpenTopoMap, ESRI shaded relief
+and satellite, FAA charts (below), plus CARTO Dark and Voyager when you
+supply a free `CARTO_API_KEY`. Provider attribution is always on screen
+(bottom-right). Every basemap except CARTO is proxied and cached by the
+container's nginx; CARTO tiles go straight from the browser to CARTO's
+CDN because [their basemap terms](https://carto.com/legal/basemap-terms/)
+forbid server-side proxying or caching and require each deployment to
+use its own key. Carto currently serves us raster PNG tiles; they have
+announced raster is being retired in favour of vector tiles, which this
+Three.js texture pipeline does not yet consume.
+
 **High-res basemaps** — an optional sharper-tile mode fetches the
 basemap one zoom level deeper (4× the tiles for the same coverage).
 Worth it on a headset or a 4K display; costs bandwidth accordingly.
 
 **Keyboard & screen readers** — the aircraft list is a real listbox:
 arrow keys move, Enter/Space selects, and screen readers get proper
-roles, a focus-trapped ACARS dialog, and a throttled live aircraft
-count instead of per-second chatter.
+roles, a keyboard-operable ACARS panel (a top-right button opens it, `Esc` closes),
+and a throttled live aircraft count instead of per-second chatter.
 
 **FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
 IFR High, and a sectional + roads hybrid, served through the same tile
@@ -252,6 +282,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
 | `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |
 | `VOICE_STREAM_HOST` | — | required when voice is on; point at any reachable `host:port` (legacy Icecast block, not played by the frontend) |
+| `CARTO_API_KEY` | — | Free [CARTO basemaps key](https://carto.com/basemaps/apikey) that unlocks the Carto Dark and Carto Voyager basemaps. Fetched by the browser directly from CARTO (their terms forbid proxying), one key per deployment. Without it those two entries are hidden and the default basemap falls back to OpenStreetMap |
 | `DNS_RESOLVER` | `127.0.0.11` | nginx `resolver` address(es) for upstream lookups; override on runtimes without Docker's embedded DNS (e.g. Kubernetes CoreDNS) |
 | `MAP_ZOOM` / `MAP_GRID_SIZE` | `8` / `21` | boot-time tile pre-cache around the station (zoom level / grid width); only active with the `/tiles` volume mounted |
 
@@ -270,7 +301,9 @@ the main image — see the compose example):
 | `COLLECTION_INTERVAL` | `5` | seconds between DB track snapshots (track-service) |
 | `RETENTION_DAYS` | `90` | TimescaleDB retention for tracks and ACARS messages |
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `timescaledb-adsb` / `5432` / `adsb_tracks` / `adsb` / — | TimescaleDB connection; password has no default on purpose |
-| `ACARS_HOST` / `ACARS_PORT` | `acarshub` / `15550` | acarshub JSON-over-TCP feed (acars-service) |
+| `ACARS_HOST` / `ACARS_PORT` | `acarshub` / `15550` | acarshub / acars_router JSON-over-TCP feed (acars-service); `15550` is the ACARS lane, `15555` VDL Mode 2 |
+
+ACARS messages are decoded into human-readable summaries (position reports, arrivals, weather requests, and CPDLC/ADS-C/AFN datalink) shown above the raw text; see [acars-service/README.md](acars-service/README.md#message-decoding).
 | `STATION_ID` | `adsb-3d` | station identifier stamped on stored ACARS messages |
 
 **Reverse proxy:** `BASE_PATH` overrides the auto-detected subpath
@@ -290,7 +323,7 @@ the view (moves the center point).
 | Arrow keys | Pan the view across the map |
 | `R` | Recenter camera + clear selection |
 | `/` | Focus the list search box |
-| `Esc` | Close settings panel or ACARS browser |
+| `Esc` | Close settings panel or ACARS panel |
 
 ## Upgrading
 
@@ -364,7 +397,13 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 - **readsb / dump1090-fa** — upstream Mode S/ADS-B decoder.
 - **planespotters.net** — aircraft photographs in the detail panel.
 - **adsb.im** — callsign → route resolution.
-- **OpenStreetMap, Carto, ESRI, OpenTopoMap** — basemap tile providers.
+- **OpenStreetMap, ESRI, OpenTopoMap** — basemap tile providers, proxied
+  and cached by the container; credited on screen.
+- **[CARTO](https://carto.com/attributions)** — Dark / Voyager basemaps,
+  fetched directly by the browser under your own free API key per
+  [CARTO's basemap terms](https://carto.com/legal/basemap-terms/)
+  (5M tiles/month fair-use, OpenStreetMap + CARTO attribution required,
+  no server-side caching).
 - **[VFRMap](https://vfrmap.com)** — hosting for FAA Sectional / Helicopter
   / IFR Low / IFR High chart tiles, kept in sync with the FAA 56-day cycle.
   Free non-commercial service; please don't abuse it.

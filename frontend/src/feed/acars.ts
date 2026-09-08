@@ -42,6 +42,27 @@ export interface AcarsMessage {
   wlin: string | null;
   gtin: string | null;
   position: { lat: number; lon: number; alt: number | null } | null;
+  /** Human-readable decode from acars-service, or null when nothing was recognized. */
+  decoded: AcarsDecoded | null;
+}
+
+/**
+ * Decoded summary attached by acars-service (decoder.py). `kind` names the
+ * recognized message type; `summary` is a ready-to-show one-liner; the rest
+ * are optional structured extras (e.g. a plottable `position`).
+ */
+export interface AcarsDecoded {
+  kind: string;
+  summary: string;
+  position?: { lat: number; lon: number } | null;
+  flight_level?: number;
+  altitude_ft?: number;
+  origin?: string;
+  destination?: string;
+  facility?: string;
+  imi?: string;
+  /** Present on Tier-2 passthrough: the raw libacars structured decode. */
+  libacars?: unknown;
 }
 
 export interface AcarsStatus {
@@ -70,7 +91,7 @@ interface RawMessage {
   block_id?: string | null;
   msg_num?: string | null;
   text?: string | null;
-  freq?: string | null;
+  freq?: number | string | null;
   level?: number | null;
   error?: number | null;
   mode?: string | null;
@@ -82,6 +103,7 @@ interface RawMessage {
   wlin?: string | null;
   gtin?: string | null;
   position?: { lat?: number; lon?: number; alt?: number | null } | null;
+  decoded?: AcarsDecoded | null;
 }
 
 interface NewMessageFrame {
@@ -120,7 +142,7 @@ function normalize(raw: RawMessage): AcarsMessage | null {
     blockId: raw.block_id ?? null,
     msgNum: raw.msg_num ?? null,
     text: raw.text ?? null,
-    freq: raw.freq ?? null,
+    freq: raw.freq != null ? String(raw.freq) : null,
     level: raw.level ?? null,
     error: raw.error ?? null,
     mode: raw.mode ?? null,
@@ -135,6 +157,7 @@ function normalize(raw: RawMessage): AcarsMessage | null {
       raw.position && typeof raw.position.lat === 'number' && typeof raw.position.lon === 'number'
         ? { lat: raw.position.lat, lon: raw.position.lon, alt: raw.position.alt ?? null }
         : null,
+    decoded: raw.decoded ?? null,
   };
 }
 

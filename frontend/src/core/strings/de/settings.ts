@@ -38,6 +38,8 @@ export const settingsStrings = {
   'settings.label_density_all': 'alle',
   'settings.range_rings': 'Entfernungsringe',
   'settings.range_rings_desc': 'Konzentrische Entfernungsringe alle 50 NM.',
+  'settings.acars_pings': 'ACARS-Positions-Pings',
+  'settings.acars_pings_desc': 'Markiert auf der Karte, wo eine ACARS-Nachricht mit Position gemeldet wird, auch außerhalb der ADS-B-Reichweite.',
   'settings.section_map': 'Karte',
   'settings.basemap': 'Basiskarte',
   'settings.basemap_desc': 'Kartenkachel-Anbieter unterhalb der Szene.',

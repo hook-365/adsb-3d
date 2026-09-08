@@ -7,10 +7,13 @@ import {
   type Camera,
 } from 'three';
 import type { Aircraft } from '../core/types';
+import type { AcarsMessage } from '../feed/acars';
 import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact, fmtVerticalRate } from '../core/units';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { getRoute } from '../feed/routes';
+import { getAcarsMessages } from '../aircraft/acars-store';
+import { getSettings } from '../core/settings';
 import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
 import { CanvasPhoto } from './aircraft-photo';
 
@@ -98,16 +101,22 @@ export class StereoPanel {
     this.mesh.visible = true;
     this.photo.track(a.hex, a.registration);
     const route = a.callsign ? getRoute(a.callsign) : null;
+    const acars = getSettings().acarsMessages ? getAcarsMessages(a.hex) : [];
+    const acarsKey = acars.length ? `${acars.length}@${acars[0]!.time}` : '';
     const key = [
       a.hex, a.callsign, a.altFt, a.groundSpeedKt, a.trackDeg, a.verticalRateFpm,
-      a.squawk, a.emergency, route?.origin, route?.destination,
+      a.squawk, a.emergency, route?.origin, route?.destination, acarsKey,
     ].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
-    this.draw(a, route ?? null);
+    this.draw(a, route ?? null, acars);
   }
 
-  private draw(a: Aircraft, route: { origin?: string | null; destination?: string | null } | null): void {
+  private draw(
+    a: Aircraft,
+    route: { origin?: string | null; destination?: string | null } | null,
+    acars: readonly AcarsMessage[],
+  ): void {
     const t = getTheme().tokens;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
@@ -184,6 +193,16 @@ export class StereoPanel {
       ctx.textAlign = 'left';
     }
 
+    // ACARS summary — count + newest label/age, right-aligned on the
+    // telemetry row's baseline so it never collides with the VS line.
+    if (acars.length) {
+      ctx.fillStyle = t.three.acarsPing;
+      ctx.font = 'bold 22px ui-monospace, "JetBrains Mono", Menlo, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(acarsSummary(acars), CANVAS_W - 28, 282);
+      ctx.textAlign = 'left';
+    }
+
     // Photo box, top-right (issue #6 round 4 — same treatment as the XR
     // billboard, via the shared helper).
     if (this.photo.image) {
@@ -207,4 +226,12 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxW: numb
     t = t.slice(0, -1);
   }
   return `${t.trimEnd()}…`;
+}
+
+/** "ACARS · 3 · H1 2m" — count, newest label, newest age. Shared with the XR billboard. */
+export function acarsSummary(acars: readonly AcarsMessage[]): string {
+  const newest = acars[0]!;
+  const ageS = Math.max(0, (Date.now() - Date.parse(newest.time)) / 1000);
+  const age = Number.isNaN(ageS) ? '' : ageS < 60 ? `${Math.round(ageS)}s` : ageS < 3600 ? `${Math.round(ageS / 60)}m` : `${Math.round(ageS / 3600)}h`;
+  return ['ACARS', String(acars.length), [newest.label, age].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
 }

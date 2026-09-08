@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ make li
 
 # Copy application
 COPY main.py .
+COPY decoder.py .
 
 # Non-root user for container security
 RUN useradd -r -u 10001 appuser && chown -R appuser /app

@@ -39,6 +39,8 @@ export const settingsStrings = {
   'settings.label_density_all': 'all',
   'settings.range_rings': 'Range rings',
   'settings.range_rings_desc': 'Concentric distance rings every 50 NM.',
+  'settings.acars_pings': 'ACARS position pings',
+  'settings.acars_pings_desc': 'Ping the map where a positioned ACARS message is reported, even beyond ADS-B range.',
 
   // Map section
   'settings.section_map': 'Map',

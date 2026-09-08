@@ -48,11 +48,14 @@ import { mountSettingsPanel } from './ui/settings-panel';
 import { mountShapeChip } from './ui/shape-chip';
 import { mountAltitudeLegend } from './ui/altitude-legend';
 import { mountHud, refreshSubtitle } from './ui/hud';
-// ACARS browser modal is loaded dynamically on first open click — most
+import { mountMapAttribution } from './ui/map-attribution';
+import { mountAcarsPings } from './world/acars-pings';
+import { effectiveBasemap, isBasemapAvailable } from './core/basemaps';
+// ACARS panel is loaded dynamically on first open click — most
 // pageviews never open it, so the modal UI shouldn't bloat the cold-load
 // bundle. The HUD chip and aircraft-list ACARS badges live in the main
 // bundle (they're tiny and active whenever the active feed has ACARS).
-import type { AcarsBrowserHandle } from './ui/acars-browser';
+import { mountAcarsPanel } from './ui/acars-panel';
 import { mountTimeControls } from './ui/time-controls';
 // Voice panel module is loaded dynamically inside syncVoicePanel when
 // the feature is enabled — it's a sizable chunk (audio decode + media
@@ -70,7 +73,6 @@ import {
   tickPlayback,
 } from './core/time-context';
 
-const hudAcars = document.getElementById('hud-acars') as HTMLElement;
 const aircraftCount = document.getElementById('aircraft-count')!;
 const aircraftCountLive = document.getElementById('aircraft-count-live')!;
 // Skip the t() call and textContent write when the count hasn't moved —
@@ -92,6 +94,14 @@ mountShapeChip();
 mountTimeControls();
 mountAltitudeLegend();
 mountHud();
+mountMapAttribution();
+// A persisted CARTO basemap on a deployment without CARTO_API_KEY (or one
+// whose key was removed) is normalised to what actually renders, so the
+// settings picker, wrist menu and scene all agree instead of the picker
+// showing a blank row.
+if (!isBasemapAvailable(getSettings().basemap)) {
+  updateSettings({ basemap: effectiveBasemap(getSettings().basemap) });
+}
 
 const world = createWorld(canvas);
 const controls = attachControls(world.camera, world.renderer);
@@ -501,6 +511,8 @@ const initialSelectedHex = readSelectedHex();
 
 const store = new AircraftStore();
 const reconciler = new AircraftReconciler(store, world.aircraftRoot, world.camera);
+// Transient map pings at ACARS-reported coordinates (world/acars-pings.ts).
+const acarsPings = mountAcarsPings(world.aircraftRoot);
 
 // Fat-line materials (altitude lines, trails) need the drawing-buffer
 // size for their px→clip conversion. Keep it synced across resizes and
@@ -540,6 +552,10 @@ store.subscribe((snapshot) => resolveAcarsPending(snapshot));
 // Visual ping on the 3D scene whenever an ACARS message lands for an
 // aircraft on scope. Hex='' means "everything cleared" — skip those.
 subscribeAcars((hex) => {
+  // Label badge: the reconciler only re-derives label classes inside its
+  // store-rev gate, so an ACARS arrival with no position change would
+  // otherwise leave the badge stale until the next data tick.
+  reconciler.invalidateLabel(hex || null);
   if (!hex) return;
   reconciler.triggerAcarsPing(hex);
 });
@@ -709,6 +725,7 @@ function applySelection(hex: string | null): void {
   xrFollowAnchor = null;
   reconciler.setSelected(hex);
   aircraftDetail.setSelected(hex);
+  acarsPanel.suppress(hex !== null);
   followHex = hex;
   returningHome = hex === null;
   writeSelectedHex(hex);
@@ -728,50 +745,32 @@ function extendTrailForSelection(hex: string): void {
 
 aircraftList.onSelect(applySelection);
 
-// ACARS browser modal — clicking the HUD ACARS chip opens it. Lazily
-// mounted on first open so deployments without ACARS-heavy use never pay
-// for the modal UI. The handle is cached after first mount; subsequent
-// opens just toggle().
-let acarsBrowser: AcarsBrowserHandle | null = null;
-let acarsBrowserMounting: Promise<AcarsBrowserHandle> | null = null;
-function ensureAcarsBrowser(): Promise<AcarsBrowserHandle> {
-  if (acarsBrowser) return Promise.resolve(acarsBrowser);
-  if (acarsBrowserMounting) return acarsBrowserMounting;
-  acarsBrowserMounting = (async () => {
-    const { mountAcarsBrowser } = await import('./ui/acars-browser');
-    acarsBrowser = mountAcarsBrowser({
-      onSelectAircraft: (hex) => {
-        if (!hex) return;
-        aircraftList.setSelected(hex);
-        applySelection(hex);
-      },
-      resolveHex: (msg) => {
-        if (msg.icao) return msg.icao;
-        if (!msg.flight && !msg.reg) return null;
-        for (const a of store.snapshot.values()) {
-          if (msg.flight && a.callsign === msg.flight) return a.hex;
-          if (msg.reg && a.registration === msg.reg) return a.hex;
-        }
-        return null;
-      },
-    });
-    return acarsBrowser;
-  })();
-  return acarsBrowserMounting;
-}
-
-hudAcars.addEventListener('click', () => {
-  if (hudAcars.hidden) return;
-  void ensureAcarsBrowser().then((h) => h.toggle());
-});
-hudAcars.style.cursor = 'pointer';
-hudAcars.setAttribute('role', 'button');
-hudAcars.setAttribute('tabindex', '0');
-hudAcars.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    void ensureAcarsBrowser().then((h) => h.toggle());
-  }
+// ACARS panel — docked under the HUD. Same grammar as the aircraft list:
+// a floating round button (#acars-toggle, top-right cluster) restores it and
+// a "–" in its header collapses it. Mounted eagerly (the module also owns
+// that toggle button's visibility + count badge, which must track ACARS
+// health and message volume before the panel is ever opened). The panel and
+// its button follow ACARS health, so both hide during historical playback
+// and on feeds without ACARS. The HUD `acars` chip is a status indicator
+// only now — no longer a control.
+// The docked ACARS panel. Its handle is kept so selecting an aircraft can
+// suppress it (the detail card takes the left column and already lists that
+// plane's ACARS); deselecting restores the user's open/closed choice.
+const acarsPanel = mountAcarsPanel({
+  onSelectAircraft: (hex) => {
+    if (!hex) return;
+    aircraftList.setSelected(hex);
+    applySelection(hex);
+  },
+  resolveHex: (msg) => {
+    if (msg.icao) return msg.icao;
+    if (!msg.flight && !msg.reg) return null;
+    for (const a of store.snapshot.values()) {
+      if (msg.flight && a.callsign === msg.flight) return a.hex;
+      if (msg.reg && a.registration === msg.reg) return a.hex;
+    }
+    return null;
+  },
 });
 
 attachPicking({
@@ -953,10 +952,9 @@ const session = initSession({
       syncVoicePanel();
     },
     onEnterHistorical() {
-      // ACARS browser stays open across mode switches if we don't close
-      // it, leaving stale live messages visible during historical
-      // playback. Lazily mounted — nothing to close if never opened.
-      acarsBrowser?.close();
+      // The ACARS panel hides itself when setAcarsHealth(null) fires for
+      // historical playback (ui/acars-panel.ts subscribes to health), so
+      // nothing to do here beyond the store clears above.
     },
   },
 });
@@ -1063,6 +1061,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     if (world.camera.position.y < camGroundY) world.camera.position.y = camGroundY;
   }
   reconciler.syncFrame();
+  acarsPings.update(frameTime);
   // CSS2D labels are never rendered while presenting (the render branch
   // below skips labelRenderer), so the LOD pass would be pure wasted
   // frustum math + DOM writes there.

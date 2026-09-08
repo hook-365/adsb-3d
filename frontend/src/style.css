@@ -170,17 +170,7 @@ html, body {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--good);
-  /* Re-enable pointer events: parent #hud has pointer-events:none so
-     drag-orbit passes through, but the ACARS chip itself is a button. */
-  pointer-events: auto;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-#hud .hud-acars:hover,
-#hud .hud-acars:focus-visible {
-  border-color: currentColor;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  outline: none;
+  /* Status indicator only — the top-right 📡 button opens the panel. */
 }
 
 #hud .hud-acars .hud-acars-dot {
@@ -919,6 +909,41 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   }
 }
 
+/* Basemap attribution — bottom-right, always visible while a basemap is.
+   Kept small but legible; CARTO's terms require it to be "prominent and
+   conspicuous", which for a full-screen map means on-screen at all times,
+   not tucked behind a menu. */
+.map-attribution {
+  position: fixed;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+  z-index: 10;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-base) 78%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.map-attribution a {
+  color: var(--fg-soft);
+  text-decoration: none;
+}
+
+.map-attribution a:hover,
+.map-attribution a:focus-visible {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+.map-attribution:empty {
+  display: none;
+}
+
 #status {
   position: fixed;
   bottom: 16px;
@@ -1019,7 +1044,8 @@ body.xr-on .settings-slot,
 body.xr-on .shape-chip,
 body.xr-on .settings-panel,
 body.xr-on .voice-panel,
-body.xr-on .acars-browser {
+body.xr-on #acars-panel,
+body.xr-on .acars-toggle {
   display: none !important;
 }
 
@@ -1577,6 +1603,25 @@ body.xr-on .acars-browser {
   opacity: 0.7;
 }
 
+/* ACARS badge: the aircraft has datalink messages buffered (same predicate
+   as the list's "A" tag). Class-driven so the reconciler's cached
+   className diff is the only per-frame cost. */
+.aircraft-label.acars::after {
+  content: "A";
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 8px;
+  line-height: 11px;
+  letter-spacing: 0;
+  vertical-align: 1px;
+  color: var(--acars);
+  background: color-mix(in srgb, var(--acars) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 45%, transparent);
+  text-shadow: none;
+}
+
 .aircraft-label.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
@@ -1587,6 +1632,74 @@ body.xr-on .acars-browser {
    over; see ui/panel-toggle.ts). */
 #panel-toggle[hidden] {
   display: none;
+}
+
+/* ACARS panel restore button — same grammar as the plane-list toggle
+   (#panel-toggle): a floating icon button with a live count badge that
+   restores the panel and hides while it's open. Sits in the top-right
+   cluster in the slot the retired voice panel used (right: 160). Shown
+   only when ACARS is available (ui/acars-panel.ts). */
+.acars-toggle {
+  position: fixed;
+  top: 16px;
+  right: 160px;
+  z-index: 12;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--panel-base) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 35%, transparent);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.acars-toggle:hover,
+.acars-toggle:focus-visible {
+  border-color: var(--acars);
+  outline: none;
+}
+
+.acars-toggle .icon {
+  /* Emoji glyph; keep it from inheriting the button's text metrics. */
+  display: block;
+  filter: saturate(0.9);
+}
+
+.acars-toggle .badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--acars);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.acars-toggle[hidden] {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  /* Fold into the cluster gap phones already use for the other chips. */
+  .acars-toggle {
+    right: 160px;
+  }
 }
 
 #panel-toggle {
@@ -2514,6 +2627,18 @@ body.xr-on .acars-browser {
   letter-spacing: 0.12em;
 }
 
+#panel-detail .acars h3 .last {
+  margin-left: 6px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+#panel-detail .acars h3 .last:empty {
+  display: none;
+}
+
 #panel-detail .acars h3 .count {
   display: inline-block;
   margin-left: 6px;
@@ -2562,6 +2687,28 @@ body.xr-on .acars-browser {
   color: var(--muted);
 }
 
+.acars-decoded {
+  margin: 3px 0 4px;
+  padding: 3px 7px;
+  border-left: 2px solid var(--acars);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--acars) 12%, transparent);
+  color: var(--fg-bright);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* ATS datalink (CPDLC/ADS-C/AFN) gets a distinct accent from the ops/
+   position decodes so a controller-pilot message stands out. */
+.acars-decoded[data-kind="cpdlc"],
+.acars-decoded[data-kind="adsc"],
+.acars-decoded[data-kind="afn"],
+.acars-decoded[data-kind="ats"] {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
 #panel-detail .acars .acars-text {
   margin-top: 4px;
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
@@ -2591,109 +2738,106 @@ body.xr-on .acars-browser {
   font-style: italic;
 }
 
-/* ─── ACARS browser modal ─────────────────────────────────────────── */
+/* ─── ACARS docked panel ──────────────────────────────────────────── */
+/* Sits directly under the HUD card (top is measured at runtime by
+   ui/acars-panel.ts since the HUD's height varies). The HUD's ACARS chip is
+   the minimized state; the "–" here collapses back to it. */
 
-.acars-browser {
+.acars-panel {
   position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.acars-browser .acars-backdrop {
-  position: absolute;
-  inset: 0;
-  background: var(--scrim);
-  backdrop-filter: blur(3px);
-}
-
-.acars-browser .acars-panel {
-  position: relative;
-  width: min(820px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
+  left: 16px;
+  top: 120px; /* placeholder — overwritten by JS from the HUD's bottom edge */
+  z-index: 11;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 120px - 110px - env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--panel-base) 96%, transparent);
+  background: color-mix(in srgb, var(--panel-base) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--acars) 32%, transparent);
-  border-radius: 10px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
   overflow: hidden;
   color: var(--fg);
   font-size: 12px;
+  pointer-events: auto;
 }
 
-.acars-browser header {
+.acars-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 8px 8px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--acars) 15%, transparent);
 }
 
-.acars-browser .acars-title {
+.acars-panel .acars-title {
   display: flex;
   align-items: baseline;
   gap: 10px;
+  min-width: 0;
 }
 
-.acars-browser h2 {
+.acars-panel h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--fg-bright);
 }
 
-.acars-browser .acars-counts {
+.acars-panel .acars-counts {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.acars-browser .acars-close {
+.acars-panel .panel-minimize {
   background: transparent;
   border: none;
   color: var(--muted);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-radius: 4px;
 }
 
-.acars-browser .acars-close:hover {
+.acars-panel .panel-minimize:hover,
+.acars-panel .panel-minimize:focus-visible {
   color: var(--fg);
   background: color-mix(in srgb, var(--fg) 6%, transparent);
+  outline: none;
 }
 
-.acars-browser .acars-toolbar {
+.acars-panel .acars-toolbar {
   display: flex;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
 }
 
-.acars-browser input[type="search"] {
+.acars-panel input[type="search"] {
   flex: 1;
+  min-width: 0;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 4px;
   color: var(--fg);
   font: inherit;
   font-size: 12px;
-  padding: 6px 10px;
+  padding: 5px 8px;
   outline: none;
 }
 
-.acars-browser input[type="search"]:focus {
+.acars-panel input[type="search"]:focus {
   border-color: var(--accent);
 }
 
-.acars-browser select {
+.acars-panel select {
   appearance: none;
   -webkit-appearance: none;
   background: color-mix(in srgb, var(--fg) 6%, transparent);
@@ -2711,7 +2855,7 @@ body.xr-on .acars-browser {
   background-repeat: no-repeat;
 }
 
-.acars-browser .acars-rows {
+.acars-panel .acars-rows {
   list-style: none;
   margin: 0;
   padding: 6px;
@@ -2721,24 +2865,24 @@ body.xr-on .acars-browser {
   gap: 4px;
 }
 
-.acars-browser .acars-row {
-  padding: 7px 10px;
+.acars-panel .acars-row {
+  padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--acars) 12%, transparent);
   border-radius: 5px;
   background: color-mix(in srgb, var(--acars) 4%, transparent);
 }
 
-.acars-browser .acars-row.clickable {
+.acars-panel .acars-row.clickable {
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
 }
 
-.acars-browser .acars-row.clickable:hover {
+.acars-panel .acars-row.clickable:hover {
   background: color-mix(in srgb, var(--acars) 14%, transparent);
   border-color: color-mix(in srgb, var(--acars) 45%, transparent);
 }
 
-.acars-browser .acars-row.acars-empty {
+.acars-panel .acars-row.acars-empty {
   text-align: center;
   color: var(--muted);
   font-style: italic;
@@ -2747,14 +2891,14 @@ body.xr-on .acars-browser {
   background: transparent;
 }
 
-.acars-browser .acars-row-head {
+.acars-panel .acars-row-head {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 3px;
 }
 
-.acars-browser .acars-row-label {
+.acars-panel .acars-row-label {
   display: inline-block;
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 10px;
@@ -2765,7 +2909,7 @@ body.xr-on .acars-browser {
   border-radius: 3px;
 }
 
-.acars-browser .acars-row-ident {
+.acars-panel .acars-row-ident {
   flex: 1;
   font-weight: 600;
   color: var(--fg);
@@ -2775,21 +2919,41 @@ body.xr-on .acars-browser {
   text-overflow: ellipsis;
 }
 
-.acars-browser .acars-row-sub {
+.acars-panel .acars-row-sub {
   margin-left: 6px;
   color: var(--muted);
   font-weight: 400;
   font-size: 11px;
 }
 
-.acars-browser .acars-row-age {
+.acars-panel .acars-row-age {
   font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: var(--muted);
   flex-shrink: 0;
 }
 
-.acars-browser .acars-row-text {
+.acars-panel .acars-row-decoded {
+  margin: 2px 0 3px;
+  padding: 2px 6px;
+  border-left: 2px solid var(--acars);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--acars) 12%, transparent);
+  color: var(--fg-bright);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.acars-panel .acars-row-decoded[data-kind="cpdlc"],
+.acars-panel .acars-row-decoded[data-kind="adsc"],
+.acars-panel .acars-row-decoded[data-kind="afn"],
+.acars-panel .acars-row-decoded[data-kind="ats"] {
+  border-left-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+.acars-panel .acars-row-text {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   font-size: 10.5px;
   color: var(--fg-soft);
@@ -2798,16 +2962,15 @@ body.xr-on .acars-browser {
   line-height: 1.4;
 }
 
-.acars-browser .acars-row-empty {
+.acars-panel .acars-row-empty {
   color: var(--muted);
   font-style: italic;
 }
 
 @media (max-width: 600px) {
-  .acars-browser .acars-panel {
-    width: 100vw;
-    max-height: 100vh;
-    border-radius: 0;
+  .acars-panel {
+    width: calc(100vw - 32px);
+    max-height: calc(100vh - 120px - 170px - env(safe-area-inset-bottom, 0px));
   }
 }
 

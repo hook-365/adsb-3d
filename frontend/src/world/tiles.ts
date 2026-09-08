@@ -11,15 +11,23 @@ import {
   Vector3
 } from 'three';
 import { HOME, RANGE_NM, TERRAIN_ENABLED } from '../core/config';
+import { CARTO_API_KEY, CARTO_PATHS, CARTO_SUBDOMAINS } from '../core/basemaps';
 import { toScene } from '../core/coords';
-import { getSettings, subscribeSettings } from '../core/settings';
+import { getSettings, subscribeSettings, type Basemap } from '../core/settings';
 import { elevationFtAt, ensureElevationTile } from './elevation';
 import { DIORAMA_PLANES } from './diorama-clip';
 
-// Web Mercator basemap. nginx proxies /tiles/{provider}/{z}/{y}/{x} with a
-// local on-disk cache pre-warmed by entrypoint.sh at zoom 8. Other zooms
-// fall back through to upstream (Carto/ESRI/OSM) but pay a network round
-// trip the first time.
+// Web Mercator basemap. Most providers go through nginx at
+// /tiles/{provider}/{z}/{y}/{x} with a local on-disk cache pre-warmed by
+// entrypoint.sh at zoom 8; other zooms fall through to the upstream
+// (ESRI/OSM/OpenTopoMap/VFRMap) and pay a network round trip the first time.
+//
+// CARTO is the exception: its basemap terms prohibit server-side proxying
+// or caching and require a per-deployment API key, so the Dark and Voyager
+// layers are fetched by the browser directly from CARTO's CDN with
+// `?key=` appended (see CARTO_API_KEY in core/config.ts). Without a key
+// those two basemaps are unavailable — core/basemaps.ts isBasemapAvailable()
+// hides them from the pickers and effectiveBasemap() substitutes OSM.
 //
 // We compute each tile's geographic corners and project them through the
 // same ENU helper the aircraft use, which gives a tile mesh that matches
@@ -59,6 +67,20 @@ const PROVIDER_META: Record<TileProvider, { tms: boolean }> = {
 };
 
 const DEFAULT_ZOOM = 8;
+
+/**
+ * URL for one tile. CARTO goes straight to their CDN (subdomain picked by
+ * tile coordinate so a layer fans out over a-d, as their Leaflet snippet
+ * does); everything else goes through the nginx proxy at /tiles.
+ */
+function tileUrl(provider: TileProvider, basePath: string, z: number, x: number, yForUrl: number): string {
+  const cartoPath = CARTO_PATHS[provider as Basemap];
+  if (cartoPath && CARTO_API_KEY) {
+    const sub = CARTO_SUBDOMAINS[(x + yForUrl) % CARTO_SUBDOMAINS.length]!;
+    return `https://${sub}.basemaps.cartocdn.com/${cartoPath}/${z}/${x}/${yForUrl}.png?key=${encodeURIComponent(CARTO_API_KEY)}`;
+  }
+  return `${basePath}/tiles/${provider}/${z}/${yForUrl}/${x}`;
+}
 
 /**
  * Effective basemap tile zoom for the current Settings.hiResTiles value
@@ -271,7 +293,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       // proxies what we send straight through to the upstream, so flip
       // here before constructing the URL.
       const yForUrl = PROVIDER_META[provider].tms ? nMax - 1 - y : y;
-      const url = `${basePath}/tiles/${provider}/${zoom}/${yForUrl}/${x}`;
+      const url = tileUrl(provider, basePath, zoom, x, yForUrl);
       loader.load(
         url,
         (texture) => {

@@ -10,6 +10,34 @@ This service:
 3. Stores messages in TimescaleDB (same database as track-service)
 4. Provides REST API endpoints for querying messages
 
+### ICAO address normalization
+
+Decoders disagree on how they spell the aircraft address: `vdlm2dec` emits
+`icao` as a decimal integer (`11379998`), `dumpvdl2` and acarshub as a hex
+string (`ADA51E`). `acars-service` normalizes every address to lowercase
+6-char hex on ingest and on read, and repairs any decimal rows left over
+from earlier versions at startup, so the frontend can match messages to
+ADS-B aircraft directly. Messages without an address still fall back to
+flight number / registration matching in the frontend.
+
+## Message decoding
+
+`decoder.py` turns raw ACARS text into a human-readable `decoded` summary,
+attached to every message (WS + REST) and stored in the `decoded` JSONB
+column:
+
+- **Position reports** — `#M1x POS…` and `#DFB…` (route + lat/lon + time +
+  temperature/wind) are parsed into a plain-language fix, with a plottable
+  `position`.
+- **Arrival / weather** — in-range (INRANG) messages yield origin/dest/ETA;
+  weather requests (WXRQ) list the requested stations.
+- **ATS datalink** — CPDLC, ADS-C and AFN messages are recognized from their
+  ARINC 622 preamble and labelled with the ground facility. Full
+  element-level text (the actual clearance wording) requires a libacars
+  decode: vdlm2dec is built against libacars, but its `-j` UDP JSON does not
+  currently include the decoded object. If a future decoder config attaches
+  one, acars-service passes it through and summarizes it automatically.
+
 ## Prerequisites
 
 - RPi running [adsb.im](https://adsb.im) feeder image with ACARS enabled
@@ -22,8 +50,8 @@ This service:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ACARS_HOST` | `acarshub` | Hostname or IP of the ACARS Hub instance |
-| `ACARS_PORT` | `15550` | TCP port for ACARS JSON output |
+| `ACARS_HOST` | `acarshub` | Hostname or IP of the acarshub / acars_router instance |
+| `ACARS_PORT` | `15550` | TCP port for the JSON line stream. acars_router serves classic ACARS on `15550` and VDL Mode 2 on `15555`; pick the lane your decoder feeds |
 | `STATION_ID` | `adsb-3d` | Your station identifier |
 | `DB_HOST` | `timescaledb-adsb` | TimescaleDB host |
 | `DB_PORT` | `5432` | TimescaleDB port |
@@ -118,11 +146,15 @@ Subsequent frames are one of:
       "mode": "ACARS", "station_id": "adsb-3d",
       "destination": "LAX", "eta": "1423",
       "gtout": null, "wloff": null, "wlin": null, "gtin": null,
-      "position": {"lat": 37.62, "lon": -122.38, "alt": 35000}
+      "position": {"lat": 37.62, "lon": -122.38, "alt": 35000},
+      "decoded": {"kind": "position", "summary": "over ROBBY \u2026", "position": {"lat": 37.62, "lon": -122.38}}
     }
   }
   ```
-  `position` is `null` when the message carries no lat/lon.
+  `position` is `null` when the message carries no lat/lon. `decoded` is the
+  human-readable summary (see [Message decoding](#message-decoding)), or
+  `null` when nothing decodable was recognized. The same `position` and
+  `decoded` fields appear on every REST message payload.
 
 - **`heartbeat`** — sent every 5 seconds to every connected client:
   ```json

@@ -8,7 +8,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [0.9.2] - 2026-09-07
+
 ### Added
+
+- **ACARS position pings on the map.** When a message carries a GPS
+  position — from its own position field or a decoded position report — a
+  fading ring now pings that spot on the map, independent of whether the
+  aircraft is on ADS-B. Datalink traffic lights up across the whole region,
+  well beyond receiver range. Rendered from a small recycled pool, themed
+  with the ACARS colour, diorama-clipped, and toggled by a new "ACARS
+  position pings" setting (Map section, default on; gated by the ACARS
+  feature toggle).
+
+- **ACARS message decoding.** acars-service now decodes message content into
+  a human-readable summary shown above the raw text in the detail card and
+  the docked panel. Tier 1 (our own parsers): FANS/ARINC-618 position
+  reports (`#M1x POS…` and the common `#DFB…` route+position form),
+  in-range/arrival messages, and weather requests — rendered as e.g.
+  "over ROBBY at 02:19:48Z, 44.077°N 89.963°W, FL320, next KBULL ETA
+  02:23:23Z, SAT −38°C, wind 259°/39kt". Tier 2 (ATS datalink): CPDLC,
+  ADS-C and AFN messages are recognized and labelled with their ground
+  facility; when vdlm2dec attaches a libacars decode it is passed through
+  and summarized. Decodes are computed at ingest, stored in a new `decoded`
+  JSONB column, and returned by every REST endpoint and the WS stream, so
+  history and bootstrap show them too. The ATS accent colour distinguishes
+  controller-pilot messages from ops/position decodes.
+
+- **Docked ACARS panel replaces the full-page browser modal.** A round
+  📡 button in the top-right cluster (with a live message-count badge)
+  opens a scrolling live-message panel docked under the HUD card, with
+  search, label filter, clickable rows that select the aircraft, and a
+  `–` minimize button — the same restore-button-and-minimize grammar as
+  the aircraft list. The HUD `acars` chip is now a status indicator only.
+  Open/closed persists per browser (desktop only). The panel and its
+  button follow ACARS health, so both hide during historical playback
+  and on feeds without ACARS and return when live ACARS does.
+
+- **ACARS badge on the 3D label, plus summaries on every selected-
+  aircraft surface.** Aircraft with buffered datalink messages wear a
+  small `A` badge on their scene label (same predicate as the list
+  tag). The detail card's ACARS header shows the newest label and age;
+  the desktop-stereo panel and XR billboard draw an
+  `ACARS · N · label age` line so headset users see it too. An ACARS
+  arrival now forces a label refresh even when the aircraft's position
+  hasn't changed, and toggling the ACARS setting re-derives labels.
+
+- **`CARTO_API_KEY` and on-screen basemap attribution.** CARTO now
+  requires a (free) API key on its raster basemaps and its terms
+  forbid server-side proxying or caching and require one key per
+  deployment, so the Carto Dark / Voyager layers are fetched by the
+  browser directly from CARTO's CDN with the key (rendered into
+  `config.js` as `MAP_CONFIG.cartoApiKey`, never into nginx). A
+  permanent bottom-right attribution line credits the active
+  provider (OpenStreetMap + CARTO on CARTO layers, as their terms
+  require; OSM / OpenTopoMap / Esri / VFRMap otherwise). Without a
+  key the two CARTO entries disappear from the settings picker and the
+  wrist menu and a persisted CARTO choice degrades to OpenStreetMap.
 
 - **Aircraft photo on the XR billboard and stereo panel (issue #6 round
   4).** The in-headset label and the desktop-stereo card now show the
@@ -68,7 +128,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   shipped alongside this row turned out to be a no-op — see the round-3
   entry under Fixed for the real one.)
 
+### Changed
+
+- **The ACARS panel and the aircraft detail card no longer overlap.** Both
+  dock to the left column, so selecting an aircraft now auto-collapses the
+  ACARS panel to its button (the detail card already lists that plane's
+  ACARS); deselecting restores it to whatever the user had. Clicking the
+  ACARS button while a plane is selected still reopens it explicitly. The
+  suppression is separate from the user's open/closed preference, so it
+  isn't remembered as a manual close.
+
+- **CARTO tiles are no longer proxied or pre-cached.** The three nginx
+  CARTO proxy blocks and the CARTO entries of the boot-time tile
+  pre-cache are gone; the entrypoint deletes any leftover
+  `/tiles/dark`, `/tiles/carto_voyager`, `/tiles/carto_light` cache
+  directories from older images on every start. All other basemaps,
+  the FAA charts and terrain keep going through the nginx tile proxy.
+
+- **One-time `acarsMessages` reset.** The setting spent months
+  meaningless while no ACARS backend existed, and a stored `false`
+  could silently hide the chip forever; it now also gates the badge,
+  panel and summaries. The settings loader re-applies the default once
+  per browser (marker `adsb3d_acars_reset_v1`); the next toggle
+  persists normally. Self-hosters who had deliberately turned ACARS
+  off will see it come back on once.
+
 ### Fixed
+
+- **Selecting an aircraft with ACARS messages showed a count but no
+  messages.** The detail card's ACARS list rendered `escapeHtml(freq)`,
+  but the feed delivers `freq` as a JSON number; calling `.replace` on a
+  number threw mid-render, so the count was set (e.g. "12") while the
+  message list stayed empty. `freq` is now coerced to a string at the
+  normalize boundary (and displayed to 3 decimal places), so the
+  messages render. The bug was latent until the VDL Mode 2 hex fix made
+  messages actually attach to on-screen aircraft.
+
+- **ACARS ↔ aircraft correlation for the VDL Mode 2 lane.** `vdlm2dec`
+  emits the aircraft address as a decimal integer (`11379998`), which
+  acars-service stored verbatim and the frontend then treated as hex,
+  so no VDLM2 message ever matched an ADS-B aircraft by address (only
+  the flight/registration fallback worked). acars-service now
+  normalizes every `icao` to lowercase 6-char hex on ingest and on
+  read (int, hex string, or 7-8 digit decimal string), repairs legacy
+  decimal rows at startup, and lowercases the identifier in
+  `/messages/aircraft/{identifier}` so hex lookups hit.
 
 - **Diorama auto-orbit, placement vs follow, clipped-label linger, and
   follow-random ergonomics (issue #6 round 4, Quest 3 hardware feedback,

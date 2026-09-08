@@ -9,6 +9,7 @@ import {
   type Settings,
 } from '../core/settings';
 import { t } from '../core/i18n';
+import { isBasemapAvailable } from '../core/basemaps';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
 import { DIORAMA_SIZE_MAX_M, DIORAMA_SIZE_MIN_M } from '../world/diorama-clip';
@@ -223,7 +224,9 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         // Canonical order from BASEMAP_VALUES. The FAA charts at the tail
         // (sectional onward) are US-only; coverage outside CONUS/AK/HI is
         // blank.
-        options: BASEMAP_VALUES.map((v) => ({ value: v, label: BASEMAP_LABELS[v] })),
+        // CARTO basemaps drop out of the list when the deployment has no
+        // CARTO_API_KEY (their terms need a per-deployment key).
+        options: BASEMAP_VALUES.filter(isBasemapAvailable).map((v) => ({ value: v, label: BASEMAP_LABELS[v] })),
       },
       {
         kind: 'toggle',
@@ -242,6 +245,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'rangeRings',
         label: t('settings.range_rings'),
         description: t('settings.range_rings_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'acarsPings',
+        label: t('settings.acars_pings'),
+        description: t('settings.acars_pings_desc'),
       },
       {
         kind: 'range',

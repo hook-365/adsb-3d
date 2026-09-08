@@ -21,6 +21,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { hasAcars } from './acars-store';
 import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
@@ -368,13 +369,16 @@ function aircraftLabelText(a: Aircraft): string {
   return a.hex.toUpperCase();
 }
 
-function aircraftLabelClass(a: Aircraft): string {
+export function aircraftLabelClass(a: Aircraft): string {
   // Color is driven by the altitude palette (set inline in refreshLabel),
-  // so the class only carries one optional modifier — `ground`, which
-  // dims and de-emphasizes labels for surface traffic. Military and
+  // so the class carries two optional modifiers: `ground`, which dims and
+  // de-emphasizes labels for surface traffic, and `acars`, which appends
+  // a datalink badge (CSS ::after) while the aircraft has messages
+  // buffered — the same predicate as the list's "A" tag. Military and
   // high-altitude already differentiate via the inline altitude color.
   let cls = 'aircraft-label';
   if (a.onGround) cls += ' ground';
+  if (getSettings().acarsMessages && hasAcars(a.hex)) cls += ' acars';
   return cls;
 }
 
@@ -1135,6 +1139,7 @@ export class AircraftReconciler {
   private prevAircraftLabels: boolean;
   private prevAircraftShape: AircraftShapeStyle;
   private prevHistoryTrails: boolean;
+  private prevAcarsMessages: boolean;
   private prevTrailLength: number;
 
   // Frustum + matrix scratch space for updateLabelLOD. Allocating once at
@@ -1173,6 +1178,7 @@ export class AircraftReconciler {
     this.prevAircraftShape = s0.aircraftShape;
     this.prevHistoryTrails = s0.historyTrails;
     this.prevTrailLength = s0.trailLength;
+    this.prevAcarsMessages = s0.acarsMessages;
     // Settings can change for many reasons (theme, range rings, units...);
     // most of those are irrelevant to per-entry visibility. Walk the entry
     // map only when one of the three keys this loop actually cares about
@@ -1187,7 +1193,8 @@ export class AircraftReconciler {
       const shapeChanged = s.aircraftShape !== this.prevAircraftShape;
       const trailsChanged = s.historyTrails !== this.prevHistoryTrails;
       const trailLenChanged = s.trailLength !== this.prevTrailLength;
-      if (!gsChanged && !alChanged && !labChanged && !shapeChanged && !trailsChanged && !trailLenChanged) return;
+      const acarsChanged = s.acarsMessages !== this.prevAcarsMessages;
+      if (!gsChanged && !alChanged && !labChanged && !shapeChanged && !trailsChanged && !trailLenChanged && !acarsChanged) return;
       if (gsChanged) this.iconPool.setVisible(s.groundSprites);
       if (alChanged) this.altArena.line.visible = s.altitudeLines;
       for (const [hex, entry] of this.entries) {
@@ -1199,6 +1206,8 @@ export class AircraftReconciler {
           if (s.historyTrails) entry.lastTrailRev = -1;
         }
         if (trailLenChanged) entry.lastTrailRev = -1;
+        // Label class carries the ACARS badge; re-derive it on toggle.
+        if (acarsChanged) entry.lastRev = -1;
         if (labChanged && !s.aircraftLabels) entry.label.visible = false;
         if (shapeChanged) {
           // Swap the marker body in place. Geometries are shared/cached,
@@ -1228,6 +1237,7 @@ export class AircraftReconciler {
       this.prevAircraftShape = s.aircraftShape;
       this.prevHistoryTrails = s.historyTrails;
       this.prevTrailLength = s.trailLength;
+      this.prevAcarsMessages = s.acarsMessages;
     });
   }
 
@@ -1280,6 +1290,20 @@ export class AircraftReconciler {
    */
   invalidateLabelLOD(): void {
     this.lodDirty = true;
+  }
+
+  /**
+   * Force a label re-derivation for one aircraft (or all with null) on the
+   * next frame. Label text/class normally refresh inside the store-rev
+   * gate; ACARS arrivals change the class without touching the record.
+   */
+  invalidateLabel(hex: string | null): void {
+    if (hex === null) {
+      for (const entry of this.entries.values()) entry.lastRev = -1;
+      return;
+    }
+    const entry = this.entries.get(hex.toLowerCase());
+    if (entry) entry.lastRev = -1;
   }
 
   /** World-space position of an aircraft, or null if it isn't currently rendered. */

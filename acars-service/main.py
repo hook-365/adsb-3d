@@ -18,6 +18,8 @@ import os
 import random
 import sys
 import json
+from decoder import decode_message
+import re
 import logging
 import time
 
@@ -108,6 +110,56 @@ def ensure_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+async def migrate_decimal_icao(conn) -> None:
+    """One-time repair: rows written before normalize_icao() stored vdlm2dec's
+    decimal `icao` verbatim. Rewrite them as hex so per-aircraft lookups and
+    the frontend's ADS-B correlation see one address format."""
+    try:
+        rows = await conn.fetch(
+            "SELECT DISTINCT icao FROM acars_messages WHERE icao ~ '^[0-9]{7,8}$'"
+        )
+        fixed = 0
+        for row in rows:
+            hexed = normalize_icao(row['icao'])
+            if not hexed:
+                continue
+            await conn.execute(
+                "UPDATE acars_messages SET icao = $1 WHERE icao = $2", hexed, row['icao']
+            )
+            fixed += 1
+        if fixed:
+            logger.info(f"Normalized {fixed} decimal ICAO value(s) to hex")
+    except Exception as e:
+        # Non-fatal: reads normalize at the edge anyway.
+        logger.warning(f"ICAO normalization migration skipped: {e}")
+
+
+async def backfill_decoded(conn) -> None:
+    """One-time decode of rows stored before decoder.py existed: fill `decoded`
+    for any text-bearing row that doesn't have it yet. Bounded by retention,
+    so the table is small; done in batches to keep each statement cheap."""
+    try:
+        # Single pass over the (retention-bounded) backlog. Undecodable rows
+        # keep decoded = NULL; they're cheap to skip on the next boot's scan.
+        rows = await conn.fetch(
+            "SELECT ctid, label, text FROM acars_messages "
+            "WHERE decoded IS NULL AND text IS NOT NULL"
+        )
+        updated = 0
+        for r in rows:
+            d = decode_message(r["label"], r["text"])
+            if d is None:
+                continue
+            await conn.execute(
+                "UPDATE acars_messages SET decoded = $1 WHERE ctid = $2", d, r["ctid"]
+            )
+            updated += 1
+        if updated:
+            logger.info(f"Backfilled decode summaries for {updated} ACARS message(s)")
+    except Exception as e:
+        logger.warning(f"decode backfill skipped: {e}")
+
+
 async def initialize_database_schema(db_pool):
     """Initialize ACARS database schema if tables don't exist."""
     logger.info("=" * 60)
@@ -127,6 +179,11 @@ async def initialize_database_schema(db_pool):
 
             if table_exists:
                 logger.info("ACARS tables already exist")
+                await conn.execute(
+                    "ALTER TABLE acars_messages ADD COLUMN IF NOT EXISTS decoded JSONB"
+                )
+                await migrate_decimal_icao(conn)
+                await backfill_decoded(conn)
                 return
 
             logger.info("Creating ACARS tables...")
@@ -159,7 +216,12 @@ async def initialize_database_schema(db_pool):
                     wlin TEXT,
                     lat DOUBLE PRECISION,
                     lon DOUBLE PRECISION,
-                    alt INTEGER
+                    alt INTEGER,
+                    -- Human-readable decode summary (decoder.decode_message):
+                    -- position reports, arrivals, weather requests, and any
+                    -- libacars-decoded CPDLC/ADS-C/AFN. Null when nothing
+                    -- decodable was recognized.
+                    decoded JSONB
                 )
             """)
             logger.info("Created acars_messages table")
@@ -223,6 +285,41 @@ async def initialize_database_schema(db_pool):
 # this with still no newline in sight, something is wrong upstream (binary
 # garbage, protocol mismatch) — reset rather than grow unbounded.
 MAX_LINE_BUFFER_BYTES = 1_048_576
+
+
+# vdlm2dec emits `icao` as a decimal integer (11379998 = ada51e), dumpvdl2/acarshub
+# as a hex string ("ADA5DE"); the frontend correlates against ADS-B hex.
+# Normalize everything to lowercase 6-char hex. A 7-8 digit string can only
+# be decimal (a hex ICAO address is at most 6 chars), so legacy rows stored
+# verbatim before this existed are recoverable without ambiguity.
+_HEX_ICAO_RE = re.compile(r'^[0-9a-fA-F]{1,6}$')
+_DEC_ICAO_RE = re.compile(r'^[0-9]{7,8}$')
+
+
+def normalize_icao(v) -> Optional[str]:
+    """Coerce an ICAO address (int, hex str, or decimal str) to lowercase 6-char hex."""
+    if v is None or v is False or isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        n = v
+    elif isinstance(v, float):
+        if not v.is_integer():
+            return None
+        n = int(v)
+    else:
+        t = str(v).strip()
+        if not t:
+            return None
+        if _DEC_ICAO_RE.match(t):
+            n = int(t, 10)
+        elif _HEX_ICAO_RE.match(t):
+            n = int(t, 16)
+        else:
+            return None
+    if n <= 0 or n > 0xFFFFFF:
+        return None
+    return f"{n:06x}"
+
 
 class ACARSCollector:
     """Connects to ACARS Hub TCP port and collects messages."""
@@ -325,7 +422,7 @@ class ACARSCollector:
                 'time': datetime.now(timezone.utc),
                 'flight': (data.get('flight') or '').strip() or None,
                 'reg': self._to_text(data.get('tail') or data.get('reg')),
-                'icao': self._to_text(data.get('icao')),
+                'icao': normalize_icao(data.get('icao')),
                 'label': self._to_text(data.get('label')),
                 'block_id': self._to_text(data.get('block_id')),
                 'msg_num': self._to_text(data.get('msg_num') or data.get('msgno')),
@@ -345,7 +442,13 @@ class ACARSCollector:
                 # Position data (if available)
                 'lat': self._to_float(data.get('lat')),
                 'lon': self._to_float(data.get('lon')),
-                'alt': self._to_int(data.get('alt'))
+                'alt': self._to_int(data.get('alt')),
+                # Tier 1 text decode + Tier 2 libacars passthrough (from raw).
+                'decoded': decode_message(
+                    self._to_text(data.get('label')),
+                    self._to_text(data.get('text') or data.get('message')),
+                    raw=data,
+                ),
             }
         except Exception as e:
             logger.error(f"Error parsing ACARS message: {e}")
@@ -355,9 +458,9 @@ class ACARSCollector:
         INSERT INTO acars_messages
         (time, flight, reg, icao, label, block_id, msg_num, text,
          freq, level, error, mode, station_id,
-         dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt)
+         dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
     '''
 
     @staticmethod
@@ -368,7 +471,7 @@ class ACARSCollector:
             m['block_id'], m['msg_num'], m['text'], m['freq'], m['level'],
             m['error'], m['mode'], m['station_id'],
             m['dsta'], m['eta'], m['gtout'], m['gtin'], m['wloff'], m['wlin'],
-            m['lat'], m['lon'], m['alt']
+            m['lat'], m['lon'], m['alt'], m['decoded']
         )
 
     async def store_messages(self, messages: List[dict]):
@@ -475,7 +578,8 @@ class ACARSCollector:
                                                 "lat": parsed.get('lat'),
                                                 "lon": parsed.get('lon'),
                                                 "alt": parsed.get('alt')
-                                            } if parsed.get('lat') and parsed.get('lon') else None
+                                            } if parsed.get('lat') and parsed.get('lon') else None,
+                                            "decoded": parsed.get('decoded'),
                                         }
                                     })
 
@@ -590,12 +694,20 @@ async def startup():
 
     try:
         # Create database pool
+        async def _init_conn(conn):
+            # Round-trip the `decoded` JSONB column as Python dicts rather than
+            # raw JSON strings, both on write and read.
+            await conn.set_type_codec(
+                'jsonb', encoder=json.dumps, decoder=json.loads, schema='pg_catalog'
+            )
+
         db_pool = await asyncpg.create_pool(
             **DB_CONFIG,
             min_size=2,
             max_size=10,
             command_timeout=60,
-            timeout=10.0  # New-connection CONNECT timeout, not an acquire() timeout
+            timeout=10.0,  # New-connection CONNECT timeout, not an acquire() timeout
+            init=_init_conn,
         )
         logger.info(f"Database pool created: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
 
@@ -733,7 +845,7 @@ async def get_recent_messages(
     query = f"""
         SELECT time, flight, reg, icao, label, block_id, msg_num, text,
                freq, level, error, mode, station_id,
-               dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt
+               dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded
         FROM acars_messages
         WHERE {' AND '.join(filters)}
         ORDER BY time DESC
@@ -756,7 +868,7 @@ async def get_recent_messages(
                     "time": row['time'].isoformat(),
                     "flight": row['flight'],
                     "reg": row['reg'],
-                    "icao": row['icao'],
+                    "icao": normalize_icao(row['icao']),
                     "label": row['label'],
                     "block_id": row['block_id'],
                     "msg_num": row['msg_num'],
@@ -776,7 +888,8 @@ async def get_recent_messages(
                         "lat": row['lat'],
                         "lon": row['lon'],
                         "alt": row['alt']
-                    } if row['lat'] and row['lon'] else None
+                    } if row['lat'] and row['lon'] else None,
+                    "decoded": row['decoded'],
                 }
                 for row in rows
             ]
@@ -800,7 +913,7 @@ async def get_messages_by_flight(
 
     query = """
         SELECT time, flight, reg, icao, label, text, freq, level, mode,
-               dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt
+               dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded
         FROM acars_messages
         WHERE flight ILIKE $1 AND time >= $2
         ORDER BY time DESC
@@ -819,7 +932,7 @@ async def get_messages_by_flight(
                     "time": row['time'].isoformat(),
                     "flight": row['flight'],
                     "reg": row['reg'],
-                    "icao": row['icao'],
+                    "icao": normalize_icao(row['icao']),
                     "label": row['label'],
                     "text": row['text'],
                     "freq": row['freq'],
@@ -837,7 +950,8 @@ async def get_messages_by_flight(
                         "lat": row['lat'],
                         "lon": row['lon'],
                         "alt": row['alt']
-                    } if row['lat'] and row['lon'] else None
+                    } if row['lat'] and row['lon'] else None,
+                    "decoded": row['decoded'],
                 }
                 for row in rows
             ]
@@ -865,7 +979,7 @@ async def get_messages_by_aircraft(
     # Try matching both icao and registration
     query = """
         SELECT time, flight, reg, icao, label, text, freq, level, mode,
-               dsta, eta, lat, lon, alt
+               dsta, eta, lat, lon, alt, decoded
         FROM acars_messages
         WHERE (icao ILIKE $1 OR reg ILIKE $1) AND time >= $2
         ORDER BY time DESC
@@ -874,7 +988,7 @@ async def get_messages_by_aircraft(
 
     try:
         async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
-            rows = await conn.fetch(query, f"%{identifier}%", start, limit)
+            rows = await conn.fetch(query, f"%{identifier.strip().lower()}%", start, limit)
 
         return {
             "identifier": identifier,
@@ -884,7 +998,7 @@ async def get_messages_by_aircraft(
                     "time": row['time'].isoformat(),
                     "flight": row['flight'],
                     "reg": row['reg'],
-                    "icao": row['icao'],
+                    "icao": normalize_icao(row['icao']),
                     "label": row['label'],
                     "text": row['text'],
                     "freq": row['freq'],
@@ -896,7 +1010,8 @@ async def get_messages_by_aircraft(
                         "lat": row['lat'],
                         "lon": row['lon'],
                         "alt": row['alt']
-                    } if row['lat'] and row['lon'] else None
+                    } if row['lat'] and row['lon'] else None,
+                    "decoded": row['decoded'],
                 }
                 for row in rows
             ]

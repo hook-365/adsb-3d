@@ -14,6 +14,9 @@ import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
 // same-origin proxy rewrite live with the DOM detail panel that grew
 // them, and the billboard is presentation code either way.
 import { CanvasPhoto } from '../ui/aircraft-photo';
+import { acarsSummary } from '../ui/stereo-panel';
+import { getAcarsMessages } from './acars-store';
+import { getSettings } from '../core/settings';
 
 // Phase 2 world-space replacement for the DOM detail panel — a Sprite
 // with a canvas-backed texture that hovers above the currently selected
@@ -70,6 +73,7 @@ export class XrBillboard {
   private readonly texture: CanvasTexture;
   private readonly material: SpriteMaterial;
   private readonly unsubscribeTheme: () => void;
+  private lastAcarsKey = '';
   private current: Aircraft | null = null;
   // Photo for the current hex, loaded async through the same-origin
   // /photos/ proxy (a cross-origin image would taint the canvas and the
@@ -126,15 +130,19 @@ export class XrBillboard {
     // Only repaint the canvas when the user-visible fields actually
     // change (avoids a per-frame allocation churn while the aircraft is
     // just moving across the sky).
+    const acars = getSettings().acarsMessages ? getAcarsMessages(aircraft.hex) : [];
+    const acarsKey = acars.length ? `${acars.length}@${acars[0]!.time}` : '';
     const needsRedraw =
       !this.current ||
       this.current.hex !== aircraft.hex ||
       this.current.callsign !== aircraft.callsign ||
       this.current.altFt !== aircraft.altFt ||
       this.current.groundSpeedKt !== aircraft.groundSpeedKt ||
-      this.current.trackDeg !== aircraft.trackDeg;
+      this.current.trackDeg !== aircraft.trackDeg ||
+      this.lastAcarsKey !== acarsKey;
     this.photo.track(aircraft.hex, aircraft.registration);
     if (needsRedraw) {
+      this.lastAcarsKey = acarsKey;
       this.draw(aircraft, getTheme().tokens);
       this.current = aircraft;
     }
@@ -210,6 +218,16 @@ export class XrBillboard {
       ctx.fillStyle = t.emergency;
       ctx.font = 'bold 24px ui-monospace, monospace';
       ctx.fillText(`! ${a.emergency.toUpperCase()}`, 32, 200);
+    }
+
+    // ACARS summary — shares the badge row, right of the emergency slot.
+    if (getSettings().acarsMessages) {
+      const acars = getAcarsMessages(a.hex);
+      if (acars.length) {
+        ctx.fillStyle = t.three.acarsPing;
+        ctx.font = 'bold 22px ui-monospace, "JetBrains Mono", Menlo, monospace';
+        ctx.fillText(acarsSummary(acars), a.emergency ? 360 : 32, 200);
+      }
     }
 
     // Photo box, top-right (issue #6 round 4). The credit rides a shaded

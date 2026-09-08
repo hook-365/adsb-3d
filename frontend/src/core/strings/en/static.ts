@@ -62,8 +62,12 @@ export const staticStrings = {
   'static.detail_range': 'Range',
   'static.detail_seen': 'Seen',
   'static.autopilot_heading': 'Autopilot',
-  // ACARS browser
-  'static.acars_browser_aria': 'ACARS message browser',
+  // ACARS panel
+  'static.map_attribution_aria': 'Map attribution',
+  'static.acars_toggle_aria': 'Show ACARS messages',
+  'static.acars_toggle_title': 'ACARS messages',
+  'static.acars_panel_aria': 'ACARS messages',
+  'static.acars_minimize_aria': 'Minimize ACARS panel',
   'static.acars_messages_heading': 'ACARS messages',
   'static.close_aria': 'Close',
   'static.acars_search_placeholder': 'filter text · flight · reg · label',

@@ -174,6 +174,7 @@ export function createAircraftDetail(
   const apModesRowDt = document.getElementById('detail-ap-modes-label')!;
   const acarsSection = document.getElementById('detail-acars') as HTMLElement;
   const acarsCountEl = document.getElementById('detail-acars-count')!;
+  const acarsLastEl = document.getElementById('detail-acars-last')!;
   const acarsListEl = document.getElementById('detail-acars-list')!;
 
   let selectedHex: string | null = null;
@@ -468,7 +469,12 @@ export function createAircraftDetail(
     } else if (m.blockId) {
       idParts.push(escapeHtml(m.blockId));
     }
-    if (m.freq) idParts.push(`${escapeHtml(m.freq)} MHz`);
+    if (m.freq) {
+      // freq arrives as a string that's usually a raw float ("136.975006…");
+      // show 3 dp when numeric, else the escaped raw value.
+      const f = Number(m.freq);
+      idParts.push(`${Number.isFinite(f) ? f.toFixed(3) : escapeHtml(m.freq)} MHz`);
+    }
     if (typeof m.level === 'number') idParts.push(`${m.level} dB`);
     if (typeof m.error === 'number' && m.error > 0) idParts.push(t('detail.acars_err', { n: m.error }));
     const meta = idParts.length ? `<div class="acars-meta">${idParts.join(' · ')}</div>` : '';
@@ -486,7 +492,12 @@ export function createAircraftDetail(
     }
     const factsHtml = facts.length ? `<div class="acars-facts">${facts.join(' · ')}</div>` : '';
     const text = m.text ? escapeHtml(m.text).replace(/\n/g, '<br>') : `<span class="acars-empty">${t('detail.acars_no_text')}</span>`;
-    return `<li class="acars-msg">${label}${age}${meta}${factsHtml}<div class="acars-text">${text}</div></li>`;
+    // Decoded summary (decoder.py) sits above the raw text — the readable
+    // gist of a position report / arrival / CPDLC, with the raw kept below.
+    const decoded = m.decoded
+      ? `<div class="acars-decoded" data-kind="${escapeHtml(m.decoded.kind)}">${escapeHtml(m.decoded.summary)}</div>`
+      : '';
+    return `<li class="acars-msg">${label}${age}${meta}${factsHtml}${decoded}<div class="acars-text">${text}</div></li>`;
   }
 
   function updateAcars(a: Aircraft): void {
@@ -501,6 +512,13 @@ export function createAircraftDetail(
     }
     acarsSection.hidden = false;
     acarsCountEl.textContent = String(messages.length);
+    // Newest-first, so [0] is the latest: surface its label + age in the
+    // header so a glance answers "anything recent?" without reading rows.
+    const newest = messages[0]!;
+    acarsLastEl.textContent = t('detail.acars_last', {
+      label: newest.label ?? '—',
+      age: fmtAcarsAge(newest.time),
+    });
     acarsListEl.innerHTML = messages.map(renderAcarsRow).join('');
   }
 

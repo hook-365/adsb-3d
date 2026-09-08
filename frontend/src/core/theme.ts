@@ -78,7 +78,7 @@ export interface ThemeTokens {
   // The drop-shadow under text that floats over the world, for legibility
   // against varied basemap colors.
   textShadowStrong: string;
-  // The dark backdrop color for backdrop-filter scrim modals (ACARS browser).
+  // The dark backdrop color for backdrop-filter scrim modals.
   scrim: string;
 
   // ── Three.js side (read directly by world/scene, world/heatmap, etc.) ─

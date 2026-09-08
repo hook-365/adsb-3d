@@ -15,7 +15,7 @@ const MAX_PER_AIRCRAFT = 12;
 // Keep the pending buffers from growing unbounded if the receiver hears
 // flights it never sees on ADS-B (e.g. high-altitude jets out of range).
 const MAX_PER_PENDING_KEY = 8;
-// Global recent-messages cap — sized for the ACARS browser modal.
+// Global recent-messages cap — sized for the docked ACARS panel.
 const MAX_RECENT = 500;
 
 const messages = new Map<string, AcarsMessage[]>();
@@ -64,9 +64,10 @@ export function hasAcars(hex: string): boolean {
 }
 
 export function addAcarsMessage(msg: AcarsMessage): void {
-  // Always feed the global recent buffer — the browser modal renders
+  // Always feed the global recent buffer — the docked panel renders
   // every message regardless of whether we can bind it to an aircraft.
   addToRecent(msg);
+  emitPosition(msg);
   if (msg.icao) {
     addToHex(msg.icao, msg);
     return;
@@ -101,6 +102,48 @@ export function resolveAcarsPending(snapshot: ReadonlyMap<string, Aircraft>): vo
     if (a.callsign) pendingByFlight.delete(a.callsign);
     if (a.registration) pendingByReg.delete(a.registration);
   }
+}
+
+/**
+ * A geographic position carried by an ACARS message — from the message's own
+ * `position` field or from a decoded position report. Emitted for EVERY such
+ * message (not just ones bound to an on-scope aircraft), so the map can ping
+ * where datalink traffic is happening, including far outside ADS-B range.
+ */
+export interface AcarsPositionPing {
+  lat: number;
+  lon: number;
+  altFt: number | null;
+  hex: string | null;
+  flight: string | null;
+  label: string | null;
+}
+
+const positionListeners = new Set<(p: AcarsPositionPing) => void>();
+
+/** Subscribe to ACARS-message positions as they arrive. */
+export function subscribeAcarsPositions(fn: (p: AcarsPositionPing) => void): () => void {
+  positionListeners.add(fn);
+  return () => {
+    positionListeners.delete(fn);
+  };
+}
+
+function emitPosition(msg: AcarsMessage): void {
+  if (positionListeners.size === 0) return;
+  // Prefer the message's own position (carries altitude); fall back to a
+  // decoded position report's coordinates.
+  const src = msg.position ?? (msg.decoded?.position ?? null);
+  if (!src) return;
+  const ping: AcarsPositionPing = {
+    lat: src.lat,
+    lon: src.lon,
+    altFt: msg.position?.alt ?? null,
+    hex: msg.icao,
+    flight: msg.flight,
+    label: msg.label,
+  };
+  for (const fn of positionListeners) fn(ping);
 }
 
 /** Drop everything. Used on feed switch. */

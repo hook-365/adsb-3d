@@ -40,6 +40,7 @@ import {
   type Basemap,
   type Settings,
 } from '../core/settings';
+import { isBasemapAvailable } from '../core/basemaps';
 import {
   getTheme,
   setTheme,
@@ -220,7 +221,7 @@ const PAGES: MenuRow[][] = [
     cycleRow(
       'basemap',
       () => tr('misc.xr_basemap'),
-      BASEMAP_VALUES.map((v) => ({ value: v, label: XR_BASEMAP_LABELS[v] })),
+      BASEMAP_VALUES.filter(isBasemapAvailable).map((v) => ({ value: v, label: XR_BASEMAP_LABELS[v] })),
     ),
     toggleRow('rangeRings', () => tr('misc.xr_range_rings')),
     toggleRow('aircraftLabels', () => tr('misc.xr_labels')),
@@ -358,6 +359,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
+  acarsPings: 'map decoration toggle; panel-only to keep the wrist pages lean',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

@@ -61,8 +61,12 @@ export const staticStrings = {
   'static.detail_range': 'Entfernung',
   'static.detail_seen': 'Zuletzt',
   'static.autopilot_heading': 'Autopilot',
-  // ACARS browser
-  'static.acars_browser_aria': 'ACARS-Nachrichtenbrowser',
+  // ACARS panel
+  'static.map_attribution_aria': 'Kartenquellen',
+  'static.acars_toggle_aria': 'ACARS-Nachrichten anzeigen',
+  'static.acars_toggle_title': 'ACARS-Nachrichten',
+  'static.acars_panel_aria': 'ACARS-Nachrichten',
+  'static.acars_minimize_aria': 'ACARS-Panel minimieren',
   'static.acars_messages_heading': 'ACARS-Nachrichten',
   'static.close_aria': 'Schließen',
   'static.acars_search_placeholder': 'Filter: Text · Flug · Reg. · Label',

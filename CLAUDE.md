@@ -46,7 +46,8 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
 
 `src/` directories:
 - `core/` — `settings`, `theme`, `filter`, `time-context`, `units`, `coords`,
-  `url-state`, `config`, `types`.
+  `url-state`, `config`, `basemaps` (provider availability + attribution),
+  `types`.
 - `feed/` — data sources: `live`, `historical`, `history`, `acars`, `routes`,
   `feeds` (multi-feed switching), `voice-calls`, `normalize`.
 - `aircraft/` — `store`, `reconciler`, `shapes` (vendored tar1090 catalog),
@@ -56,9 +57,11 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
   rasterizing silhouettes, do not hand-edit), `shape-lab` (dev-only tuning
   harness, `npm run dev` + `?shapeLab=1`), `acars-store`.
 - `world/` — `scene`, `controls` (Three.js OrbitControls), `tiles` (basemap),
-  `labels`, `heatmap` (3D airway-density).
+  `labels`, `heatmap` (3D airway-density), `acars-pings` (transient map pings
+  at ACARS-reported coordinates).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
-  `time-controls`, `voice-panel`, `acars-browser`, `feed-selector`, etc.
+  `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
+  `feed-selector`, etc.
 - `interaction/` — `picking` (raycaster).
 - `main.ts` — wires everything together at boot.
 
@@ -133,8 +136,11 @@ types, unit abbreviations) is deliberately not translated.
   heartbeats carrying `feeder_age_s`) and a separate DB collector. REST
   endpoints for per-aircraft tracks, bulk timelapse, heatmap aggregation,
   stats, and adsb.im route lookup.
-- `acars-service` — connects to an acarshub TCP JSON feed, decodes message
-  labels, stores them in TimescaleDB, and exposes REST + a `/ws` push socket.
+- `acars-service` — connects to an acarshub / acars_router TCP JSON feed,
+  normalizes ICAO addresses to hex, decodes message content into
+  human-readable summaries (`decoder.py`: position reports, arrivals,
+  weather, and CPDLC/ADS-C/AFN datalink) stored in a `decoded` JSONB
+  column, persists to TimescaleDB, and exposes REST + a `/ws` push socket.
 - Both run as a non-root user (uid `10001`) and declare a `HEALTHCHECK`.
 
 ## Configuration & runtime
@@ -162,6 +168,15 @@ features get dummy upstreams so the generated nginx config is always valid.
   config-idempotent), and gates startup on `nginx -t`.
 - The voice scanner is **call-based** (one audio clip per radio transmission)
   and **local-feed-only** — see `docs/VOICE.md`.
+- **Basemap tiles**: every provider except CARTO is proxied + cached by
+  nginx under `/tiles/<provider>/` and pre-warmed at boot. CARTO (Dark,
+  Voyager) is fetched browser-direct from `*.basemaps.cartocdn.com` with
+  `CARTO_API_KEY` (rendered into `config.js` as `MAP_CONFIG.cartoApiKey`,
+  never into nginx) because CARTO's basemap terms forbid server-side
+  proxying/caching and require a per-deployment key. `world/tiles.ts`
+  owns availability (`isBasemapAvailable`, OSM fallback) and the
+  per-provider attribution HTML shown by `ui/map-attribution.ts`; keep
+  that attribution visible — it is a licence condition.
 - **FAA chart tiles** (sectional, IFR, helicopter): `entrypoint.sh` scrapes
   `vfrmap.com/js/map.js` at boot to discover the current 56-day chart cycle
   date, exports it as `${VFRMAP_CYCLE}`, and envsubst bakes it into the

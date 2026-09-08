@@ -22,7 +22,7 @@ variables, and architecture notes.
   tile layer, heatmap (3D airway-density LineSegments).
 - `src/ui/` — aircraft list, aircraft detail card, photo loader,
   panel toggle, feed selector, settings panel, time-controls strip,
-  ACARS browser modal, loading overlay, voice scanner panel
+  docked ACARS panel, basemap attribution, loading overlay, voice scanner panel
   (opt-in via `ENABLE_VOICE`; see [docs/VOICE.md](../docs/VOICE.md)).
 - `src/interaction/` — click/tap raycast picking.
 - `src/main.ts` — composes the above; owns the FeedSession lifecycle

@@ -38,7 +38,7 @@ class TestParseAcarsMessageFieldMapping:
         assert parsed is not None
         assert parsed['flight'] == 'UAL123'
         assert parsed['reg'] == 'N12345'
-        assert parsed['icao'] == 'A1B2C3'
+        assert parsed['icao'] == 'a1b2c3'
         assert parsed['label'] == 'H1'
         assert parsed['block_id'] == '1'
         assert parsed['msg_num'] == 'M01A'
@@ -157,3 +157,64 @@ class TestCoercion:
         parsed = c.parse_acars_message({'label': 12, 'block_id': 3})
         assert parsed['label'] == '12'
         assert parsed['block_id'] == '3'
+
+
+class TestIcaoNormalization:
+    def test_decimal_int_from_vdlm2dec_becomes_hex(self):
+        assert main.normalize_icao(11379998) == 'ada51e'
+
+    def test_hex_string_lowercased_and_padded(self):
+        assert main.normalize_icao('ADA51E') == 'ada51e'
+        assert main.normalize_icao('a5de') == '00a5de'
+
+    def test_seven_or_eight_digit_string_is_decimal(self):
+        # Legacy rows stored vdlm2dec's decimal verbatim as text.
+        assert main.normalize_icao('11379998') == 'ada51e'
+        assert main.normalize_icao('10495836') == 'a0275c'
+
+    def test_six_digit_all_numeric_string_is_hex(self):
+        # Ambiguous on its face, but a hex ICAO is <= 6 chars and acarshub
+        # emits hex strings, so 6 chars is always hex.
+        assert main.normalize_icao('123456') == '123456'
+
+    def test_garbage_and_out_of_range_return_none(self):
+        assert main.normalize_icao(None) is None
+        assert main.normalize_icao('') is None
+        assert main.normalize_icao('N979AK') is None
+        assert main.normalize_icao(0) is None
+        assert main.normalize_icao(0x1000000) is None
+        assert main.normalize_icao(True) is None
+        assert main.normalize_icao(1.5) is None
+
+    def test_float_integer_value_accepted(self):
+        assert main.normalize_icao(11379998.0) == 'ada51e'
+
+    def test_vdlm2dec_shaped_message_parses(self):
+        c = make_collector()
+        data = {
+            'timestamp': 1756768813.211,
+            'station_id': 'PI-VDL2',
+            'channel': 0,
+            'freq': 136.65,
+            'icao': 11379998,
+            'toaddr': 1090000,
+            'is_response': 0,
+            'is_onground': 0,
+            'mode': '2',
+            'label': 'H1',
+            'block_id': '3',
+            'ack': False,
+            'tail': 'N979AK',
+            'flight': 'AS0313',
+            'msgno': 'D50A',
+            'text': '#DFBD3M501KDTWKSEAN44020W08943622383600M049268052G0009',
+            'end': True,
+        }
+        parsed = c.parse_acars_message(data)
+        assert parsed['icao'] == 'ada51e'
+        assert parsed['reg'] == 'N979AK'
+        assert parsed['flight'] == 'AS0313'
+        assert parsed['msg_num'] == 'D50A'
+        assert parsed['label'] == 'H1'
+        assert parsed['freq'] == 136.65
+        assert parsed['mode'] == '2'

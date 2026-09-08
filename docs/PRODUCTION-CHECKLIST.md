@@ -51,6 +51,8 @@ Check on each:
 - 3D scene renders, aircraft appear, trails draw correctly
 - Click an aircraft — detail card opens, route row populates
 - Settings panel opens, basemap switcher works
+- Basemap attribution visible bottom-right and matches the active provider (CARTO requires OpenStreetMap + CARTO credit)
+- With `CARTO_API_KEY` set: Carto Dark / Voyager appear in the picker and load real tiles (no "API KEY REQUIRED" watermark); without it they are absent and the map falls back to OpenStreetMap
 - No errors in the browser console (F12)
 - Memory stable after 30+ minutes (no steady climb in Task Manager)
 
@@ -72,10 +74,14 @@ Check each:
   - Time-controls strip appears; toggle to historical mode works
   - Playback scrubber, speed controls, and presets (1h / 24h / 7d) work
   - Heatmap overlay renders for a 7-day window
-- [ ] ACARS: `ENABLE_ACARS=true` + acars-service + external acarshub
-  - ACARS chip appears in detail card for aircraft with messages
+- [ ] ACARS: `ENABLE_ACARS=true` + acars-service + external acarshub / acars_router
+  - `ACARS_PORT` matches the decoder lane (15550 classic ACARS, 15555 VDL Mode 2)
+  - `/acars-api/messages/recent` returns `icao` as 6-char lowercase hex (never a decimal like `11379998`)
+  - HUD `acars` chip appears (status only); the round 📡 button in the top-right cluster docks the panel under the HUD, `–` collapses it back to the button
+  - Aircraft with messages show the `A` badge on the 3D label and list row; detail card lists the messages
+  - Decoded summary line appears above the raw text (position reports, arrivals, CPDLC/ADS-C/AFN) in the detail card and panel
+  - Positioned messages drop a fading ping on the map (`ACARS position pings` setting, default on)
   - OOOI flight-phase (taxi-out / airborne / taxi-in / at gate) resolves
-  - Full ACARS browser opens from HUD chip
 - [ ] Voice scanner: `ENABLE_VOICE=true` + voice-services stack
   - Voice panel renders top-right; call list populates with recent clips
   - Scanner ▶ arms and auto-plays the next incoming transmission

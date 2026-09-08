@@ -1,11 +1,32 @@
 #!/bin/sh
 set -e
 
+# CARTO basemap API key (free: https://carto.com/basemaps/apikey). CARTO's
+# basemap terms forbid server-side proxying/caching of their tiles and
+# require every deployment to use its own key, so this is NOT rendered into
+# nginx — it goes into config.js and the browser fetches CARTO tiles straight
+# from their CDN with `?key=`. Empty = the Dark/Voyager basemaps are hidden
+# from the pickers and the app falls back to OpenStreetMap. Restricted to
+# URL-safe token characters since it lands in a JS string literal and a URL.
+if [ -n "$CARTO_API_KEY" ] && [ -n "$(printf '%s' "$CARTO_API_KEY" | tr -d 'A-Za-z0-9_.~-')" ]; then
+    echo "[ERROR] CARTO_API_KEY may only contain letters, digits, '_', '.', '~' and '-'"
+    exit 1
+fi
+
 # =============================================================================
 # Map Tile Pre-caching Function (runs in background)
 # =============================================================================
 precache_tiles() {
     CACHE_DIR="/tiles"
+    # Older images pre-cached CARTO tiles here. CARTO's basemap terms forbid
+    # server-side caching, so purge any leftovers on every boot (idempotent;
+    # the nginx proxy blocks for these providers are gone too).
+    for legacy in dark carto_voyager carto_light; do
+        if [ -d "$CACHE_DIR/$legacy" ]; then
+            echo "[tile-cache] removing legacy CARTO cache $CACHE_DIR/$legacy (not permitted by CARTO's terms)"
+            rm -rf "$CACHE_DIR/$legacy"
+        fi
+    done
     ZOOM=${MAP_ZOOM:-8}
     GRID_SIZE=${MAP_GRID_SIZE:-21}
     HALF_GRID=$((GRID_SIZE / 2))
@@ -27,9 +48,9 @@ precache_tiles() {
 
     # Define tile providers (name|url_template)
     # URL uses {z}/{y}/{x} placeholders - note ESRI uses y/x order!
+    # CARTO (Dark / Voyager) is deliberately absent: their basemap terms
+    # prohibit server-side caching, so the browser fetches those directly.
     PROVIDERS="
-dark|https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png
-carto_voyager|https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png
 hillshade|https://services.arcgisonline.com/arcgis/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}
 topo|https://a.tile.opentopomap.org/{z}/{x}/{y}.png
 satellite|https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
@@ -37,7 +58,7 @@ osm|https://a.tile.openstreetmap.org/{z}/{x}/{y}.png
 terrain_rgb|https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
 "
 
-    TOTAL_TILES=$((GRID_SIZE * GRID_SIZE * 7))
+    TOTAL_TILES=$((GRID_SIZE * GRID_SIZE * 5))
     CACHED=0
     SKIPPED=0
     FAILED=0
@@ -321,6 +342,7 @@ ENABLE_ACARS_JS=$(_bool "${ENABLE_ACARS:-false}")
 ENABLE_VOICE_JS=$(_bool "${ENABLE_VOICE:-false}")
 ENABLE_TERRAIN_JS=$(_bool "${ENABLE_TERRAIN:-true}")
 HIDE_TOWER_JS=$(_bool "${HIDE_TOWER:-false}")
+CARTO_API_KEY_JS=$(_js_escape "${CARTO_API_KEY:-}")
 
 # Generate config.js from environment variables
 cat > /usr/share/nginx/html/config.js <<EOF
@@ -394,6 +416,13 @@ window.TOWER_CONFIG = {
 // Deploy-level kill switch; users also get a per-browser settings toggle.
 window.TERRAIN_CONFIG = {
     enabled: ${ENABLE_TERRAIN_JS}
+};
+
+// Basemap provider configuration. CARTO tiles are fetched by the browser
+// directly from CARTO's CDN with this key (their terms forbid proxying);
+// empty hides the CARTO basemaps and falls back to OpenStreetMap.
+window.MAP_CONFIG = {
+    cartoApiKey: '${CARTO_API_KEY_JS}'
 };
 
 // Multi-feed configuration

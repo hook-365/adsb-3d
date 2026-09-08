@@ -276,3 +276,83 @@ describe('positionOf', () => {
     expect(reconciler.positionOf('ghost')).toBeNull();
   });
 });
+
+describe('ACARS label badge', () => {
+  it('adds the acars class while messages are buffered and drops it on clear', async () => {
+    const { addAcarsMessage, clearAcars } = await import('../src/aircraft/acars-store');
+    const { aircraftLabelClass } = await import('../src/aircraft/reconciler');
+    clearAcars();
+    const a = ac('abc123', { callsign: 'TEST1' });
+    expect(aircraftLabelClass(a)).toBe('aircraft-label');
+    addAcarsMessage({
+      time: new Date().toISOString(),
+      icao: 'abc123',
+      flight: 'TEST1',
+      reg: null,
+      label: 'H1',
+      blockId: null,
+      msgNum: null,
+      text: 'hello',
+      freq: null,
+      level: null,
+      error: null,
+      mode: null,
+      stationId: null,
+      destination: null,
+      eta: null,
+      gtout: null,
+      wloff: null,
+      wlin: null,
+      gtin: null,
+      position: null,
+      decoded: null,
+      });
+    expect(aircraftLabelClass(a)).toBe('aircraft-label acars');
+    expect(aircraftLabelClass({ ...a, onGround: true })).toBe('aircraft-label ground acars');
+    clearAcars();
+    expect(aircraftLabelClass(a)).toBe('aircraft-label');
+  });
+
+  it('invalidateLabel forces a class refresh without a store update', async () => {
+    const { addAcarsMessage, clearAcars } = await import('../src/aircraft/acars-store');
+    clearAcars();
+    const { store, root, reconciler } = setup();
+    store.syncFromFeed([ac('abc123', { callsign: 'TEST1' })]);
+    reconciler.syncFrame();
+    const label = findLabel(findAircraftGroup(root, 'abc123')!)!;
+    expect(label.element.className).toBe('aircraft-label');
+    addAcarsMessage({
+      time: new Date().toISOString(),
+      icao: 'abc123',
+      flight: 'TEST1',
+      reg: null,
+      label: 'Q0',
+      blockId: null,
+      msgNum: null,
+      text: null,
+      freq: null,
+      level: null,
+      error: null,
+      mode: null,
+      stationId: null,
+      destination: null,
+      eta: null,
+      gtout: null,
+      wloff: null,
+      wlin: null,
+      gtin: null,
+      position: null,
+      decoded: null,
+      });
+    // No store change → the rev gate skips the label; still the base class.
+    reconciler.syncFrame();
+    expect(label.element.className).toBe('aircraft-label');
+    reconciler.invalidateLabel('abc123');
+    reconciler.syncFrame();
+    expect(label.element.className).toBe('aircraft-label acars');
+    clearAcars();
+    reconciler.invalidateLabel(null);
+    reconciler.syncFrame();
+    expect(label.element.className).toBe('aircraft-label');
+  });
+});
