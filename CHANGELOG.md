@@ -12,6 +12,38 @@ _Nothing yet._
 
 ---
 
+## [0.9.3] - 2026-09-14
+
+Issue #6 round 5, from tyzbit's Quest 3 re-test of the desk diorama.
+
+### Added
+
+- **Vertical scale setting.** A new "Vertical scale" choice in the Map
+  section picks the altitude exaggeration: True (1x), 4x, or 12x (the
+  value the scene always used). True scale fits a proportioned altitude
+  column into an AR diorama. Changing it reloads the page, like the curve
+  slider, because trails, terrain and heatmap geometry bake the mapping
+  in. The footer legend reads "true scale" at 1x with a balanced curve.
+
+### Changed
+
+- **"Altitude scale" slider renamed "Altitude emphasis".** It only skews
+  vertical space toward low or high altitudes under a fixed ceiling and
+  never changed the scale, which the old name implied.
+- **XR info card is upright and sits clear of the aircraft.** The card is
+  now a plane instead of a screen-aligned sprite: inside a headset it only
+  turns to face you and never tilts or rolls with the head. It is anchored
+  at its bottom edge and lifted above the marker by a gap that grows with
+  the card when it scales up for distance, so it no longer parks on top of
+  the selected model. In desktop side-by-side stereo the card also pitches
+  toward the camera so a top-down view never sees it edge-on.
+- **Deselecting disarms "Follow random aircraft".** Clearing the selection
+  used to be undone a moment later by the next random pick. The toggle now
+  switches off on deselect and re-arms in one press. An aircraft dropping
+  off the feed still triggers a new pick.
+
+---
+
 ## [0.9.2] - 2026-09-07
 
 ### Added
