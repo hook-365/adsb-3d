@@ -22,6 +22,14 @@ export type AltitudeUnit = 'ft' | 'm';
  */
 export type VrQuality = 'low' | 'balanced' | 'high' | 'ultra';
 /**
+ * Vertical exaggeration of altitude against ground distance. Stored as
+ * the panel's choice-row string; core/coords.ts reads it as a number.
+ * '1' is true scale (a 45,000 ft column is ~7.4 NM tall, which fits a
+ * diorama box); '12' is the readable desktop default the scene has
+ * always used.
+ */
+export type AltitudeExaggeration = '1' | '4' | '12';
+/**
  * VR movement model (issue #6): 'scope' = world moves around a stationary
  * observer (left stick scales); 'freefly' = user flies through the
  * airspace (left stick strafes/flies, grip+stick scales, right stick Y
@@ -205,6 +213,12 @@ export interface Settings {
    */
   altitudeCurveBias: number;
   /**
+   * Vertical exaggeration factor (issue #6 round 5 — tyzbit asked for a
+   * "true altitude scale" separate from the emphasis curve above).
+   * Reloads the page like the curve; the same baked geometry applies.
+   */
+  altitudeExaggeration: AltitudeExaggeration;
+  /**
    * Render the basemap at real ground elevation (world/elevation.ts).
    * ANDed with the deploy-level TERRAIN_ENABLED kill switch. Changing it
    * reloads the page — tile geometry bakes the displacement in.
@@ -254,6 +268,7 @@ const DEFAULTS: Settings = {
   theme: 'auto',
   language: 'auto',
   altitudeCurveBias: 0,
+  altitudeExaggeration: '12',
   // Off by default: an extra ~25 tile fetches + displaced geometry that
   // deserves an opt-in, and flat remains the familiar baseline look.
   terrain3d: false,

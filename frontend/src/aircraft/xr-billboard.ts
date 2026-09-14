@@ -1,9 +1,11 @@
 import {
   CanvasTexture,
+  DoubleSide,
   LinearFilter,
+  Mesh,
+  MeshBasicMaterial,
   Object3D,
-  Sprite,
-  SpriteMaterial,
+  PlaneGeometry,
   Vector3,
 } from 'three';
 import type { Aircraft } from '../core/types';
@@ -17,40 +19,43 @@ import { CanvasPhoto } from '../ui/aircraft-photo';
 import { acarsSummary } from '../ui/stereo-panel';
 import { getAcarsMessages } from './acars-store';
 import { getSettings } from '../core/settings';
+import {
+  BILLBOARD_H_NM,
+  BILLBOARD_W_NM,
+  billboardYaw,
+  clearanceFor,
+  readableWidth,
+} from './xr-billboard-math';
 
-// Phase 2 world-space replacement for the DOM detail panel — a Sprite
-// with a canvas-backed texture that hovers above the currently selected
-// aircraft while the user is in VR. The reconciler's selection ring
-// still highlights the cone; this just gives readable text without
-// needing the page DOM to composite over the XR canvas.
+// Phase 2 world-space replacement for the DOM detail panel — a canvas-
+// textured card that hovers above the currently selected aircraft while
+// the user is in VR. The reconciler's selection ring still highlights
+// the cone; this just gives readable text without needing the page DOM
+// to composite over the XR canvas.
 //
-// Lives inside xrRoot so the billboard scales with the airspace (at the
-// Phase 2 tabletop default scale of 0.01, a 6×3 NM sprite renders as
+// Lives inside xrRoot so the card scales with the airspace (at the
+// Phase 2 tabletop default scale of 0.01, a 6×3 NM card renders as
 // roughly 6×3 cm in front of the user — comfortable reading size).
+//
+// Geometry (issue #6 round 5): the card is an upright plane, not a
+// Sprite. A Sprite is view-plane aligned, so it rolled and pitched with
+// the headset; tyzbit asked for labels that don't rotate with the head.
+// The plane is yawed toward the eye each frame and otherwise stays
+// perpendicular to the ground. Its geometry is anchored at the bottom
+// edge, so the readability floor grows it upward only, and it sits a
+// clearance above the aircraft that scales with that growth — the
+// earlier centre-anchored sprite with a fixed offset ended up parked on
+// top of the silhouette (his video). Sizes and the yaw/clearance math
+// live in xr-billboard-math.ts so they can be unit-tested.
 //
 // Text is redrawn whenever the underlying Aircraft fields change.
 // Position is updated each frame from main.ts (where the reconciler
 // already calls positionOf).
 
-// Sprite size in NM units (xrRoot scales these). 6 NM wide × 3 NM tall
-// works out to roughly the size of a credit card at the tabletop scale.
-const BILLBOARD_W_NM = 6;
-const BILLBOARD_H_NM = 3;
-// Float the billboard this far above the aircraft cone (NM). At
-// tabletop scale = ~2.5 cm clearance — visually distinct from the cone.
-const BILLBOARD_HEIGHT_OFFSET_NM = 2.5;
-
 // Canvas resolution. Bigger = sharper text in VR; cheap because we
 // only redraw on data change, not per frame.
 const CANVAS_W = 512;
 const CANVAS_H = 256;
-
-// Readability floor (issue #6, AR#3): the sprite may never render
-// narrower than this fraction of its distance to the headset —
-// 0.3 m per metre of distance ≈ 17° of visual field. Far or
-// small-scaled billboards grow to stay legible; near ones keep their
-// airspace-tied size.
-const MIN_WIDTH_PER_METER = 0.3;
 
 // Photo box (issue #6 round 4 — tyzbit: "Maybe more info on the label,
 // like the aircraft picture"): top-right corner, clear of the headline
@@ -62,16 +67,15 @@ const PHOTO_Y = 24;
 const PHOTO_W = 152;
 const PHOTO_H = 102;
 
-const tmpWorldPos = new Vector3();
-const tmpEyePos = new Vector3();
-const tmpParentScale = new Vector3();
+const tmpEyeLocal = new Vector3();
+const tmpEyeWorld = new Vector3();
 
 export class XrBillboard {
-  private readonly sprite: Sprite;
+  private readonly mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly texture: CanvasTexture;
-  private readonly material: SpriteMaterial;
+  private readonly material: MeshBasicMaterial;
   private readonly unsubscribeTheme: () => void;
   private lastAcarsKey = '';
   private current: Aircraft | null = null;
@@ -92,24 +96,32 @@ export class XrBillboard {
     this.ctx = ctx;
 
     this.texture = new CanvasTexture(this.canvas);
-    // Sprite textures benefit from linear minification in VR; default
-    // mipmap filter is fine but the sprite is also small in screen
+    // Canvas text benefits from linear minification in VR; default
+    // mipmap filter is fine but the card is also small in screen
     // space so a slightly cheaper LinearFilter keeps text crisp.
     this.texture.minFilter = LinearFilter;
     this.texture.magFilter = LinearFilter;
 
-    this.material = new SpriteMaterial({
+    this.material = new MeshBasicMaterial({
       map: this.texture,
       transparent: true,
       depthWrite: false,
       depthTest: true,
+      // Yaw-only facing means a user walking around the diorama can end
+      // up behind the card for a frame or two; render the back rather
+      // than blink it out.
+      side: DoubleSide,
     });
-    this.sprite = new Sprite(this.material);
-    this.sprite.scale.set(BILLBOARD_W_NM, BILLBOARD_H_NM, 1);
-    this.sprite.renderOrder = 7; // above selection / emergency rings
-    this.sprite.visible = false;
-    this.sprite.name = 'xr-billboard';
-    parent.add(this.sprite);
+    // Unit plane shifted so the mesh origin is the bottom-centre of the
+    // card: scale grows it upward, away from the aircraft underneath.
+    const geometry = new PlaneGeometry(1, 1);
+    geometry.translate(0, 0.5, 0);
+    this.mesh = new Mesh(geometry, this.material);
+    this.mesh.scale.set(BILLBOARD_W_NM, BILLBOARD_H_NM, 1);
+    this.mesh.renderOrder = 7; // above selection / emergency rings
+    this.mesh.visible = false;
+    this.mesh.name = 'xr-billboard';
+    parent.add(this.mesh);
 
     this.unsubscribeTheme = subscribeTheme((tokens) => {
       if (this.current) this.draw(this.current, tokens);
@@ -119,11 +131,23 @@ export class XrBillboard {
   /**
    * Refresh the billboard for the given aircraft. Pass null to hide it
    * (e.g. on deselect or session end). Position is the aircraft's scene
-   * position from reconciler.positionOf(); the billboard sits above it.
+   * position from reconciler.positionOf(); the card sits above it, sized
+   * against and turned toward `eye` (renderer.xr.getCamera() in a
+   * session, the desktop camera in side-by-side stereo). `upright` keeps
+   * the card perpendicular to the ground (yaw only) — right for a headset
+   * looking across a diorama, wrong for the desktop stereo camera, which
+   * can pitch nearly top-down and would see the card edge-on; that path
+   * lets the card pitch toward the eye too (still no roll). Per frame,
+   * but cheap — a handful of vector ops, no canvas work unless data changed.
    */
-  update(aircraft: Aircraft | null, scenePos: Vector3 | null): void {
-    if (!aircraft || !scenePos) {
-      this.sprite.visible = false;
+  update(
+    aircraft: Aircraft | null,
+    scenePos: Vector3 | null,
+    eye: Object3D,
+    upright: boolean,
+  ): void {
+    if (!aircraft || !scenePos || !this.mesh.parent) {
+      this.mesh.visible = false;
       this.current = null;
       return;
     }
@@ -147,30 +171,32 @@ export class XrBillboard {
       this.current = aircraft;
     }
 
-    this.sprite.position.copy(scenePos);
-    this.sprite.position.y += BILLBOARD_HEIGHT_OFFSET_NM;
-    this.sprite.visible = true;
-  }
+    // Everything below is in xrRoot-local units: bring the eye into that
+    // frame once (the root may be scaled, yawed by scope placement or
+    // auto-orbit, and translated by locomotion — a world-axis yaw would
+    // be wrong whenever the root is turned).
+    const parent = this.mesh.parent;
+    parent.updateWorldMatrix(true, false);
+    tmpEyeLocal.setFromMatrixPosition(eye.matrixWorld);
+    parent.worldToLocal(tmpEyeLocal);
 
-  /**
-   * Enforce the minimum angular size against the current headset pose
-   * (pass renderer.xr.getCamera()). Called per frame after update();
-   * cheap — two vector ops, no canvas work.
-   */
-  keepReadable(xrCamera: Object3D): void {
-    if (!this.sprite.visible || !this.sprite.parent) return;
-    this.sprite.getWorldPosition(tmpWorldPos);
-    tmpEyePos.setFromMatrixPosition(xrCamera.matrixWorld);
-    const distM = tmpWorldPos.distanceTo(tmpEyePos);
-    const parentScale = this.sprite.parent.getWorldScale(tmpParentScale).x || 1;
-    const minLocalW = (MIN_WIDTH_PER_METER * distM) / parentScale;
-    const w = Math.max(BILLBOARD_W_NM, minLocalW);
-    this.sprite.scale.set(w, w * (BILLBOARD_H_NM / BILLBOARD_W_NM), 1);
+    const w = readableWidth(tmpEyeLocal.distanceTo(scenePos));
+    this.mesh.scale.set(w, w * (BILLBOARD_H_NM / BILLBOARD_W_NM), 1);
+    this.mesh.position.copy(scenePos);
+    this.mesh.position.y += clearanceFor(w);
+    if (upright) {
+      this.mesh.rotation.set(0, billboardYaw(tmpEyeLocal, this.mesh.position), 0);
+    } else {
+      // Object3D.lookAt points +Z at the target with world-up as up, so
+      // the card pitches toward the camera without rolling.
+      this.mesh.lookAt(tmpEyeWorld.setFromMatrixPosition(eye.matrixWorld));
+    }
+    this.mesh.visible = true;
   }
 
   /** Hide the billboard without changing the cached aircraft. */
   hide(): void {
-    this.sprite.visible = false;
+    this.mesh.visible = false;
   }
 
   private draw(a: Aircraft, theme: ThemeTokens): void {
@@ -246,7 +272,8 @@ export class XrBillboard {
 
   dispose(): void {
     this.unsubscribeTheme();
-    this.sprite.parent?.remove(this.sprite);
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.geometry.dispose();
     this.material.dispose();
     this.texture.dispose();
   }

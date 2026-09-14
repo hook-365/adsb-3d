@@ -8,10 +8,17 @@ export const miscStrings = {
     'Note: the 3D view exaggerates altitude {factor}× relative to ' +
     'horizontal distance so traffic stays readable — the height you see is ' +
     'NOT to scale against the ground.',
+  'misc.legend_tooltip_true':
+    'Aircraft are coloured by altitude (tar1090 scheme): low = orange, ' +
+    'mid = green, high = magenta, 50k+ ft = red. Aircraft on the ground ' +
+    'are dim grey.\n\n' +
+    'Vertical scale is true: height and horizontal distance share the same ' +
+    'scale.',
   'misc.legend_alt_caption': 'alt',
   'misc.legend_scale_note': '↕ height ×{factor} — not to scale',
   'misc.legend_scale_note_low': '↕ low altitudes emphasized — not to scale',
   'misc.legend_scale_note_high': '↕ high altitudes emphasized — not to scale',
+  'misc.legend_scale_note_true': '↕ true scale',
   // VR wrist menu (world/xr-wrist-menu.ts). Deliberately short — drawn on a
   // 512px canvas; translations must stay terse or they clip.
   'misc.xr_theme': 'Theme',

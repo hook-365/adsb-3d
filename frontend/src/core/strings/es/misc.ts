@@ -7,10 +7,17 @@ export const miscStrings = {
     'Nota: la vista 3D exagera la altitud {factor}× respecto a la distancia ' +
     'horizontal para que el tráfico sea legible; la altura que se ve NO está ' +
     'a escala con el suelo.',
+  'misc.legend_tooltip_true':
+    'Las aeronaves se colorean según la altitud (esquema tar1090): baja = naranja, ' +
+    'media = verde, alta = magenta, +50k ft = rojo. Las aeronaves en tierra se ' +
+    'muestran en gris tenue.\n\n' +
+    'La escala vertical es real: la altura y la distancia horizontal comparten ' +
+    'la misma escala.',
   'misc.legend_alt_caption': 'alt',
   'misc.legend_scale_note': '↕ altura ×{factor}, no a escala',
   'misc.legend_scale_note_low': '↕ altitudes bajas enfatizadas, no a escala',
   'misc.legend_scale_note_high': '↕ altitudes altas enfatizadas, no a escala',
+  'misc.legend_scale_note_true': '↕ a escala real',
   // Menú de muñeca VR, deliberadamente corto: se dibuja en un canvas de 512px.
   'misc.xr_theme': 'Tema',
   'misc.xr_basemap': 'Mapa',

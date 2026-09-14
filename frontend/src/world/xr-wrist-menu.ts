@@ -358,6 +358,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   arScale: 'live-driven by the left thumbstick in AR; a menu row would fight it',
   terrain3d: 'changing it reloads the page, which would kill the XR session',
   altitudeCurveBias: 'changing it reloads the page, which would kill the XR session',
+  altitudeExaggeration: 'changing it reloads the page, which would kill the XR session',
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
   acarsPings: 'map decoration toggle; panel-only to keep the wrist pages lean',
 };

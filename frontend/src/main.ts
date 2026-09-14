@@ -719,6 +719,15 @@ function applySelection(hex: string | null): void {
   if (hex === null && !world.renderer.xr.isPresenting && getSettings().autoOrbit > 0) {
     updateSettings({ autoOrbit: 0 });
   }
+  // A deliberate deselect also disarms follow-random (issue #6 round 5 —
+  // tyzbit: "deselecting an aircraft should probably toggle the feature
+  // off automatically so it can be re-enabled again in one action").
+  // Without this the store subscription re-picks on the next snapshot and
+  // the deselect is undone within a tick. Feed drop-off never comes
+  // through here, so the re-pick-on-vanish behaviour is untouched.
+  if (hex === null && getSettings().followRandomAircraft) {
+    updateSettings({ followRandomAircraft: false });
+  }
   xrSelectedHex = hex;
   // New target: drop the XR follow anchor so it re-captures at the new
   // aircraft's current spot instead of yanking the world across the room.
@@ -1101,10 +1110,14 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     // The wrist menu's Labels row maps to aircraftLabels; in a headset the
     // billboard IS the label, so the toggle governs it (issue #6, VR#7 —
     // CSS2D labels are hidden in XR, making the toggle appear dead).
-    xrBillboard.update(getSettings().aircraftLabels && !clippedAway ? (a ?? null) : null, pos);
-    // Angular-size floor measures from the eye actually in use.
-    xrBillboard.keepReadable(
-      world.renderer.xr.isPresenting ? world.renderer.xr.getCamera() : world.camera,
+    // Sizing floor and facing measure from the eye actually in use; the
+    // card only stays strictly upright inside a headset.
+    const presenting = world.renderer.xr.isPresenting;
+    xrBillboard.update(
+      getSettings().aircraftLabels && !clippedAway ? (a ?? null) : null,
+      pos,
+      presenting ? world.renderer.xr.getCamera() : world.camera,
+      presenting,
     );
   } else {
     xrBillboard.hide();
@@ -1172,7 +1185,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     // WebXR session active — the runtime owns camera transforms (from the
     // headset IMU), so OrbitControls + stereo are bypassed. CSS2D labels
     // can't paint over the XR-managed WebGL canvas so we skip the label
-    // renderer too; world-space sprite labels (xrBillboard above) carry
+    // renderer too; world-space card labels (xrBillboard above) carry
     // the per-aircraft text.
     world.renderer.render(world.scene, world.camera);
   } else if (getSettings().stereo) {

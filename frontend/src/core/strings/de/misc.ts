@@ -7,10 +7,17 @@ export const miscStrings = {
     'Hinweis: Die 3D-Ansicht überhöht die Höhe im Verhältnis zur horizontalen ' +
     'Entfernung um das {factor}-Fache, damit der Verkehr lesbar bleibt. ' +
     'Die dargestellte Höhe ist NICHT maßstabsgetreu zum Boden.',
+  'misc.legend_tooltip_true':
+    'Flugzeuge sind nach Höhe eingefärbt (tar1090-Schema): niedrig = Orange, ' +
+    'mittel = Grün, hoch = Magenta, ab 50k ft = Rot. Flugzeuge am Boden sind ' +
+    'gedämpft grau.\n\n' +
+    'Der vertikale Maßstab ist echt: Höhe und horizontale Entfernung haben ' +
+    'denselben Maßstab.',
   'misc.legend_alt_caption': 'Höhe',
   'misc.legend_scale_note': '↕ Höhe ×{factor}, nicht maßstabsgetreu',
   'misc.legend_scale_note_low': '↕ niedrige Höhen betont, nicht maßstabsgetreu',
   'misc.legend_scale_note_high': '↕ große Höhen betont, nicht maßstabsgetreu',
+  'misc.legend_scale_note_true': '↕ maßstabsgetreu',
   // VR-Handgelenkmenü — bewusst kurz, wird auf eine 512px-Canvas gezeichnet.
   'misc.xr_theme': 'Design',
   'misc.xr_basemap': 'Karte',

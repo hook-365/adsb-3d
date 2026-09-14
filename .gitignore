@@ -54,3 +54,4 @@ frontend/tsconfig.tsbuildinfo
 # Local screenshots / scratch images
 Screenshot.jpg
 Screenshot*.png
+recordings/

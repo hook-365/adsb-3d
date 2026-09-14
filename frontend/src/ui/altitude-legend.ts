@@ -1,5 +1,5 @@
 import { altitudeColor } from '../core/altitude-color';
-import { ALT_EXAGGERATION } from '../core/config';
+import { getAltitudeExaggeration } from '../core/coords';
 import { getSettings } from '../core/settings';
 import { t } from '../core/i18n';
 
@@ -25,7 +25,8 @@ export function mountAltitudeLegend(): void {
   const host = document.getElementById('altitude-legend');
   if (!host) return;
 
-  host.title = t('misc.legend_tooltip', { factor: ALT_EXAGGERATION });
+  const factor = getAltitudeExaggeration();
+  host.title = t(factor === 1 ? 'misc.legend_tooltip_true' : 'misc.legend_tooltip', { factor });
 
   const cap = document.createElement('span');
   cap.className = 'al-cap';
@@ -51,7 +52,8 @@ export function mountAltitudeLegend(): void {
 
   // Vertical-scale caveat — muted so it sits quietly beside the ramp. The
   // ×N claim only holds for the linear curve; the nonlinear curves get
-  // their own wording (core/altitude-curve.ts).
+  // their own wording (core/altitude-curve.ts). At true scale with a
+  // balanced curve there is nothing to caveat, so say so instead.
   const note = document.createElement('span');
   note.className = 'al-note';
   const bias = getSettings().altitudeCurveBias;
@@ -60,7 +62,9 @@ export function mountAltitudeLegend(): void {
       ? t('misc.legend_scale_note_low')
       : bias > 0
         ? t('misc.legend_scale_note_high')
-        : t('misc.legend_scale_note', { factor: ALT_EXAGGERATION });
+        : factor === 1
+          ? t('misc.legend_scale_note_true')
+          : t('misc.legend_scale_note', { factor });
 
   host.append(cap, ramp, note);
 }

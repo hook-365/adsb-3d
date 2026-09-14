@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { ALT_EXAGGERATION, HOME, TERRAIN_ENABLED, subscribeHome } from './config';
+import { HOME, TERRAIN_ENABLED, subscribeHome } from './config';
 import { getSettings, subscribeSettings } from './settings';
 import { CURVE_CEILING_FT, biasToExponent, warpAltitudeFraction } from './altitude-curve';
 
@@ -20,14 +20,21 @@ subscribeHome(() => {
   cosHomeLat = Math.cos((HOME.lat * Math.PI) / 180);
 });
 
-// Altitude → scene-height mapping. The curve exponent is read once at boot;
-// changing the setting reloads the page (mirrors the language setting)
-// because trail and heatmap geometry bake the mapping in and would
-// otherwise go stale.
+// Altitude → scene-height mapping. The curve exponent and the vertical
+// exaggeration are read once at boot; changing either setting reloads the
+// page (mirrors the language setting) because trail and heatmap geometry
+// bake the mapping in and would otherwise go stale.
 const curveExponent = biasToExponent(getSettings().altitudeCurveBias);
+const altExaggeration = Number(getSettings().altitudeExaggeration);
 // Scene height of CURVE_CEILING_FT — identical for every bias, so the
-// slider redistributes space below the ceiling without rescaling the scene.
-const CEILING_UP = (CURVE_CEILING_FT / FT_PER_NM) * ALT_EXAGGERATION;
+// emphasis slider redistributes space below the ceiling without rescaling
+// the scene; only the exaggeration choice moves the ceiling itself.
+const CEILING_UP = (CURVE_CEILING_FT / FT_PER_NM) * altExaggeration;
+
+/** Vertical exaggeration the running page was booted with (1 = true scale). */
+export function getAltitudeExaggeration(): number {
+  return altExaggeration;
+}
 
 // Flat-mode ground reference: without 3D terrain the basemap plane stands
 // for the ground at the home field, not sea level — a jet rolling out at
@@ -44,12 +51,15 @@ subscribeHome(() => {
 });
 
 // The settings slider fires on every input tick of a drag; reload once the
-// value has settled rather than per tick.
+// value has settled rather than per tick. The exaggeration choice shares
+// the timer so flipping both in quick succession reloads once.
 let lastBias = getSettings().altitudeCurveBias;
+let lastExaggeration = getSettings().altitudeExaggeration;
 let curveReloadTimer: ReturnType<typeof setTimeout> | undefined;
 subscribeSettings((s) => {
-  if (s.altitudeCurveBias !== lastBias) {
+  if (s.altitudeCurveBias !== lastBias || s.altitudeExaggeration !== lastExaggeration) {
     lastBias = s.altitudeCurveBias;
+    lastExaggeration = s.altitudeExaggeration;
     if (typeof location === 'undefined') return;
     clearTimeout(curveReloadTimer);
     curveReloadTimer = setTimeout(() => location.reload(), 700);

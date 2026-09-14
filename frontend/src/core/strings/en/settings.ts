@@ -139,10 +139,18 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Fetch the basemap one zoom level sharper (4x the tiles for the same ' +
     'coverage). Costs bandwidth and memory; applies on desktop too.',
-  'settings.altitude_curve': 'Altitude scale',
+  'settings.alt_exaggeration': 'Vertical scale',
+  'settings.alt_exaggeration_desc':
+    'How much altitude is exaggerated against ground distance. True scale ' +
+    'fits a full altitude column into a diorama; 12x keeps traffic readable ' +
+    'on a desktop map. Changing it reloads the page.',
+  'settings.alt_exaggeration_true': 'True (1x)',
+  'settings.alt_exaggeration_4': '4x',
+  'settings.alt_exaggeration_12': '12x',
+  'settings.altitude_curve': 'Altitude emphasis',
   'settings.altitude_curve_desc':
-    'Lower = low-altitude focus, higher = high-altitude focus. ' +
-    'Changing it reloads the page.',
+    'Skews vertical space toward low or high altitudes without changing ' +
+    'the ceiling height. Changing it reloads the page.',
   'settings.altitude_curve_fmt_linear': 'balanced',
   'settings.altitude_curve_fmt_low': 'low {n}%',
   'settings.altitude_curve_fmt_high': 'high {n}%',

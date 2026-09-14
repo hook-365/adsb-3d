@@ -135,10 +135,18 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Carga el mapa base un nivel de zoom más nítido (4x más mosaicos para ' +
     'la misma cobertura). Cuesta ancho de banda y memoria; también se aplica en escritorio.',
-  'settings.altitude_curve': 'Escala de altitud',
+  'settings.alt_exaggeration': 'Escala vertical',
+  'settings.alt_exaggeration_desc':
+    'Cuánto se exagera la altitud respecto a la distancia en tierra. La escala ' +
+    'real cabe una columna de altitud completa en un diorama; 12x mantiene el ' +
+    'tráfico legible en un mapa de escritorio. Cambiarlo recarga la página.',
+  'settings.alt_exaggeration_true': 'Real (1x)',
+  'settings.alt_exaggeration_4': '4x',
+  'settings.alt_exaggeration_12': '12x',
+  'settings.altitude_curve': 'Énfasis de altitud',
   'settings.altitude_curve_desc':
-    'Más bajo = enfoque en altitudes bajas, más alto = enfoque en altitudes ' +
-    'altas. Cambiarlo recarga la página.',
+    'Desplaza el espacio vertical hacia altitudes bajas o altas sin cambiar ' +
+    'la altura del techo. Cambiarlo recarga la página.',
   'settings.altitude_curve_fmt_linear': 'equilibrado',
   'settings.altitude_curve_fmt_low': 'baja {n}%',
   'settings.altitude_curve_fmt_high': 'alta {n}%',

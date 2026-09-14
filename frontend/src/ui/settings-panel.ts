@@ -253,6 +253,17 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.acars_pings_desc'),
       },
       {
+        kind: 'choice',
+        key: 'altitudeExaggeration',
+        label: t('settings.alt_exaggeration'),
+        description: t('settings.alt_exaggeration_desc'),
+        options: [
+          { value: '1', label: t('settings.alt_exaggeration_true') },
+          { value: '4', label: t('settings.alt_exaggeration_4') },
+          { value: '12', label: t('settings.alt_exaggeration_12') },
+        ],
+      },
+      {
         kind: 'range',
         key: 'altitudeCurveBias',
         label: t('settings.altitude_curve'),

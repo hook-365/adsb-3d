@@ -135,10 +135,18 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Kartenkacheln eine Zoomstufe schärfer laden (4x so viele Kacheln bei ' +
     'gleicher Abdeckung). Kostet Bandbreite und Speicher; gilt auch am Desktop.',
-  'settings.altitude_curve': 'Höhenskala',
+  'settings.alt_exaggeration': 'Vertikaler Maßstab',
+  'settings.alt_exaggeration_desc':
+    'Wie stark die Höhe gegenüber der Entfernung überhöht wird. Maßstabsgetreu ' +
+    'passt eine ganze Höhensäule in ein Diorama; 12x hält den Verkehr auf ' +
+    'einer Desktop-Karte lesbar. Änderung lädt die Seite neu.',
+  'settings.alt_exaggeration_true': 'Maßstabsgetreu (1x)',
+  'settings.alt_exaggeration_4': '4x',
+  'settings.alt_exaggeration_12': '12x',
+  'settings.altitude_curve': 'Höhenbetonung',
   'settings.altitude_curve_desc':
-    'Niedriger = Fokus auf niedrige Höhen, höher = Fokus auf große Höhen. ' +
-    'Änderung lädt die Seite neu.',
+    'Verschiebt den vertikalen Raum zu niedrigen oder großen Höhen, ohne die ' +
+    'Deckenhöhe zu ändern. Änderung lädt die Seite neu.',
   'settings.altitude_curve_fmt_linear': 'ausgewogen',
   'settings.altitude_curve_fmt_low': 'niedrig {n}%',
   'settings.altitude_curve_fmt_high': 'hoch {n}%',

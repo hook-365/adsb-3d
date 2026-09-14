@@ -45,9 +45,9 @@ export const TERRAIN_ENABLED: boolean =
   (typeof window !== 'undefined' &&
     (window as { TERRAIN_CONFIG?: { enabled?: boolean } }).TERRAIN_CONFIG?.enabled) !== false;
 
-// Scene scale: 1 unit = 1 nautical mile horizontally, exaggerated vertically
-// so altitude reads at a glance (real altitudes are tiny next to range).
-export const ALT_EXAGGERATION = 12;
+// Scene scale: 1 unit = 1 nautical mile horizontally. Vertical exaggeration
+// (12x by default so altitude reads at a glance) is the altitudeExaggeration
+// setting, applied in core/coords.ts.
 
 // Polling cadence (ms). readsb publishes ~1 Hz.
 export const POLL_INTERVAL_MS = 1000;
