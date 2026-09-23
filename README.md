@@ -25,12 +25,15 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 This project is better because people showed up:
 
-- **[@tyzbit](https://github.com/tyzbit)** — requested VR support, then
-  became the entire hardware QA department for it: two rounds of Quest 3
-  testing with annotated videos, the bug isolation that cracked the AR
-  rendering freeze, the control-scheme design that became free-fly mode,
-  the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the vertical scale slider,
-  and the VR/AR demo video below.
+- **[@tyzbit](https://github.com/tyzbit)** — requested VR support
+  ([#6](https://github.com/hook-365/adsb-3d/issues/6)), then became the
+  entire hardware QA department for it: Quest 3 testing of every VR/AR
+  release and fix from v0.6.0 through v0.10.0, with annotated videos for
+  each pass. That covers the bug isolation that cracked the AR rendering
+  freeze, the control-scheme design that became free-fly mode, the desk
+  diorama, follow mode and the upright info card, the altitude-scale idea
+  ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the
+  vertical scale setting, and the VR/AR demo video below. Huge thanks.
 - **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
   full-stack Docker integration test suite and CI workflow ([#9](https://github.com/hook-365/adsb-3d/issues/9)), and
   caught a bug that silently broke retention on every fresh install.

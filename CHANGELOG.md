@@ -12,6 +12,41 @@ _Nothing yet._
 
 ---
 
+## [0.10.0] - 2026-09-22
+
+Closes out the VR/AR work in issue #6. Another big thanks to
+[@tyzbit](https://github.com/tyzbit), who hardware-tested every VR/AR
+release and fix on a Quest 3, from the first stereo view through this
+one.
+
+### Fixed
+
+- **Follow-mode zoom moves the right way.** Zooming while following an
+  aircraft used to scale the world about the map origin, which shoved
+  the aircraft sideways; inside the diorama box, follow then dragged it
+  back over about a second. Zoom now pins to the box center in the
+  diorama, so the aircraft grows in place, and to the headset otherwise,
+  so the aircraft moves along your line of sight.
+
+### Changed
+
+- **3D performance pass.** Aimed at XR sessions that ran poorly at every
+  quality setting.
+  - The basemap draws as 4x4-tile chunks with canvas atlases instead of
+    one mesh per tile, and tiles in the far corners of the scope are
+    culled, so there are far fewer draw calls.
+  - Terrain meshes use fewer segments at high-res zoom and beyond 120 NM,
+    with edge pinning so neighbouring tiles meet without cracks. High-res
+    terrain no longer fetches elevation tiles it never uses.
+  - Aircraft markers use a Lambert material instead of a physically based
+    one.
+  - XR controllers, the wrist menu, locomotion and AR placement load
+    lazily, only on devices that report WebXR support.
+  - nginx serves the hashed `/assets/` build output with a one-year
+    immutable cache.
+
+---
+
 ## [0.9.3] - 2026-09-14
 
 Issue #6 round 5, from tyzbit's Quest 3 re-test of the desk diorama.
