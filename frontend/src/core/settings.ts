@@ -338,13 +338,29 @@ export function getDefaultSettings(): Readonly<Settings> {
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const PERSIST_DEBOUNCE_MS = 300;
 
+// Keys this tab has changed since its last write. Only these are written,
+// merged over whatever is stored now: writing the whole in-memory object
+// let a stale second tab revert another tab's changes the moment it was
+// hidden or closed (issue #12: 3D terrain switched itself back off).
+const dirty = new Set<keyof Settings>();
+
 function flushPersist(): void {
   if (persistTimer !== null) {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+  if (dirty.size === 0) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    let stored: Partial<Settings> = {};
+    try {
+      stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<Settings>;
+    } catch {
+      // Corrupt payload: rebuild from this tab's state.
+    }
+    const next: Record<string, unknown> = { ...DEFAULTS, ...stored };
+    for (const k of dirty) next[k] = current[k];
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    dirty.clear();
   } catch {
     // localStorage may be unavailable (privacy mode); behave as session-only.
   }
@@ -367,6 +383,7 @@ if (typeof window !== 'undefined') {
 
 export function updateSettings(patch: Partial<Settings>): void {
   current = { ...current, ...patch };
+  for (const k of Object.keys(patch) as (keyof Settings)[]) dirty.add(k);
   schedulePersist();
   // Isolate subscribers: one throwing listener must not starve the rest,
   // and updateSettings is called from inside the WebXR animation loop

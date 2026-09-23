@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   strip is hidden since there is nothing to play back. A shared
   historical link opened on such an install stays live. Remote feeds
   with their own track-service are unaffected. (#12)
+- **Settings no longer switch themselves back between tabs.** Every tab
+  saved its whole settings object whenever it was hidden or closed, so
+  an older tab could silently revert a change made in another one (3D
+  terrain turning itself off after it had worked). Tabs now write only
+  the keys they changed. (#12)
 
 ---
 
