@@ -385,11 +385,28 @@ subscribeXr((s) => {
 // headset itself isn't part of xrRoot, a real, lasting change in
 // distance from the headset to the aircraft is exactly what scaling
 // an off-origin point around a fixed root produces.
+//
+// Follow zoom direction (tyzbit: "zooming in or out is done in the wrong direction
+// ... it corrects within a second"): the root origin is an arbitrary
+// point relative to the viewer, so scaling about it pushed the aircraft
+// sideways. Pin horizontally at a viewer-meaningful point instead: the
+// box center in the diorama (the follow target there; the lerp used to
+// drag the aircraft back to it, hence the one-second correction), else
+// the headset, so the aircraft moves along the line of sight. Y stays
+// root-anchored in both, same as the non-follow diorama pin.
+const followScalePivot = new Vector3();
 function onFollowScale(rootOrigin: Vector3, r: number): void {
+  const py = rootOrigin.y;
+  const pivot =
+    dioramaCenter(followScalePivot) ??
+    followScalePivot.setFromMatrixPosition(world.renderer.xr.getCamera().matrixWorld);
+  const pos = world.xrRoot.position;
+  pos.x = pivot.x - r * (pivot.x - pos.x);
+  pos.z = pivot.z - r * (pivot.z - pos.z);
   if (!xrFollowAnchor) return;
-  xrFollowAnchor.x = rootOrigin.x + r * (xrFollowAnchor.x - rootOrigin.x);
-  xrFollowAnchor.y = rootOrigin.y + r * (xrFollowAnchor.y - rootOrigin.y);
-  xrFollowAnchor.z = rootOrigin.z + r * (xrFollowAnchor.z - rootOrigin.z);
+  xrFollowAnchor.x = pivot.x + r * (xrFollowAnchor.x - pivot.x);
+  xrFollowAnchor.y = py + r * (xrFollowAnchor.y - py);
+  xrFollowAnchor.z = pivot.z + r * (xrFollowAnchor.z - pivot.z);
 }
 
 const initialSelectedHex = readSelectedHex();
