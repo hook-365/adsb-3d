@@ -8,7 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Live-only installs stop calling a track-service that isn't there.**
+  With `ENABLE_HISTORICAL` off, the local feed no longer tries the
+  `/api/ws/live` socket, trail backfill or route lookups (each was a 502
+  and an nginx "could not be resolved" log line), and the Live/Historical
+  strip is hidden since there is nothing to play back. A shared
+  historical link opened on such an install stays live. Remote feeds
+  with their own track-service are unaffected. (#12)
 
 ---
 

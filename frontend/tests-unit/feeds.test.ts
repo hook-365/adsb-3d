@@ -77,6 +77,39 @@ describe('normalizeFeed', () => {
   });
 });
 
+describe('track-service gating', () => {
+  const w = window as { HISTORICAL_CONFIG?: { enabled?: boolean } };
+  beforeEach(() => {
+    delete w.HISTORICAL_CONFIG;
+  });
+
+  it('skips WS and history for the local /api when historical is off', () => {
+    w.HISTORICAL_CONFIG = { enabled: false };
+    const f = normalizeFeed(baseRaw())!;
+    expect(f.supportsWs).toBe(false);
+    expect(f.supportsHistory).toBe(false);
+  });
+
+  it('skips them when HISTORICAL_CONFIG is absent', () => {
+    const f = normalizeFeed(baseRaw())!;
+    expect(f.supportsWs).toBe(false);
+  });
+
+  it('enables them for the local /api when historical is on', () => {
+    w.HISTORICAL_CONFIG = { enabled: true };
+    const f = normalizeFeed(baseRaw())!;
+    expect(f.supportsWs).toBe(true);
+    expect(f.supportsHistory).toBe(true);
+  });
+
+  it('leaves remote feeds with their own apiBase enabled regardless', () => {
+    w.HISTORICAL_CONFIG = { enabled: false };
+    const f = normalizeFeed({ ...baseRaw(), id: 'feed2', apiBase: '/api/feeds/2' })!;
+    expect(f.supportsWs).toBe(true);
+    expect(f.supportsHistory).toBe(true);
+  });
+});
+
 describe('pickInitial', () => {
   const feeds: Feed[] = [
     normalizeFeed({ id: 'a', name: 'A', liveUrl: '/a.json', home: { lat: 1, lon: 2 } })!,

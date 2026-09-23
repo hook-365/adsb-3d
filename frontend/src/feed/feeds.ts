@@ -19,6 +19,11 @@ import type { HomeLocation } from '../core/types';
 // track-service, so live works (HTTP poll on /data/feeds/N/aircraft.json)
 // but WS and history backfill are skipped. Both flip true in Phase 2a
 // once the backend rolls out.
+//
+// The local track-service (apiBase /api) only exists when the deployment
+// sets ENABLE_HISTORICAL. Without it every /api request is a 502, so a
+// live-only install skips the WS attempt and history backfill and just
+// polls aircraft.json (issue #12's "track-service could not be resolved").
 
 export type FeedMode = 'single' | 'multi';
 
@@ -82,6 +87,11 @@ const STORAGE_KEY = 'adsb3d_selected_feed';
 const URL_PARAM = 'feed';
 const LOCAL_API_BASE = '/api';
 
+function hasTrackService(apiBase: string): boolean {
+  if (apiBase !== LOCAL_API_BASE) return true;
+  return Boolean((window as { HISTORICAL_CONFIG?: { enabled?: boolean } }).HISTORICAL_CONFIG?.enabled);
+}
+
 // Default trail cap policy. The local feed is small enough to absorb
 // unlimited per-aircraft trails (~50 contacts on a typical receiver);
 // every other feed stays at the safe 600 because Europe-scale fleets
@@ -125,8 +135,8 @@ function fallbackFeed(): Feed {
       altFt: env.homeLocation?.alt ?? 1270,
       name: env.locationName ?? 'Home',
     },
-    supportsWs: true,
-    supportsHistory: true,
+    supportsWs: hasTrackService(LOCAL_API_BASE),
+    supportsHistory: hasTrackService(LOCAL_API_BASE),
     acarsApiBase: acarsEnabled ? '/acars-api' : null,
     trailMaxPoints,
     backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),
@@ -162,8 +172,8 @@ export function normalizeFeed(raw: RawFeedConfig): Feed | null {
       altFt: raw.home.alt ?? 0,
       name: raw.name,
     },
-    supportsWs: true,
-    supportsHistory: true,
+    supportsWs: hasTrackService(apiBase),
+    supportsHistory: hasTrackService(apiBase),
     acarsApiBase,
     trailMaxPoints,
     backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),

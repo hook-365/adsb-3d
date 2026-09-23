@@ -20,7 +20,9 @@ export interface RouteInfo {
 
 const cache = new Map<string, RouteInfo | null>();
 const inflight = new Map<string, Promise<RouteInfo | null>>();
-let apiBase = '/api';
+// null = no track-service behind this feed (live-only install): every
+// lookup resolves to "no route" without touching the network.
+let apiBase: string | null = '/api';
 
 /**
  * Set the per-feed API base used by `getRoute` / `ensureRoute` /
@@ -28,7 +30,7 @@ let apiBase = '/api';
  * feed switching, paired with `clearRouteCache()` so cross-feed callsign
  * resolutions don't bleed.
  */
-export function configureRoutesApi(base: string): void {
+export function configureRoutesApi(base: string | null): void {
   apiBase = base;
 }
 
@@ -61,6 +63,10 @@ function normalize(entry: RawRouteEntry | undefined): RouteInfo | null {
 }
 
 async function fetchOne(callsign: string): Promise<RouteInfo | null> {
+  if (apiBase === null) {
+    cache.set(callsign, null);
+    return null;
+  }
   try {
     const res = await fetch(`${apiBase}/route/${encodeURIComponent(callsign)}`);
     if (!res.ok) {
@@ -83,7 +89,7 @@ async function fetchOne(callsign: string): Promise<RouteInfo | null> {
 }
 
 async function fetchBatch(callsigns: string[]): Promise<void> {
-  if (callsigns.length === 0) return;
+  if (callsigns.length === 0 || apiBase === null) return;
   try {
     const res = await fetch(`${apiBase}/route/batch`, {
       method: 'POST',

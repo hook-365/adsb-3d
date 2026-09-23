@@ -11,6 +11,7 @@ import {
   type PlaybackRate,
 } from '../core/time-context';
 import { t, type StringKey } from '../core/i18n';
+import { getActiveFeed } from '../feed/feeds';
 
 // Time-controls strip pinned above the footer. In live mode it collapses
 // to a single Live/Historical toggle. Selecting Historical expands the
@@ -39,6 +40,14 @@ export function mountTimeControls(): void {
   const playBtn = document.getElementById('tc-play') as HTMLButtonElement;
   const ratesEl = document.getElementById('tc-rates') as HTMLElement;
   const heatmapToggle = document.getElementById('tc-heatmap') as HTMLInputElement;
+
+  // Historical playback and the heatmap need track-service. A live-only
+  // install has nothing to switch to, so drop the whole strip rather than
+  // offer a Historical button that can only 502.
+  if (!getActiveFeed().supportsHistory) {
+    root.hidden = true;
+    return;
+  }
 
   // Build preset buttons once.
   for (const p of PRESETS) {

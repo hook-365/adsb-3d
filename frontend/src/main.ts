@@ -903,8 +903,9 @@ const session = initSession({
 subscribeTime((ctx) => writeTimeState(ctx));
 
 // Initial URL → if it carries a historical window, enter that mode.
+// A shared historical link opened on a live-only install stays live.
 const urlTimeState = readTimeState();
-if (urlTimeState && urlTimeState.window) {
+if (urlTimeState && urlTimeState.window && getActiveFeed().supportsHistory) {
   setHistorical(urlTimeState.window, urlTimeState.cursorMs ?? undefined);
 }
 

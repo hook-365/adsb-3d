@@ -126,7 +126,9 @@ export function initSession(opts: {
 
   function bootLive(feed: Feed): ActiveBundle {
     const scope = createScope();
-    configureRoutesApi(feed.apiBase);
+    // Route lookups go through track-service too; a feed without one
+    // (live-only install) answers "no route" locally instead of 502ing.
+    configureRoutesApi(feed.supportsHistory ? feed.apiBase : null);
     // Per-feed trail policy: local gets unlimited, others stay at the safe
     // 600 (see feeds.ts). Set this before LiveFeed starts pushing snapshots
     // so the very first appendTrail uses the right cap.
@@ -173,7 +175,7 @@ export function initSession(opts: {
     });
     scope.own(() => history.stop());
 
-    scope.own(attachRouteBatchPrefetcher(store));
+    if (feed.supportsHistory) scope.own(attachRouteBatchPrefetcher(store));
 
     // ACARS — only when this feed has it configured AND the user hasn't
     // disabled the feature. The settings toggle can flip mid-session, so

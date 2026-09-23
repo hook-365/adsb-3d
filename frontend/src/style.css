@@ -1204,6 +1204,9 @@ body.xr-on .acars-toggle {
    toggle; in historical mode it expands to show the scrubber. The
    parent #status flex handles wrapping on small viewports so they
    never overlap each other. */
+.time-controls[hidden] {
+  display: none;
+}
 .time-controls {
   display: inline-flex;
   align-items: center;
