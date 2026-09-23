@@ -1,21 +1,22 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   DoubleSide,
   Group,
+  ImageLoader,
   Mesh,
   MeshBasicMaterial,
-  RepeatWrapping,
-  Texture,
-  TextureLoader,
+  SRGBColorSpace,
   Vector3
 } from 'three';
 import { HOME, RANGE_NM, TERRAIN_ENABLED } from '../core/config';
 import { CARTO_API_KEY, CARTO_PATHS, CARTO_SUBDOMAINS } from '../core/basemaps';
 import { toScene } from '../core/coords';
 import { getSettings, subscribeSettings, type Basemap } from '../core/settings';
-import { elevationFtAt, ensureElevationTile } from './elevation';
+import { ELEVATION_ZOOM, elevationFtAt, ensureElevationTile } from './elevation';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { CHUNK_TILES, edgeBracket, rectDistanceToOrigin, terrainSegmentsFor } from './tile-grid';
 
 // Web Mercator basemap. Most providers go through nginx at
 // /tiles/{provider}/{z}/{y}/{x} with a local on-disk cache pre-warmed by
@@ -32,6 +33,11 @@ import { DIORAMA_PLANES } from './diorama-clip';
 // We compute each tile's geographic corners and project them through the
 // same ENU helper the aircraft use, which gives a tile mesh that matches
 // the rest of the scene's coordinate frame exactly.
+//
+// Draw-call budget: tiles are batched into CHUNK_TILES² chunks, each one
+// mesh whose texture is a canvas atlas the tile images are painted into
+// as they arrive. At z8 the ~100 visible tiles cost ~9 draw calls instead
+// of ~100 (z9 hi-res: ~25 instead of ~300) — this dominated XR frame time.
 
 export type TileProvider =
   | 'dark'
@@ -100,7 +106,14 @@ export function currentTileZoom(): number {
 // elevation tile is ever fetched, so elevationFtAt() returns 0 everywhere
 // and every other consumer (rings, ground icons, AGL) degrades to the
 // flat world automatically.
+//
+// TERRAIN_SEGMENTS is the near-field grid at DEFAULT_ZOOM. Hi-res tiles
+// are half the span, so they get half the segments: vertex spacing (and
+// the terrain's look) stays identical, only the imagery sharpens. Tiles
+// centred beyond TERRAIN_LOD_FAR_NM halve again; edges shared with a
+// coarser neighbour are pinned to its vertices so no cracks open.
 const TERRAIN_SEGMENTS = 48;
+const TERRAIN_LOD_FAR_NM = 120;
 
 export function terrainActive(): boolean {
   return TERRAIN_ENABLED && getSettings().terrain3d;
@@ -144,80 +157,113 @@ function tileNmAtHome(z: number): number {
 }
 
 const tmpV = new Vector3();
-function projectCorner(lat: number, lon: number, target: Float32Array, offset: number, dropY: number): void {
-  toScene(lat, lon, 0, tmpV);
-  target[offset] = tmpV.x;
-  target[offset + 1] = dropY;
-  target[offset + 2] = tmpV.z;
+const tmpA = new Vector3();
+const tmpB = new Vector3();
+
+/** Scene-space distance from home to the nearest point of a tile's footprint. */
+function tileDistanceNm(z: number, x: number, y: number): number {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [tx, ty] of [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1]] as const) {
+    toScene(tileYToLat(ty, z), tileXToLon(tx, z), 0, tmpV);
+    minX = Math.min(minX, tmpV.x);
+    maxX = Math.max(maxX, tmpV.x);
+    minZ = Math.min(minZ, tmpV.z);
+    maxZ = Math.max(maxZ, tmpV.z);
+  }
+  return rectDistanceToOrigin(minX, maxX, minZ, maxZ);
 }
 
-function buildTileMesh(z: number, x: number, y: number, texture: Texture, dropY: number): Mesh {
-  const west = tileXToLon(x, z);
-  const east = tileXToLon(x + 1, z);
-  const north = tileYToLat(y, z);
-  const south = tileYToLat(y + 1, z);
+function terrainSegments(z: number, x: number, y: number): number {
+  const base = Math.max(12, TERRAIN_SEGMENTS >> Math.max(0, z - DEFAULT_ZOOM));
+  toScene(tileYToLat(y + 0.5, z), tileXToLon(x + 0.5, z), 0, tmpV);
+  return terrainSegmentsFor(base, Math.hypot(tmpV.x, tmpV.z), TERRAIN_LOD_FAR_NM);
+}
 
-  // Two triangles, NW-NE-SW + NE-SE-SW. UVs map north→v=1, south→v=0
-  // (slippy-tile origin is top-left, but flipY=true on the texture
-  // already accounts for that, so v increases northward here).
-  const positions = new Float32Array(18);
-  projectCorner(north, west, positions, 0, dropY);
-  projectCorner(north, east, positions, 3, dropY);
-  projectCorner(south, west, positions, 6, dropY);
-  projectCorner(north, east, positions, 9, dropY);
-  projectCorner(south, east, positions, 12, dropY);
-  projectCorner(south, west, positions, 15, dropY);
+/** One tile's geometry, in chunk-atlas UV space, waiting to be merged. */
+interface TilePiece {
+  positions: Float32Array;
+  uvs: Float32Array;
+  indices: Uint32Array;
+}
 
-  const uvs = new Float32Array([
-    0, 1,
-    1, 1,
-    0, 0,
-    1, 1,
-    1, 0,
-    0, 0
-  ]);
+/** Atlas UV for a fractional position (fx, fy ∈ [0,1], y southward) inside cell (lx, ly). */
+function atlasU(lx: number, fx: number): number {
+  return (lx + fx) / CHUNK_TILES;
+}
+function atlasV(ly: number, fy: number): number {
+  // CanvasTexture flipY: canvas row 0 (north) is v = 1.
+  return 1 - (ly + fy) / CHUNK_TILES;
+}
 
-  const geom = new BufferGeometry();
-  geom.setAttribute('position', new BufferAttribute(positions, 3));
-  geom.setAttribute('uv', new BufferAttribute(uvs, 2));
-
-  // DoubleSide because our triangle winding produces a -y face normal;
-  // the camera looks down at +y so without DoubleSide the tile is culled.
-  const material = new MeshBasicMaterial({
-    map: texture,
-    depthWrite: false,
-    side: DoubleSide,
-    clippingPlanes: DIORAMA_PLANES,
+function buildFlatPiece(z: number, x: number, y: number, lx: number, ly: number, dropY: number): TilePiece {
+  const positions = new Float32Array(12);
+  const uvs = new Float32Array(8);
+  // NW, NE, SW, SE.
+  const corners = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
+  corners.forEach(([fx, fy], v) => {
+    toScene(tileYToLat(y + fy, z), tileXToLon(x + fx, z), 0, tmpV);
+    positions[v * 3] = tmpV.x;
+    positions[v * 3 + 1] = dropY;
+    positions[v * 3 + 2] = tmpV.z;
+    uvs[v * 2] = atlasU(lx, fx);
+    uvs[v * 2 + 1] = atlasV(ly, fy);
   });
-  const mesh = new Mesh(geom, material);
-  mesh.renderOrder = -10; // draw before transparent overlays (rings, trails, altitude lines)
-  mesh.userData = { kind: 'tile', z, x, y };
-  return mesh;
+  // NW-NE-SW + NE-SE-SW, the original tile winding.
+  return { positions, uvs, indices: new Uint32Array([0, 1, 2, 1, 3, 2]) };
+}
+
+/** Exact terrain vertex at grid index (i, j) of an s-segment tile. */
+function sampleTerrain(z: number, x: number, y: number, s: number, i: number, j: number, out: Vector3): Vector3 {
+  const lat = tileYToLat(y + j / s, z);
+  const lon = tileXToLon(x + i / s, z);
+  return toScene(lat, lon, elevationFtAt(lat, lon), out);
 }
 
 /**
- * Terrain variant of buildTileMesh: a TERRAIN_SEGMENTS² grid displaced by
- * ground elevation, projected through the same toScene() as the aircraft
- * so terrain follows the altitude-curve slider automatically. Rows are
- * spaced evenly in Mercator y (not latitude) so the draped imagery's v
- * coordinate stays linear. depthWrite is ON — mountains must occlude
- * aircraft, trails, and rings behind them.
+ * Terrain tile: an s² grid displaced by ground elevation, projected through
+ * the same toScene() as the aircraft so terrain follows the altitude-curve
+ * slider automatically. Rows are spaced evenly in Mercator y (not latitude)
+ * so the draped imagery's v coordinate stays linear. Edge vertices that a
+ * coarser neighbour doesn't have are placed on that neighbour's edge line.
  */
-function buildTerrainTileMesh(z: number, x: number, y: number, texture: Texture, dropY: number): Mesh {
-  const s = TERRAIN_SEGMENTS;
+function buildTerrainPiece(z: number, x: number, y: number, lx: number, ly: number, dropY: number): TilePiece {
+  const s = terrainSegments(z, x, y);
+  const north = terrainSegments(z, x, y - 1);
+  const south = terrainSegments(z, x, y + 1);
+  const west = terrainSegments(z, x - 1, y);
+  const east = terrainSegments(z, x + 1, y);
+
   const positions = new Float32Array((s + 1) * (s + 1) * 3);
   const uvs = new Float32Array((s + 1) * (s + 1) * 2);
   for (let j = 0; j <= s; j++) {
-    const lat = tileYToLat(y + j / s, z);
     for (let i = 0; i <= s; i++) {
-      const lon = tileXToLon(x + i / s, z);
-      toScene(lat, lon, elevationFtAt(lat, lon), tmpV);
+      // Pick the neighbour this vertex's edge is shared with, if any.
+      let b: { i0: number; i1: number; t: number } | null = null;
+      let alongI = true;
+      if (j === 0 && i > 0 && i < s) b = edgeBracket(i, s, north);
+      else if (j === s && i > 0 && i < s) b = edgeBracket(i, s, south);
+      else if (i === 0 && j > 0 && j < s) { b = edgeBracket(j, s, west); alongI = false; }
+      else if (i === s && j > 0 && j < s) { b = edgeBracket(j, s, east); alongI = false; }
+
+      if (b && b.i0 !== b.i1) {
+        if (alongI) {
+          sampleTerrain(z, x, y, s, b.i0, j, tmpA);
+          sampleTerrain(z, x, y, s, b.i1, j, tmpB);
+        } else {
+          sampleTerrain(z, x, y, s, i, b.i0, tmpA);
+          sampleTerrain(z, x, y, s, i, b.i1, tmpB);
+        }
+        tmpV.lerpVectors(tmpA, tmpB, b.t);
+      } else {
+        sampleTerrain(z, x, y, s, i, j, tmpV);
+      }
+
       const v = j * (s + 1) + i;
       positions[v * 3] = tmpV.x;
       positions[v * 3 + 1] = tmpV.y + dropY;
       positions[v * 3 + 2] = tmpV.z;
-      uvs[v * 2] = i / s;
-      uvs[v * 2 + 1] = 1 - j / s;
+      uvs[v * 2] = atlasU(lx, i / s);
+      uvs[v * 2 + 1] = atlasV(ly, j / s);
     }
   }
   const indices = new Uint32Array(s * s * 6);
@@ -232,21 +278,86 @@ function buildTerrainTileMesh(z: number, x: number, y: number, texture: Texture,
       indices[o++] = b; indices[o++] = d; indices[o++] = c;
     }
   }
+  return { positions, uvs, indices };
+}
+
+const CELL_PX = 256;
+// Chunk rebuilds are coalesced on a timer, not requestAnimationFrame: the
+// window rAF doesn't run while an immersive XR session is presenting, and
+// a basemap change can be made from the wrist menu.
+const FLUSH_MS = 50;
+
+interface Chunk {
+  ctx: CanvasRenderingContext2D;
+  texture: CanvasTexture;
+  material: MeshBasicMaterial;
+  mesh: Mesh | null;
+  pieces: Map<string, TilePiece>;
+  dirty: boolean;
+}
+
+interface LayerState {
+  chunks: Map<string, Chunk>;
+  flushTimer: ReturnType<typeof setTimeout> | undefined;
+}
+
+const layerStates = new WeakMap<Group, LayerState>();
+
+function createChunk(terrain: boolean): Chunk {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = CHUNK_TILES * CELL_PX;
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.anisotropy = 4;
+  // DoubleSide because our triangle winding produces a -y face normal; the
+  // camera looks down at +y so without DoubleSide the tile is culled.
+  // Terrain writes depth — mountains must occlude aircraft, trails, and
+  // rings behind them; the flat map stays out of the depth buffer.
+  const material = new MeshBasicMaterial({
+    map: texture,
+    depthWrite: terrain,
+    side: DoubleSide,
+    clippingPlanes: DIORAMA_PLANES,
+  });
+  return { ctx: canvas.getContext('2d')!, texture, material, mesh: null, pieces: new Map(), dirty: false };
+}
+
+function rebuildChunk(group: Group, chunk: Chunk, key: string): void {
+  let vertCount = 0;
+  let indexCount = 0;
+  for (const p of chunk.pieces.values()) {
+    vertCount += p.positions.length / 3;
+    indexCount += p.indices.length;
+  }
+  const positions = new Float32Array(vertCount * 3);
+  const uvs = new Float32Array(vertCount * 2);
+  const indices = new Uint32Array(indexCount);
+  let vo = 0;
+  let io = 0;
+  for (const p of chunk.pieces.values()) {
+    positions.set(p.positions, vo * 3);
+    uvs.set(p.uvs, vo * 2);
+    for (let k = 0; k < p.indices.length; k++) indices[io + k] = p.indices[k]! + vo;
+    vo += p.positions.length / 3;
+    io += p.indices.length;
+  }
   const geom = new BufferGeometry();
   geom.setAttribute('position', new BufferAttribute(positions, 3));
   geom.setAttribute('uv', new BufferAttribute(uvs, 2));
   geom.setIndex(new BufferAttribute(indices, 1));
+  geom.computeBoundingSphere();
 
-  const material = new MeshBasicMaterial({
-    map: texture,
-    depthWrite: true,
-    side: DoubleSide,
-    clippingPlanes: DIORAMA_PLANES,
-  });
-  const mesh = new Mesh(geom, material);
-  mesh.renderOrder = -10;
-  mesh.userData = { kind: 'tile', z, x, y };
-  return mesh;
+  if (chunk.mesh) {
+    chunk.mesh.geometry.dispose();
+    chunk.mesh.geometry = geom;
+  } else {
+    chunk.mesh = new Mesh(geom, chunk.material);
+    chunk.mesh.renderOrder = -10; // draw before transparent overlays (rings, trails, altitude lines)
+    chunk.mesh.userData = { kind: 'tile-chunk', chunk: key };
+    group.add(chunk.mesh);
+  }
+  chunk.texture.needsUpdate = true;
+  chunk.dirty = false;
 }
 
 export interface TileLayerOptions {
@@ -262,9 +373,12 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   const zoom = options.zoom ?? DEFAULT_ZOOM;
   const basePath = options.basePath ?? '';
   const dropY = options.dropY ?? -0.4;
+  const terrain = terrainActive();
 
   const group = new Group();
   group.name = `tiles-${provider}-z${zoom}`;
+  const state: LayerState = { chunks: new Map(), flushTimer: undefined };
+  layerStates.set(group, state);
 
   const cx = lonToTileX(HOME.lon, zoom);
   const cy = latToTileY(HOME.lat, zoom);
@@ -272,11 +386,25 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   const cyFloor = Math.floor(cy);
 
   // Cover RANGE_NM in each direction, +1 tile padding so the range ring is
-  // never at a tile boundary.
-  const half = Math.ceil(RANGE_NM / tileNmAtHome(zoom)) + 1;
+  // never at a tile boundary. Square-grid corners that can't come within a
+  // tile of the range ring are skipped (~20% of the grid).
+  const tileNm = tileNmAtHome(zoom);
+  const half = Math.ceil(RANGE_NM / tileNm) + 1;
+  const gridX0 = cxFloor - half;
+  const gridY0 = cyFloor - half;
+  const nMax = Math.pow(2, zoom);
 
-  const loader = new TextureLoader();
-  loader.crossOrigin = 'anonymous';
+  const scheduleFlush = (): void => {
+    if (state.flushTimer !== undefined) return;
+    state.flushTimer = setTimeout(() => {
+      state.flushTimer = undefined;
+      if (group.userData['disposed']) return;
+      for (const [key, chunk] of state.chunks) if (chunk.dirty) rebuildChunk(group, chunk, key);
+    }, FLUSH_MS);
+  };
+
+  const loader = new ImageLoader();
+  loader.setCrossOrigin('anonymous');
 
   let queued = 0;
   let loaded = 0;
@@ -285,8 +413,14 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       const x = cxFloor + dx;
       const y = cyFloor + dy;
       // Skip out-of-range tiles at world poles/wraps (z=8 has 256 tiles per side).
-      const nMax = Math.pow(2, zoom);
       if (x < 0 || y < 0 || x >= nMax || y >= nMax) continue;
+      if (tileDistanceNm(zoom, x, y) > RANGE_NM + tileNm) continue;
+
+      const chunkX = Math.floor((x - gridX0) / CHUNK_TILES);
+      const chunkY = Math.floor((y - gridY0) / CHUNK_TILES);
+      const lx = x - gridX0 - chunkX * CHUNK_TILES;
+      const ly = y - gridY0 - chunkY * CHUNK_TILES;
+      const chunkKey = `${chunkX}/${chunkY}`;
 
       queued++;
       // TMS providers number y from the south, XYZ from the north. nginx
@@ -294,42 +428,47 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       // here before constructing the URL.
       const yForUrl = PROVIDER_META[provider].tms ? nMax - 1 - y : y;
       const url = tileUrl(provider, basePath, zoom, x, yForUrl);
+
+      const place = (image: HTMLImageElement): void => {
+        // The layer may have been disposed (feed switch / basemap change)
+        // while this tile or its elevation was in flight.
+        if (group.userData['disposed']) return;
+        let chunk = state.chunks.get(chunkKey);
+        if (!chunk) {
+          chunk = createChunk(terrain);
+          state.chunks.set(chunkKey, chunk);
+        }
+        chunk.ctx.drawImage(image, lx * CELL_PX, ly * CELL_PX, CELL_PX, CELL_PX);
+        chunk.pieces.set(
+          `${x}/${y}`,
+          terrain ? buildTerrainPiece(zoom, x, y, lx, ly, dropY) : buildFlatPiece(zoom, x, y, lx, ly, dropY),
+        );
+        chunk.dirty = true;
+        loaded++;
+        scheduleFlush();
+      };
+
       loader.load(
         url,
-        (texture) => {
-          texture.colorSpace = 'srgb';
-          texture.wrapS = RepeatWrapping;
-          texture.wrapT = RepeatWrapping;
-          texture.anisotropy = 4;
-          if (terrainActive()) {
-            // Ensure the elevation tile plus its 3×3 neighborhood before
-            // building, so edge vertices sample loaded neighbors and two
-            // adjacent tiles agree at their shared seam.
-            const ensures: Promise<void>[] = [];
-            for (let ny = -1; ny <= 1; ny++) {
-              for (let nx = -1; nx <= 1; nx++) {
-                ensures.push(ensureElevationTile(zoom, x + nx, y + ny));
-              }
-            }
-            void Promise.all(ensures).then(() => {
-              // The layer may have been disposed (feed switch / basemap
-              // change) while we were waiting on elevation tiles — don't
-              // resurrect a texture into a group nobody owns anymore.
-              if (group.userData['disposed']) {
-                texture.dispose();
-                return;
-              }
-              group.add(buildTerrainTileMesh(zoom, x, y, texture, dropY));
-              loaded++;
-            });
-          } else {
-            if (group.userData['disposed']) {
-              texture.dispose();
-              return;
-            }
-            group.add(buildTileMesh(zoom, x, y, texture, dropY));
-            loaded++;
+        (image) => {
+          if (!terrain) {
+            place(image);
+            return;
           }
+          // Ensure the covering elevation tile plus its 3×3 neighborhood
+          // before building, so edge vertices sample loaded neighbors and
+          // two adjacent tiles agree at their shared seam. Elevation is
+          // always sampled at ELEVATION_ZOOM, whatever the basemap zoom.
+          const shift = Math.max(0, zoom - ELEVATION_ZOOM);
+          const ex = x >> shift;
+          const ey = y >> shift;
+          const ensures: Promise<void>[] = [];
+          for (let ny = -1; ny <= 1; ny++) {
+            for (let nx = -1; nx <= 1; nx++) {
+              ensures.push(ensureElevationTile(ELEVATION_ZOOM, ex + nx, ey + ny));
+            }
+          }
+          void Promise.all(ensures).then(() => place(image));
         },
         undefined,
         () => {
@@ -345,22 +484,22 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   return group;
 }
 
-// Disposes every tile mesh's geometry/material/texture, and — critically —
-// flags the group as disposed BEFORE tearing anything down. In-flight
-// TextureLoader requests queued by createTileLayer() resolve asynchronously
+// Disposes every chunk's geometry/material/atlas texture, and — critically —
+// flags the group as disposed BEFORE tearing anything down. In-flight image
+// and elevation requests queued by createTileLayer() resolve asynchronously
 // (feed switch / basemap change can fire well before every tile lands); the
-// load callbacks above check this flag and dispose the just-decoded texture
-// instead of adding a mesh to a group nobody owns anymore. Without it, each
-// switch leaked every in-flight tile's GPU texture.
+// load callbacks check this flag and drop the tile instead of resurrecting
+// a chunk in a group nobody owns anymore.
 export function disposeTileLayer(layer: Group): void {
   layer.userData['disposed'] = true;
-  for (const child of layer.children) {
-    if (child instanceof Mesh) {
-      child.geometry.dispose();
-      const mat = child.material as MeshBasicMaterial;
-      const map = mat.map as Texture | null;
-      if (map) map.dispose();
-      mat.dispose();
-    }
+  const state = layerStates.get(layer);
+  if (!state) return;
+  clearTimeout(state.flushTimer);
+  for (const chunk of state.chunks.values()) {
+    chunk.mesh?.geometry.dispose();
+    chunk.texture.dispose();
+    chunk.material.dispose();
   }
+  state.chunks.clear();
+  layerStates.delete(layer);
 }

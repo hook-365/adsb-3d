@@ -10,7 +10,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshStandardMaterial,
+  MeshLambertMaterial,
   Object3D,
   Raycaster,
   RingGeometry,
@@ -229,7 +229,7 @@ interface RenderEntry {
   trailDashed: LineSegments2;
   solid: TrailSide;
   dashed: TrailSide;
-  material: MeshStandardMaterial;
+  material: MeshLambertMaterial;
   // Ground icon lives in the reconciler-owned IconInstancePool; the entry
   // just caches the per-instance state pushed into it each frame.
   icon: IconInstanceState;
@@ -469,10 +469,11 @@ function buildEntry(a: Aircraft): RenderEntry {
   // there's no aliasing back into the cache.
   const headColor = altitudeColorCached(a.altFt, false, a.onGround);
 
-  const material = new MeshStandardMaterial({
+  // Lambert, not Standard: there's no environment map for PBR to reflect,
+  // so the metal/roughness terms bought nothing visible while costing a
+  // full physical lighting evaluation per fragment, per aircraft, per eye.
+  const material = new MeshLambertMaterial({
     color: headColor,
-    metalness: 0.4,
-    roughness: 0.3,
     transparent: true,
     clippingPlanes: DIORAMA_PLANES,
   });
