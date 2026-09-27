@@ -19,6 +19,8 @@ export const settingsStrings = {
   'settings.shape_cone': 'Cono',
   'settings.shape_sphere': 'Esfera',
   'settings.shape_silhouette': 'Silueta 3D',
+  'settings.smooth_motion': 'Movimiento suave',
+  'settings.smooth_motion_desc': 'Las aeronaves se deslizan entre actualizaciones de posición en lugar de saltar. Muestra cada aeronave unos segundos en el pasado.',
   'settings.history_trails': 'Estelas de trayectoria',
   'settings.history_trails_desc': 'Línea coloreada con el historial de posiciones tras cada aeronave.',
   'settings.trail_length': 'Longitud de estela',

@@ -20,6 +20,8 @@ export const settingsStrings = {
   'settings.shape_cone': 'Cone',
   'settings.shape_sphere': 'Sphere',
   'settings.shape_silhouette': '3D silhouette',
+  'settings.smooth_motion': 'Smooth motion',
+  'settings.smooth_motion_desc': 'Glide aircraft between position updates instead of stepping. Shows each aircraft a few seconds in the past.',
   'settings.history_trails': 'History trails',
   'settings.history_trails_desc': 'Colored position-history line behind each aircraft.',
   'settings.trail_length': 'Trail length',

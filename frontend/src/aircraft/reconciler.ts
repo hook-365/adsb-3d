@@ -1,4 +1,5 @@
 import {
+  Sphere,
   BufferGeometry,
   Color,
   ConeGeometry,
@@ -43,6 +44,8 @@ import { getSilhouetteGeometry, MARKER_FOOTPRINT_UNITS } from './shape-geometry'
 import { getSettings, subscribeSettings, type AircraftShapeStyle } from '../core/settings';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { passesFilter } from '../core/filter';
+import { getTimeContext } from '../core/time-context';
+import { MotionTracker, type SampledFix } from './motion';
 import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
 import { DIORAMA_PLANES } from '../world/diorama-clip';
 
@@ -299,6 +302,13 @@ interface RenderEntry {
   // setTrail replacement) that invalidates trailStartIdx outright.
   trailStartIdx: number;
   lastStoreFirstMs: number;
+  // Smooth motion (see aircraft/motion.ts). lastSampleMs dedupes identical
+  // display times — hold-at-newest re-emits the same one every frame, and
+  // re-applying it would defeat the rev gate for every quiet aircraft.
+  // wasSampled lets the frame the sampler goes quiet land the cone on the
+  // raw record instead of stranding it mid-glide.
+  lastSampleMs: number;
+  wasSampled: boolean;
 }
 
 // Ground-projected aircraft shape icon. Sized in scene units; per-aircraft
@@ -513,7 +523,6 @@ function buildEntry(a: Aircraft): RenderEntry {
   const dashed = buildTrailLine(TRAIL_MAT_DASHED);
   dashed.line.userData = { kind: 'trail-dashed', hex: a.hex };
   solid.line.visible = dashed.line.visible = getSettings().historyTrails;
-
   const labelEl = document.createElement('div');
   const label = new CSS2DObject(labelEl);
   label.position.set(0, 3.2, 0);
@@ -618,7 +627,9 @@ function buildEntry(a: Aircraft): RenderEntry {
     lastSolidIdx: 0,
     lastDashedIdx: 0,
     trailStartIdx: 0,
-    lastStoreFirstMs: Number.NaN
+    lastStoreFirstMs: Number.NaN,
+    lastSampleMs: Number.NaN,
+    wasSampled: false
   };
 }
 
@@ -674,13 +685,19 @@ function refreshLabel(entry: RenderEntry, a: Aircraft): void {
   entry.isMilitary = a.military;
 }
 
-function applyTransform(entry: RenderEntry, a: Aircraft): void {
-  toScene(a.lat, a.lon, a.altFt, tmpPos);
+function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void {
+  // `at` is the smooth-motion display position; without it the raw record
+  // places the aircraft (historical playback, smoothing off, first fix).
+  const lat = at ? at.lat : a.lat;
+  const lon = at ? at.lon : a.lon;
+  const altFt = at ? at.altFt : a.altFt;
+  const trackDeg = at ? at.trackDeg : a.trackDeg;
+  toScene(lat, lon, altFt, tmpPos);
   // Ground anchor (icon + altitude-line foot) sits on the terrain surface;
   // elevationFtAt() is 0 everywhere when 3D terrain is off. The clamp
   // keeps cones from sinking under the mesh on baro/ellipsoid quirks when
   // an aircraft is on or near the ground.
-  toScene(a.lat, a.lon, elevationFtAt(a.lat, a.lon), tmpGround);
+  toScene(lat, lon, elevationFtAt(lat, lon), tmpGround);
   if (tmpPos.y < tmpGround.y) tmpPos.y = tmpGround.y;
 
   entry.cone.position.copy(tmpPos);
@@ -689,14 +706,14 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   // quaternion math when heading hasn't changed since the last refresh —
   // a cruising aircraft holds a steady track for many position updates,
   // and the previous quaternion is still correct in that case.
-  if (a.trackDeg !== null && entry.bodyRotates && a.trackDeg !== entry.lastTrackDeg) {
-    const yaw = -((a.trackDeg * Math.PI) / 180);
+  if (trackDeg !== null && entry.bodyRotates && trackDeg !== entry.lastTrackDeg) {
+    const yaw = -((trackDeg * Math.PI) / 180);
     const half = yaw / 2;
     const sinH = Math.sin(half);
     const cosH = Math.cos(half);
     entry.cone.quaternion.set(0, sinH, 0, cosH);
     if (entry.iconRotates) entry.icon.yaw = yaw;
-    entry.lastTrackDeg = a.trackDeg;
+    entry.lastTrackDeg = trackDeg;
   }
 
   const altArr = entry.altArr;
@@ -707,7 +724,7 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
   altArr[4] = tmpGround.y;
   altArr[5] = tmpGround.z;
 
-  const s = a.onGround ? 0.6 : 0.7 + Math.min(1, a.altFt / 35000) * 0.5;
+  const s = a.onGround ? 0.6 : 0.7 + Math.min(1, altFt / 35000) * 0.5;
   entry.cone.scale.setScalar(s * entry.baseScale);
 
   // Ground icon anchor + terrain tilt, cached for the pool rebuild pass.
@@ -731,12 +748,12 @@ function applyTransform(entry: RenderEntry, a: Aircraft): void {
     // mesh could hug a crest; a plane would slice into it).
     icon.y = tmpGround.y + ICON_DRAPE_LIFT;
     const d = Math.max(icon.w, icon.h) * 0.5;
-    const cosLat = Math.cos((a.lat * Math.PI) / 180);
-    const lonE = a.lon + d / (60 * cosLat);
-    toScene(a.lat, lonE, elevationFtAt(a.lat, lonE), tmpDrape);
+    const cosLat = Math.cos((lat * Math.PI) / 180);
+    const lonE = lon + d / (60 * cosLat);
+    toScene(lat, lonE, elevationFtAt(lat, lonE), tmpDrape);
     const yE = tmpDrape.y;
-    const latN = a.lat + d / 60; // scene +z = south, so north is -z
-    toScene(latN, a.lon, elevationFtAt(latN, a.lon), tmpDrape);
+    const latN = lat + d / 60; // scene +z = south, so north is -z
+    toScene(latN, lon, elevationFtAt(latN, lon), tmpDrape);
     const yN = tmpDrape.y;
     // Surface y(x, z): normal = (-dy/dx, 1, -dy/dz); the north sample sits
     // at z = -d, so dy/dz = (center - north) / d.
@@ -1116,6 +1133,11 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], sta
 // means the previous opacity values are still correct.
 const CAMERA_IDLE_EPS_SQ = 0.05;
 
+// Smoothing-gate padding (scene units = NM). Must exceed the largest gap
+// between an aircraft's displayed and raw positions: MAX_DELAY_MS (12 s)
+// at 600 kt is 2 NM.
+const SMOOTHING_GATE = new Sphere(new Vector3(), 2.5);
+
 export class AircraftReconciler {
   private readonly entries = new Map<string, RenderEntry>();
   private readonly camPos = new Vector3();
@@ -1143,16 +1165,22 @@ export class AircraftReconciler {
   private prevAcarsMessages: boolean;
   private prevTrailLength: number;
 
-  // Frustum + matrix scratch space for updateLabelLOD. Allocating once at
-  // construction (not per-frame) keeps the LOD pass allocation-free.
+  // Frustum + matrix scratch space, shared by syncFrame's smoothing gate and
+  // updateLabelLOD. Allocating once at construction (not per-frame) keeps
+  // both passes allocation-free; frustumFresh marks a frustum computed
+  // earlier in the current frame (reset at the top of every syncFrame).
   private readonly frustum = new Frustum();
   private readonly projScreenMatrix = new Matrix4();
+  private frustumFresh = false;
 
   // Instanced ground-icon pool (issue #6): one draw call per active shape
   // instead of one per aircraft. Rebuilt from entry state every syncFrame.
   private readonly iconPool: IconInstancePool;
   // Fleet-wide altitude-line arena (issue #6): one draw call total.
   private readonly altArena: AltLineArena;
+  // Smooth-motion fix history. Subscribes to the store; sampled per frame
+  // for visible aircraft (see aircraft/motion.ts).
+  private readonly motion: MotionTracker;
 
   constructor(
     private readonly store: AircraftStore,
@@ -1169,6 +1197,7 @@ export class AircraftReconciler {
     }
   ) {
     const s0 = getSettings();
+    this.motion = new MotionTracker(store, { modeFn: () => getTimeContext().mode });
     this.iconPool = new IconInstancePool(root, s0.groundSprites);
     this.altArena = new AltLineArena(LINE_MAT_DEFAULT);
     this.altArena.line.visible = s0.altitudeLines;
@@ -1240,6 +1269,29 @@ export class AircraftReconciler {
       this.prevTrailLength = s.trailLength;
       this.prevAcarsMessages = s.acarsMessages;
     });
+  }
+
+  private computeFrustum(): void {
+    // Refresh matrixWorld (OrbitControls may have just moved the camera and
+    // the renderer hasn't reconciled yet) and invert locally rather than
+    // trust the renderer's cached value.
+    this.camera.updateMatrixWorld();
+    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
+    this.projScreenMatrix.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse,
+    );
+    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+    this.frustumFresh = true;
+  }
+
+  /** Smoothing gate: the cone's position padded by more than the largest
+   *  possible display lag, so the delayed and raw positions can never
+   *  straddle the view edge (a point test flip-flops between them every
+   *  frame for an aircraft entering or leaving the view). */
+  private inSmoothingView(p: Vector3): boolean {
+    SMOOTHING_GATE.center.copy(p);
+    return this.frustum.intersectsSphere(SMOOTHING_GATE);
   }
 
   setSelected(hex: string | null): void {
@@ -1403,13 +1455,9 @@ export class AircraftReconciler {
     // matrixWorld (in case OrbitControls just mutated position/quaternion
     // and the renderer hasn't reconciled yet) and invert it locally
     // rather than rely on the renderer's cached value.
-    this.camera.updateMatrixWorld();
-    this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
-    this.projScreenMatrix.multiplyMatrices(
-      this.camera.projectionMatrix,
-      this.camera.matrixWorldInverse,
-    );
-    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+    // syncFrame already computed it this frame when smoothing needed it;
+    // nothing moves the camera between the two passes.
+    if (!this.frustumFresh) this.computeFrustum();
 
     // Density-based fade (only when the user has dialed it up). At
     // labelDensity=0 (default), the cull pass is the only gate.
@@ -1478,6 +1526,18 @@ export class AircraftReconciler {
     // settings subscriber invalidates trail revs on re-enable).
     const trailsOn = settingsNow.historyTrails;
     const trailLen = settingsNow.trailLength;
+    // Smoothing is live-only: historical playback drives the store with
+    // synthetic cursor-time records that must render exactly where the
+    // cursor says, not through the live-motion sampler.
+    const smoothOn = settingsNow.smoothMotion && getTimeContext().mode === 'live';
+    // Per-frame sampling is frustum-gated on the desktop: off-screen
+    // aircraft stay on the cheap rev-gated raw path (feed-accurate, just
+    // stepped) and pick up smoothing when they scroll into view. XR skips
+    // the gate — the main camera's frustum doesn't describe what a
+    // headset sees of a placed diorama.
+    const frustumGate = smoothOn && !this.xrMode;
+    this.frustumFresh = false;
+    if (frustumGate) this.computeFrustum();
     this.iconPool.begin();
     this.altArena.begin();
 
@@ -1512,40 +1572,71 @@ export class AircraftReconciler {
       // fleet, this is the difference between 30k pointless setXYZ calls
       // per second and ~500 — the bulk of frames find every aircraft at
       // the same rev as last frame and skip the entire block.
+      // Smooth motion cuts across that gate for the transform only: while
+      // the sampler has a display position for this aircraft, the cone
+      // (and everything anchored to it) moves every frame; shape, color,
+      // label and emergency-state refreshes stay rev-gated.
+      const sampled =
+        smoothOn && (!frustumGate || this.inSmoothingView(entry.cone.position))
+          ? this.motion.sample(a.hex, now)
+          : null;
       const rev = this.store.getRev(a.hex);
-      if (rev === entry.lastRev && forceTransforms) {
-        // Elevation tile just landed: re-anchor ground chrome without
-        // waiting for this aircraft's next data tick.
-        applyTransform(entry, a);
-      }
-      if (rev !== entry.lastRev) {
+      const revChanged = rev !== entry.lastRev;
+      if (revChanged) {
         refreshShape(entry, a);
         refreshColor(entry, a);
-        applyTransform(entry, a);
         refreshLabel(entry, a);
-        // Emergency ring follows the aircraft's ground projection (icon
-        // height, so it rides the terrain rather than sea level).
-        // Visibility tracks the per-tick emergency state so a
-        // 7700-then-cleared sequence surfaces and dismisses without
+        // Emergency ring visibility tracks the per-tick emergency state so
+        // a 7700-then-cleared sequence surfaces and dismisses without
         // lingering. emergency is in the rev comparison set, so a state
         // transition arrives via a rev advance.
-        const inEmergency = a.emergency !== null;
-        entry.emergencyRing.visible = inEmergency;
-        if (inEmergency) {
+        entry.emergencyRing.visible = a.emergency !== null;
+        entry.lastRev = rev;
+      }
+      // Transform. forceTransforms (elevation tile just landed) re-anchors
+      // ground chrome without waiting for this aircraft's next data tick;
+      // a rev advance re-applies too, since refreshShape can swap the body
+      // and reset its yaw cache.
+      let moved = false;
+      if (sampled) {
+        // Hold-at-newest re-emits an identical display timestamp for a
+        // quiet aircraft; skip the redundant transform in that case so
+        // stale contacts don't defeat the rev gate every frame.
+        if (sampled.ms !== entry.lastSampleMs || revChanged || forceTransforms) {
+          applyTransform(entry, a, sampled);
+          entry.lastSampleMs = sampled.ms;
+          moved = true;
+        }
+        entry.wasSampled = true;
+      } else if (entry.wasSampled) {
+        // Sampler went quiet mid-glide (toggle off, mode switch, frustum
+        // exit, pruned history): land on the raw record's position rather
+        // than stranding the cone at a stale interpolated spot.
+        applyTransform(entry, a);
+        entry.wasSampled = false;
+        entry.lastSampleMs = Number.NaN;
+        moved = true;
+      } else if (revChanged || forceTransforms) {
+        applyTransform(entry, a);
+        moved = true;
+      }
+      if (moved) {
+        // Emergency ring follows the aircraft's ground projection (icon
+        // height, so it rides the terrain rather than sea level). The
+        // selection ring stays pegged to the cone's ground projection;
+        // selecting a previously-static aircraft seeds it via
+        // applySelection, this keeps it in sync as the aircraft moves (per
+        // rev advance, or per frame while sampled).
+        if (entry.emergencyRing.visible) {
           entry.emergencyRing.position.set(
             entry.cone.position.x,
             entry.icon.y + 0.07,
             entry.cone.position.z,
           );
         }
-        // Keep the selection ring pegged to the cone's current ground
-        // projection while the aircraft moves. Selecting a previously-static
-        // aircraft seeds the ring position via applySelection; this keeps
-        // it in sync once the aircraft starts reporting new positions.
         if (entry.isSelected) {
           entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
         }
-        entry.lastRev = rev;
       }
       const trailRev = this.store.getTrailRev(a.hex);
       if (trailsOn && trailRev !== entry.lastTrailRev) {

@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Smooth motion.** Aircraft glide between position updates instead of
+  stepping once per feed tick. Each aircraft is shown about one update
+  interval in the past (1.2x its own cadence, 1-12 s) and interpolated
+  between its last two real fixes; late data freezes at the newest fix
+  rather than extrapolating, and a gap far beyond the aircraft's usual
+  cadence snaps instead of gliding across unobserved sky (a sustained
+  slower cadence is re-learned after three such gaps). Live mode only;
+  historical playback is unchanged. `Settings -> Smooth motion`
+  and the wrist menu toggle it, default on.
+
 ### Fixed
 
 - **Live-only installs stop calling a track-service that isn't there.**

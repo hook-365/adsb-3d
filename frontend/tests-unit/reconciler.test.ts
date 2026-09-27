@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Group, Mesh, PerspectiveCamera } from 'three';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Group, Mesh, PerspectiveCamera, Vector3 } from 'three';
+import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { AircraftReconciler } from '../src/aircraft/reconciler';
 import { AircraftStore } from '../src/aircraft/store';
 import { setFilter, setSearchQuery } from '../src/core/filter';
 import { setHome } from '../src/core/config';
+import { toScene } from '../src/core/coords';
+import { updateSettings } from '../src/core/settings';
 import type { Aircraft } from '../src/core/types';
 
 // Coordinates near HOME so aircraft land close to the scene origin.
@@ -354,5 +357,90 @@ describe('ACARS label badge', () => {
     reconciler.invalidateLabel(null);
     reconciler.syncFrame();
     expect(label.element.className).toBe('aircraft-label');
+  });
+});
+
+describe('smooth motion', () => {
+  // Three fixes 2 s apart, each 0.1° further north. The tracker seeds its
+  // cadence EMA at 2 s, so the display runs DELAY_FACTOR (1.2) × 2 s =
+  // 2.4 s behind the wall clock: at t=14 s it shows t=11.6 s, 80% of the
+  // way from the first fix to the second.
+  function glide() {
+    vi.useFakeTimers({ now: 10_000 });
+    const env = setup();
+    env.camera.lookAt(0, 0, 0);
+    env.camera.updateMatrixWorld();
+    const push = (ms: number, lat: number) => {
+      vi.setSystemTime(ms);
+      env.store.syncFromFeed([ac('abc', { lat, lastSeenMs: ms, lastUpdateMs: ms })]);
+      env.reconciler.syncFrame();
+    };
+    push(10_000, 45.0);
+    push(12_000, 45.1);
+    push(14_000, 45.2);
+    const group = findAircraftGroup(env.root, 'abc')!;
+    return {
+      ...env,
+      cone: findByKind(group, 'aircraft')!,
+      trail: findByKind(group, 'trail') as unknown as LineSegments2,
+    };
+  }
+  const northAt = (lat: number) => toScene(lat, HOME_LON, 10000, new Vector3()).z;
+
+  afterEach(() => {
+    updateSettings({ smoothMotion: true });
+    vi.useRealTimers();
+  });
+
+  it('renders the interpolated display position, not the newest fix', () => {
+    const { cone } = glide();
+    expect(cone.position.z).toBeCloseTo(northAt(45.08), 4);
+  });
+
+  it('leaves the trail whole — the one-update lag hides inside the marker', () => {
+    const { trail } = glide();
+    expect(trail.geometry.instanceCount).toBe(2);
+  });
+
+  it('smoothing off lands the cone on the raw record', () => {
+    const { reconciler, cone } = glide();
+    updateSettings({ smoothMotion: false });
+    reconciler.syncFrame();
+    expect(cone.position.z).toBeCloseTo(northAt(45.2), 4);
+  });
+
+  it('stays smoothed at the view edge instead of flip-flopping every frame', () => {
+    // Realistic spacing (0.12 NM per 2 s). A narrow camera centred on the
+    // newest raw fix puts it inside the view and the delayed display
+    // position (~0.14 NM behind) just outside. A bare point test used to
+    // alternate delayed/raw on every frame here.
+    vi.useFakeTimers({ now: 10_000 });
+    const env = setup();
+    const raw = toScene(45.004, HOME_LON, 10000, new Vector3());
+    env.camera.fov = 0.3;
+    env.camera.position.set(raw.x, raw.y + 30, raw.z + 0.01);
+    env.camera.lookAt(raw);
+    env.camera.updateProjectionMatrix();
+    env.camera.updateMatrixWorld();
+    for (const [ms, lat] of [[10_000, 45.0], [12_000, 45.002], [14_000, 45.004]] as const) {
+      vi.setSystemTime(ms);
+      env.store.syncFromFeed([ac('abc', { lat, lastSeenMs: ms, lastUpdateMs: ms })]);
+      env.reconciler.syncFrame();
+    }
+    const cone = findByKind(findAircraftGroup(env.root, 'abc')!, 'aircraft')!;
+    const seen = new Set<string>();
+    for (let f = 0; f < 6; f++) {
+      env.reconciler.syncFrame();
+      seen.add(cone.position.z.toFixed(4));
+    }
+    expect(seen.size).toBe(1);
+    expect(cone.position.z).toBeCloseTo(northAt(45.0016), 4);
+  });
+
+  it('holds at the newest fix once display time catches up', () => {
+    const { reconciler, cone } = glide();
+    vi.setSystemTime(30_000);
+    reconciler.syncFrame();
+    expect(cone.position.z).toBeCloseTo(northAt(45.2), 4);
   });
 });
