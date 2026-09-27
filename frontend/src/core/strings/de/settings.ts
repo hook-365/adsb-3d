@@ -19,6 +19,8 @@ export const settingsStrings = {
   'settings.shape_cone': 'Kegel',
   'settings.shape_sphere': 'Kugel',
   'settings.shape_silhouette': '3D-Silhouette',
+  'settings.smooth_motion': 'Flüssige Bewegung',
+  'settings.smooth_motion_desc': 'Flugzeuge gleiten zwischen Positionsmeldungen, statt zu springen. Zeigt jedes Flugzeug einige Sekunden in der Vergangenheit.',
   'settings.history_trails': 'Flugspuren',
   'settings.history_trails_desc': 'Farbige Positionsverlaufslinie hinter jedem Flugzeug.',
   'settings.trail_length': 'Spurlänge',

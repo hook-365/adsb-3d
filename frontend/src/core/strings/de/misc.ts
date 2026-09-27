@@ -31,6 +31,7 @@ export const miscStrings = {
   'misc.xr_place': 'Scope platzieren',
   'misc.xr_ground_icons': 'Bodensymbole',
   'misc.xr_trails': 'Spuren',
+  'misc.xr_smooth_motion': 'Flüssig',
   'misc.xr_diorama': 'Diorama',
   'misc.xr_diorama_size': 'Diorama-Größe',
   'misc.xr_follow': 'Folgen',

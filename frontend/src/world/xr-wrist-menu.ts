@@ -337,6 +337,9 @@ const PAGES: MenuRow[][] = [
         label: () => (v === 0 ? tr('misc.xr_off') : `${v}°/s`),
       })),
     ),
+    // Aircraft glide between fixes instead of stepping — matters more in
+    // a headset, where per-update jumps read as judder.
+    toggleRow('smoothMotion', () => tr('misc.xr_smooth_motion')),
   ],
 ];
 

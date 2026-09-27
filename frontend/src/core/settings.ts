@@ -83,6 +83,12 @@ export interface Settings {
   /** Render per-aircraft position history trails. */
   historyTrails: boolean;
   /**
+   * Glide aircraft between feed updates (delayed interpolation between the
+   * last two real fixes) instead of stepping once per update. Displays
+   * each aircraft roughly one update-interval in the past. Live mode only.
+   */
+  smoothMotion: boolean;
+  /**
    * Approximate minutes of trail rendered per aircraft, truncated by
    * sample timestamp. -1 = full (whatever the feed's own cap collected —
    * unlimited on the local feed); 0 = none. Render-side only: history
@@ -240,6 +246,7 @@ const DEFAULTS: Settings = {
   groundSprites: true,
   altitudeLines: true,
   historyTrails: true,
+  smoothMotion: true,
   trailLength: -1,
   rangeRings: true,
   aircraftLabels: true,

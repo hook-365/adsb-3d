@@ -31,6 +31,7 @@ export const miscStrings = {
   'misc.xr_place': 'Colocar radar',
   'misc.xr_ground_icons': 'Iconos de suelo',
   'misc.xr_trails': 'Estelas',
+  'misc.xr_smooth_motion': 'Suave',
   'misc.xr_diorama': 'Diorama',
   'misc.xr_diorama_size': 'Tamaño del diorama',
   'misc.xr_follow': 'Seguir',

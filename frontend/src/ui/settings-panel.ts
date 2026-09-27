@@ -155,6 +155,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'smoothMotion',
+        label: t('settings.smooth_motion'),
+        description: t('settings.smooth_motion_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'historyTrails',
         label: t('settings.history_trails'),
         description: t('settings.history_trails_desc'),
