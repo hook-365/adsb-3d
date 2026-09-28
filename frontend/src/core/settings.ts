@@ -1,5 +1,5 @@
-// User-facing settings store. One module-level singleton, persisted to
-// localStorage, with a subscribe API so consumers (reconciler, world,
+// User-facing settings store. One module-level singleton, persisted per tab
+// (sessionStorage, seeded from localStorage), with a subscribe API so consumers (reconciler, world,
 // detail panel, etc.) can react to changes without coupling to the UI.
 //
 // To add a setting:
@@ -7,7 +7,11 @@
 //   2. Add a row to SETTINGS_SCHEMA in ui/settings-panel.ts (label + UI hint).
 //   3. Subscribe wherever it matters via `subscribeSettings()`.
 //
-// All settings are global to the session; nothing here is feed-specific.
+// Settings are tab-scoped (issue #12: two tabs side by side with different
+// views). Each tab keeps its own copy in sessionStorage, which survives the
+// reloads some settings trigger. localStorage holds the most recent change
+// from any tab and only seeds tabs that have no copy yet. Nothing here is
+// feed-specific.
 
 import type { ThemeSelection } from './theme';
 
@@ -277,7 +281,31 @@ const DEFAULTS: Settings = {
 const STORAGE_KEY = 'adsb3d_settings_v1';
 const ACARS_RESET_KEY = 'adsb3d_acars_reset_v1';
 
+// This tab's own copy. Once present it wins over the shared localStorage
+// template, so another tab's changes never reach this one.
+function loadTabCopy(): Settings | null {
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Settings>) };
+  } catch {
+    return null;
+  }
+}
+
+function saveTabCopy(s: Settings): void {
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    // sessionStorage unavailable: settings stay in memory for this page.
+  }
+}
+
 function load(): Settings {
+  return loadTabCopy() ?? loadShared();
+}
+
+function loadShared(): Settings {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULTS };
@@ -319,6 +347,9 @@ function load(): Settings {
 }
 
 let current: Settings = load();
+// Pin this tab's copy at boot so a later write to the shared template (from
+// any tab) can't leak in on this tab's next reload.
+saveTabCopy(current);
 const listeners = new Set<(s: Settings) => void>();
 
 export function getSettings(): Readonly<Settings> {
@@ -338,8 +369,8 @@ export function getDefaultSettings(): Readonly<Settings> {
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const PERSIST_DEBOUNCE_MS = 300;
 
-// Keys this tab has changed since its last write. Only these are written,
-// merged over whatever is stored now: writing the whole in-memory object
+// Keys this tab has changed since its last write. Only these are merged
+// into the shared localStorage template: writing the whole in-memory object
 // let a stale second tab revert another tab's changes the moment it was
 // hidden or closed (issue #12: 3D terrain switched itself back off).
 const dirty = new Set<keyof Settings>();
@@ -350,6 +381,7 @@ function flushPersist(): void {
     persistTimer = null;
   }
   if (dirty.size === 0) return;
+  saveTabCopy(current);
   try {
     let stored: Partial<Settings> = {};
     try {

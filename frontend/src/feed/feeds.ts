@@ -8,8 +8,10 @@ import type { HomeLocation } from '../core/types';
 //                           | null
 //
 // We read both at module load, build a normalized Feed[] list, pick the
-// active feed (URL ?feed=ID > localStorage > first), and freeze that for
-// the rest of the session. Switching is a hard reload (Phase 1) — write
+// active feed (URL ?feed=ID > this tab's sessionStorage > localStorage >
+// first), and freeze that for the rest of the session. The feed is
+// tab-scoped like settings (issue #12: watch two feeds side by side);
+// localStorage only remembers the latest pick to seed new tabs. Switching is a hard reload (Phase 1) — write
 // the new id and call location.reload(). Phase 2 will replace that with
 // in-place re-init once HOME is mutable across the scene.
 //
@@ -191,26 +193,42 @@ function loadAllFeeds(): Feed[] {
   return out.length > 0 ? out : [fallbackFeed()];
 }
 
+// Remember a pick for this tab and as the seed for new tabs. Storage can be
+// unavailable (privacy mode); the URL still carries the selection.
+function rememberFeed(id: string): void {
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, id);
+    window.localStorage.setItem(STORAGE_KEY, id);
+  } catch {
+    // ignore
+  }
+}
+
+function storedFeed(feeds: Feed[], storage: Storage): Feed | null {
+  try {
+    const stored = storage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    const hit = feeds.find((f) => f.id === stored);
+    // Stored id no longer matches any configured feed — clear it.
+    if (!hit) storage.removeItem(STORAGE_KEY);
+    return hit ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function pickInitial(feeds: Feed[]): Feed {
   // URL takes precedence so a shared link lands on the right feed even if
-  // the user's localStorage points elsewhere.
+  // this tab or the browser remembers another one.
   const url = new URL(window.location.href);
   const fromUrl = url.searchParams.get(URL_PARAM);
-  if (fromUrl) {
-    const hit = feeds.find((f) => f.id === fromUrl);
-    if (hit) {
-      window.localStorage.setItem(STORAGE_KEY, hit.id);
-      return hit;
-    }
-  }
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    const hit = feeds.find((f) => f.id === stored);
-    if (hit) return hit;
-    // Stored id no longer matches any configured feed — clear it.
-    window.localStorage.removeItem(STORAGE_KEY);
-  }
-  return feeds[0]!;
+  const hit =
+    (fromUrl ? feeds.find((f) => f.id === fromUrl) : undefined) ??
+    storedFeed(feeds, window.sessionStorage) ??
+    storedFeed(feeds, window.localStorage);
+  if (!hit) return feeds[0]!;
+  rememberFeed(hit.id);
+  return hit;
 }
 
 const allFeeds: Feed[] = loadAllFeeds();
@@ -251,8 +269,8 @@ export function getFeedMode(): FeedMode {
 }
 
 /**
- * Switch to a different feed. Writes URL + localStorage so a copied link
- * lands on the new feed, then either invokes the in-place switch handler
+ * Switch to a different feed. Writes URL + tab/browser storage so a copied
+ * link or reload lands on the new feed, then either invokes the in-place switch handler
  * (registered via onFeedSwitch) or falls back to a hard reload when no
  * handler is present.
  */
@@ -260,7 +278,7 @@ export function selectFeed(id: string): void {
   if (id === activeFeed.id) return;
   const next = allFeeds.find((f) => f.id === id);
   if (!next) return;
-  window.localStorage.setItem(STORAGE_KEY, id);
+  rememberFeed(id);
   const url = new URL(window.location.href);
   url.searchParams.set(URL_PARAM, id);
   // Clear the per-aircraft hash — the selected hex won't exist on the new

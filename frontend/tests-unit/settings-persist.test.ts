@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-// core/settings.ts reads localStorage at module load, so each scenario
-// resets the module registry and re-imports after seeding storage.
+// core/settings.ts reads storage at module load, so each scenario resets the
+// module registry and re-imports after seeding storage. A new tab is
+// simulated by clearing sessionStorage (localStorage is browser-wide).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const KEY = 'adsb3d_settings_v1';
 
-async function freshSettings() {
+async function freshSettings({ newTab = true } = {}) {
+  if (newTab) sessionStorage.clear();
   vi.resetModules();
   return import('../src/core/settings');
 }
@@ -17,6 +19,7 @@ function stored(): Record<string, unknown> {
 describe('settings persistence across tabs', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     localStorage.setItem('adsb3d_acars_reset_v1', '1');
   });
 
@@ -48,5 +51,40 @@ describe('settings persistence across tabs', () => {
     s.updateSettings({ terrain3d: true });
     window.dispatchEvent(new Event('pagehide'));
     expect(stored().terrain3d).toBe(true);
+  });
+});
+
+describe('tab-scoped settings (issue #12)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem('adsb3d_acars_reset_v1', '1');
+  });
+
+  it('a new tab starts from the most recent change in any tab', async () => {
+    const tabA = await freshSettings();
+    tabA.updateSettings({ basemap: 'satellite' });
+    window.dispatchEvent(new Event('pagehide'));
+    const tabB = await freshSettings();
+    expect(tabB.getSettings().basemap).toBe('satellite');
+  });
+
+  it('a reload keeps this tab\'s settings even after another tab changed them', async () => {
+    const tabA = await freshSettings();
+    tabA.updateSettings({ terrain3d: true, basemap: 'topo' });
+    window.dispatchEvent(new Event('pagehide'));
+    // Another tab later switches terrain off and persists.
+    localStorage.setItem(KEY, JSON.stringify({ ...stored(), terrain3d: false, basemap: 'osm' }));
+    // Tab A reloads (terrain toggles reload the page).
+    const reloadedA = await freshSettings({ newTab: false });
+    expect(reloadedA.getSettings().terrain3d).toBe(true);
+    expect(reloadedA.getSettings().basemap).toBe('topo');
+  });
+
+  it('a reload of an untouched tab ignores later changes from other tabs', async () => {
+    await freshSettings();
+    localStorage.setItem(KEY, JSON.stringify({ basemap: 'osm' }));
+    const reloaded = await freshSettings({ newTab: false });
+    expect(reloaded.getSettings().basemap).toBe('carto_voyager');
   });
 });

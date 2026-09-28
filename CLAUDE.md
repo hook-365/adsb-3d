@@ -71,8 +71,10 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
 2. Add a row to `SETTINGS_SCHEMA` in `ui/settings-panel.ts`.
 3. React to it where it matters via `subscribeSettings()`.
 
-Settings persist to `localStorage` and are merged against `DEFAULTS` on load,
-so a payload from an older version never drops new keys.
+Settings are tab-scoped: each tab keeps its own copy in `sessionStorage`
+(survives the reloads some settings trigger), while `localStorage` holds the
+latest change from any tab and seeds new tabs. Payloads are merged against
+`DEFAULTS` on load, so one from an older version never drops new keys.
 
 ### Adding 3D detail to an aircraft shape
 

@@ -118,6 +118,7 @@ describe('pickInitial', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState(null, '', 'http://localhost:3000/');
   });
 
@@ -141,6 +142,18 @@ describe('pickInitial', () => {
     expect(window.localStorage.getItem('adsb3d_selected_feed')).toBeNull();
   });
 
+  it("this tab's feed wins over another tab's later pick (issue #12)", () => {
+    window.sessionStorage.setItem('adsb3d_selected_feed', 'a');
+    window.localStorage.setItem('adsb3d_selected_feed', 'b');
+    expect(pickInitial(feeds).id).toBe('a');
+  });
+
+  it('URL param also pins the feed for this tab', () => {
+    window.history.replaceState(null, '', 'http://localhost:3000/?feed=b');
+    pickInitial(feeds);
+    expect(window.sessionStorage.getItem('adsb3d_selected_feed')).toBe('b');
+  });
+
   it('falls back to the first feed with nothing set', () => {
     const picked = pickInitial(feeds);
     expect(picked.id).toBe('a');
@@ -151,6 +164,7 @@ describe('boot pipeline (module re-import)', () => {
   beforeEach(() => {
     vi.resetModules();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState(null, '', 'http://localhost:3000/');
     delete (window as { FEEDS_CONFIG?: unknown }).FEEDS_CONFIG;
     delete (window as { FEED_MODE_CONFIG?: unknown }).FEED_MODE_CONFIG;
