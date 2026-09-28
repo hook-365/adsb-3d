@@ -32,19 +32,42 @@ const data = shapesDataJson as unknown as {
 
 const FALLBACK: IconRef = ['airliner', 1];
 
+// Lighter-than-air split. tar1090 sends every emitter category B2 contact
+// without a type code to the hot-air balloon, which is how the Goodyear
+// blimp ended up drawn as one (issue #13). An airship is recognised by
+// its registration (Goodyear's Wingfoot fleet), a description naming it,
+// or any type code on a B2 contact other than BALL: hot-air and gas
+// balloons all file as BALL, so a typed B2 is a powered airship.
+const AIRSHIP_REGISTRATIONS = new Set(['N1A', 'N2A', 'N3A']);
+const AIRSHIP_DESCRIPTION = /zeppelin|airship|blimp/i;
+const AIRSHIP_ICON: IconRef = ['blimp', 0.94];
+
+function isAirship(
+  category: string | null | undefined,
+  typeDesignator: string | null | undefined,
+  description: string | null | undefined,
+  registration: string | null | undefined
+): boolean {
+  if (registration && AIRSHIP_REGISTRATIONS.has(registration.toUpperCase())) return true;
+  if (description && AIRSHIP_DESCRIPTION.test(description)) return true;
+  return category === 'B2' && !!typeDesignator && typeDesignator !== 'BALL';
+}
+
 /**
  * Resolve an aircraft to a (shape name, scaling) pair following tar1090's
- * lookup order: explicit type designator → type description (+wtc) → emitter
- * category → fallback airliner.
+ * lookup order: explicit type designator → airship check → type
+ * description (+wtc) → emitter category → fallback airliner.
  */
 export function resolveShape(
   category: string | null | undefined,
   typeDesignator: string | null | undefined,
-  typeDescription: string | null | undefined
+  typeDescription: string | null | undefined,
+  registration?: string | null
 ): IconRef {
   if (typeDesignator && typeDesignator in data.TypeDesignatorIcons) {
     return data.TypeDesignatorIcons[typeDesignator]!;
   }
+  if (isAirship(category, typeDesignator, typeDescription, registration)) return AIRSHIP_ICON;
   if (typeDescription && typeDescription.length === 3) {
     // tar1090 also keys by `${desc}-${wtc}` but we don't have wtc
     // in our normalized aircraft. The plain 3-letter form covers the

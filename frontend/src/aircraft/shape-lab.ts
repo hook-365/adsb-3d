@@ -47,7 +47,8 @@ export function mountShapeLab(): void {
   key.position.set(30, 60, 20);
   scene.add(key);
 
-  const names = Object.keys(SHAPE_FEATURES).sort();
+  // Procedural lighter-than-air shapes have no annotations but belong here.
+  const names = [...Object.keys(SHAPE_FEATURES), 'balloon', 'blimp'].sort();
   const cols = Math.ceil(Math.sqrt(names.length));
   const grid = new Group();
   scene.add(grid);

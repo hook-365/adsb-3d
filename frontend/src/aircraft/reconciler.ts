@@ -484,7 +484,7 @@ function buildEntry(a: Aircraft): RenderEntry {
   // emitter category, falling back to the generic airliner. The texture is
   // rasterized once per shape (white fill, black stroke) and tinted at
   // render time via material.color.
-  const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description);
+  const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description, a.registration);
 
   // Marker body ("cone" naming kept everywhere — it's the historical style
   // and the field name half the reconciler hangs off of).
@@ -631,7 +631,7 @@ function buildEntry(a: Aircraft): RenderEntry {
  * settings-change path: shared geometry reference swap, no rebuild.
  */
 function refreshShape(entry: RenderEntry, a: Aircraft): void {
-  const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description);
+  const [shapeName, scaling] = resolveShape(a.category, a.typeCode, a.description, a.registration);
   if (shapeName === entry.shapeName && scaling === entry.shapeScaling) return;
   entry.shapeName = shapeName;
   entry.shapeScaling = scaling;

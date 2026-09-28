@@ -4,6 +4,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   ExtrudeGeometry,
+  LatheGeometry,
   Matrix4,
   Shape,
   Vector3,
@@ -79,6 +80,8 @@ export function getSilhouetteGeometry(shapeName: string): BufferGeometry | null 
 }
 
 function build(shapeName: string): BufferGeometry | null {
+  const procedural = PROCEDURAL_SHAPES[shapeName];
+  if (procedural) return procedural();
   const def = getShapeDef(shapeName);
   if (!def) return null;
   const [minX = 0, minY = 0, vbW = 0, vbH = 0] = def.viewBox.split(/[\s,]+/).map(Number);
@@ -439,3 +442,131 @@ function buildLoftedFuselage(
   g.computeVertexNormals();
   return g;
 }
+
+// ── Lighter-than-air ─────────────────────────────────────────────────────
+// tar1090's balloon is a side-view drawing and its blimp a thin plan view,
+// so extruding either flat reads wrong in 3D: the balloon lay on its side
+// (issue #13). Both are bodies of revolution, so they are built directly
+// as lathed solids instead, in scene space (nose at -z, up +y), centered
+// on the origin like the extruded shapes.
+
+const LATHE_SEGMENTS = 16;
+
+function mergeParts(parts: BufferGeometry[]): BufferGeometry {
+  const merged = mergeGeometries(
+    parts.map((p) => (p.index ? p.toNonIndexed() : p)),
+    false
+  );
+  parts.forEach((p) => p.dispose());
+  if (!merged) throw new Error('merge failed');
+  merged.computeBoundingSphere();
+  return merged;
+}
+
+/**
+ * Upright hot-air balloon: teardrop envelope, basket, four suspension
+ * lines. Unrotated (tar1090 marks the balloon noRotate), about one marker
+ * footprint tall.
+ */
+function buildBalloon(): BufferGeometry {
+  const H = MARKER_FOOTPRINT_UNITS * 0.8; // envelope height
+  const R = H * 0.42; // envelope max radius
+  const throat = R * 0.2;
+  // Tapered skirt from the throat up to the widest point, then a round
+  // dome of radius R. Both runs are sampled by angle so the crown closes
+  // flat on the axis instead of meeting it in a cone tip.
+  const shoulder = H - R;
+  const profile: Vector2[] = [];
+  const skirtSteps = 8;
+  for (let i = 0; i <= skirtSteps; i++) {
+    const t = i / skirtSteps;
+    profile.push(new Vector2(throat + (R - throat) * Math.sin((t * Math.PI) / 2), t * shoulder));
+  }
+  const domeSteps = 8;
+  for (let i = 1; i <= domeSteps; i++) {
+    const a = (i / domeSteps) * (Math.PI / 2);
+    profile.push(new Vector2(i === domeSteps ? 0 : R * Math.cos(a), shoulder + R * Math.sin(a)));
+  }
+  const envelope = new LatheGeometry(profile, LATHE_SEGMENTS);
+
+  const gap = H * 0.18; // throat to basket
+  const bw = throat * 1.6;
+  const basket = new BoxGeometry(bw, bw * 0.8, bw);
+  basket.translate(0, -gap - bw * 0.4, 0);
+
+  const lines: BufferGeometry[] = [];
+  for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+    const bottom = new Vector3((x * bw) / 2, -gap, (z * bw) / 2);
+    const top = new Vector3(x * throat * 0.7, 0, z * throat * 0.7);
+    const len = bottom.distanceTo(top);
+    const line = new CylinderGeometry(0.03, 0.03, len, 3);
+    line.rotateX(Math.PI / 2); // axis y → z, which lookAt then aims
+    line.lookAt(top.clone().sub(bottom));
+    line.translate((bottom.x + top.x) / 2, (bottom.y + top.y) / 2, (bottom.z + top.z) / 2);
+    lines.push(line);
+  }
+
+  const geom = mergeParts([envelope, basket, ...lines]);
+  // Center vertically on the whole assembly (basket bottom → crown).
+  const bottom = -gap - bw * 0.8;
+  geom.translate(0, -(H + bottom) / 2, 0);
+  geom.computeBoundingSphere();
+  return geom;
+}
+
+/**
+ * Airship: blunt-nosed hull tapering to the tail, four cruciform fins and
+ * a gondola under the forward hull. Rotates with track like any aircraft.
+ */
+function buildBlimp(): BufferGeometry {
+  const L = MARKER_FOOTPRINT_UNITS; // nose to tail
+  const R = L * 0.12; // max hull radius (~4:1 fineness)
+  // Elliptical nose (angle-sampled so the tip rounds off) out to the max
+  // section at 35% of the length, then a smooth taper to the tail.
+  // Lathe y runs nose (-L/2) to tail (+L/2); rotateX below maps it to z.
+  const maxAt = 0.35 * L;
+  const profile: Vector2[] = [];
+  const noseSteps = 8;
+  for (let i = 0; i <= noseSteps; i++) {
+    const a = (i / noseSteps) * (Math.PI / 2);
+    profile.push(new Vector2(R * Math.sin(a), -L / 2 + maxAt * (1 - Math.cos(a))));
+  }
+  const tailSteps = 12;
+  for (let i = 1; i <= tailSteps; i++) {
+    const t = i / tailSteps;
+    const r = R * Math.cos((t * Math.PI) / 2) ** 0.8;
+    profile.push(new Vector2(i === tailSteps ? 0 : r, -L / 2 + maxAt + t * (L - maxAt)));
+  }
+  // Profile y ascending keeps the lathe's faces pointing outward.
+  const hull = new LatheGeometry(profile, LATHE_SEGMENTS);
+  hull.rotateX(Math.PI / 2); // lathe +y (tail) → scene +z (south)
+
+  const fins: BufferGeometry[] = [];
+  const finShape = new Shape();
+  // (axial z, span out): root 0.72L..0.97L, tip 0.84L..0.97L.
+  finShape.moveTo(0.72 * L - L / 2, 0);
+  finShape.lineTo(0.97 * L - L / 2, 0);
+  finShape.lineTo(0.97 * L - L / 2, R * 1.35);
+  finShape.lineTo(0.84 * L - L / 2, R * 1.35);
+  finShape.closePath();
+  const finT = R * 0.08;
+  for (let k = 0; k < 4; k++) {
+    const fin = new ExtrudeGeometry(finShape, { depth: finT, bevelEnabled: false, curveSegments: 1 });
+    // Shape x → scene z (axial), shape y → scene +y (span), extrusion →
+    // -x: a proper rotation (det +1), so face winding survives.
+    fin.translate(0, 0, -finT / 2);
+    fin.applyMatrix4(new Matrix4().makeBasis(new Vector3(0, 0, 1), new Vector3(0, 1, 0), new Vector3(-1, 0, 0)));
+    fin.rotateZ((k * Math.PI) / 2);
+    fins.push(fin);
+  }
+
+  const gondola = new BoxGeometry(R * 0.5, R * 0.4, L * 0.14);
+  gondola.translate(0, -R * 1.05, -L * 0.08);
+
+  return mergeParts([hull, ...fins, gondola]);
+}
+
+const PROCEDURAL_SHAPES: Record<string, () => BufferGeometry> = {
+  balloon: buildBalloon,
+  blimp: buildBlimp,
+};
