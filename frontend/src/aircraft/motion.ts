@@ -11,7 +11,6 @@ import type { AircraftStore } from './store';
 // adaptive). Late data freezes the aircraft at its newest fix — we never
 // extrapolate into guessed space — and a bracket gap far beyond the
 // aircraft's usual cadence snaps instead of slow-gliding across it.
-// See docs/superpowers/specs/2026-07-02-smooth-motion-design.md.
 
 export interface Fix {
   lat: number;
