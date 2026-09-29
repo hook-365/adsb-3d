@@ -41,13 +41,26 @@ This project is better because people showed up:
   architecture before a line was written ([#10](https://github.com/hook-365/adsb-3d/issues/10)) and is the native-speaker
   reviewer for the German translation.
 - **[@rknobbe](https://github.com/rknobbe)** — asked the "can it render
-  the mountains?" question ([#7](https://github.com/hook-365/adsb-3d/issues/7)) that became 3D terrain.
+  the mountains?" question ([#7](https://github.com/hook-365/adsb-3d/issues/7)) that became 3D terrain, then
+  reported the settings bug behind tab-scoped settings ([#12](https://github.com/hook-365/adsb-3d/issues/12)) and the sideways
+  blimp that became real 3D balloons and airships ([#13](https://github.com/hook-365/adsb-3d/issues/13)).
+- **[@auggiesoft](https://github.com/auggiesoft)**: contributed smooth
+  motion ([#14](https://github.com/hook-365/adsb-3d/pull/14)), which makes aircraft
+  glide between position updates instead of stepping, with adaptive
+  per-aircraft timing, coverage-gap handling, and a thorough test suite.
 
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
 
 ## What's new
 
+- **v0.11.0: aircraft glide.** Smooth motion moves aircraft between
+  position updates instead of ticking once per feed update, most
+  noticeably on sparse remote feeds and in a headset. Each aircraft is
+  shown about one update behind live and never guesses ahead of real
+  data. Contributed by [@auggiesoft](https://github.com/auggiesoft);
+  toggle it under Settings. Also new: per-tab settings and feed, and
+  upright 3D balloons and airships.
 - **AR diorama mode, matured.** The scope clips to an open-top box you
   place on real furniture and resize from the wrist menu; panning
   slides the map beneath the fixed frame (yaw-only, so a tilted head

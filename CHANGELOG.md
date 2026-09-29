@@ -8,9 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.11.0] - 2026-09-28
+
+Aircraft glide now. Big thanks to [@auggiesoft](https://github.com/auggiesoft)
+for contributing smooth motion (#14).
+Thanks as well to [@rknobbe](https://github.com/rknobbe) for the
+reports behind the settings and airship fixes (#12, #13).
+
 ### Added
 
-- **Smooth motion.** Aircraft glide between position updates instead of
+- **Smooth motion.** (#14, thanks @auggiesoft) Aircraft glide between position updates instead of
   stepping once per feed tick. Each aircraft is shown about one update
   interval in the past (1.2x its own cadence, 1-12 s) and interpolated
   between its last two real fixes; late data freezes at the newest fix
@@ -19,8 +28,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   slower cadence is re-learned after three such gaps). Live mode only;
   historical playback is unchanged. `Settings -> Smooth motion`
   and the wrist menu toggle it, default on.
+- **Per-tab settings and feed.** Each browser tab keeps its own settings
+  and active feed, so two tabs can show different views side by side,
+  and a reload keeps that tab's choices. New tabs start from the most
+  recent change made in any tab. (#12)
 
 ### Fixed
+
+- **Balloons stand up, and blimps are blimps.** tar1090's balloon is a
+  side-view drawing, so the extruded marker lay on its side. Balloons
+  are now an upright envelope with a basket, and airships get a finned
+  hull with a gondola that follows the track. Airships reporting emitter
+  category B2 (the Goodyear blimps, anything described as an airship, or
+  any type code other than `BALL`) no longer render as balloons. (#13)
 
 - **Live-only installs stop calling a track-service that isn't there.**
   With `ENABLE_HISTORICAL` off, the local feed no longer tries the
