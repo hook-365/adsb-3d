@@ -19,7 +19,7 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 > **Ran the older monolithic version?** This is a ground-up rewrite and
 > carries **breaking changes** — read [Upgrading](#upgrading) before you pull.
 
-![ADS-B 3D live view](Live.png)
+![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
 
 ## Built with the community
 
@@ -103,8 +103,7 @@ broadcast. Filter pills (`All / Air / Ground / Mil / Emerg`) drive both
 the list and the 3D scene; emergency squawks get a pulsing red ring.
 Mobile-friendly — the sidebar collapses and settings open as a sheet.
 
-![Aircraft list with filter pills](Sidebar.png)
-![Aircraft detail card](Aircraft-Details.png)
+![Following a SkyWest E175 inbound to Salt Lake: 3D silhouette over terrain, detail card with photo, route and airframe, aircraft list with filter pills](Aircraft-Details.jpg)
 
 **Historical mode** (needs track-service + TimescaleDB) — scrub a
 timestamp cursor across the last 1h / 24h / 7d at 1×–60× speed. The **3D
@@ -112,7 +111,7 @@ airway-density** overlay renders every flight path at its real altitude,
 so busy airways and approach corridors light up as bright bundles in the
 sky.
 
-![3D airway-density heatmap](Heatmap.png)
+![A week of traffic as a 3D airway-density heatmap, cruise-altitude airways above low-altitude local traffic](Heatmap.jpg)
 
 **ACARS** (needs acars-service) — per-aircraft datalink messages in the
 detail card with an OOOI flight-phase chip (taxi-out / airborne / taxi-in
@@ -129,6 +128,8 @@ ping** on the map at that spot, even for aircraft outside ADS-B range
 (toggle: *ACARS position pings*, Map settings). Messages are matched to
 aircraft by ICAO hex (decimal addresses from vdlm2dec are normalized),
 then by flight number or registration.
+
+![Docked ACARS panel with decoded position and waypoint reports, and A badges in the aircraft list](Acars.jpg)
 
 **Multi-feed** — point at several receivers and the status bar grows a
 feed picker. Switching is in-place — no page reload.
@@ -175,6 +176,8 @@ forbid server-side proxying or caching and require each deployment to
 use its own key. Carto currently serves us raster PNG tiles; they have
 announced raster is being retired in favour of vector tiles, which this
 Three.js texture pipeline does not yet consume.
+
+![The same view over Salt Lake City on four basemaps: satellite, hillshade, FAA sectional, and topo, with 3D terrain at ×12](Basemaps.jpg)
 
 **High-res basemaps** — an optional sharper-tile mode fetches the
 basemap one zoom level deeper (4× the tiles for the same coverage).
