@@ -10,6 +10,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.11.1] - 2026-09-30
+
+Flight routes for everyone. Thanks to [@rknobbe](https://github.com/rknobbe)
+for asking (#15).
+
+### Fixed
+
+- **Routes show up on live-only installs.** Origin and destination in
+  the detail panel used to come from track-service, so installs without
+  historical playback never showed them. Lookups now go straight to
+  adsb.im through the main container's nginx (a new `/routeset` proxy,
+  POST-only and rate-limited), no track-service needed. (#15)
+- **Doubtful routes are marked as doubtful.** Each lookup now sends the
+  aircraft's real position, so adsb.im can check the route against it.
+  Routes that don't fit (stale schedules, reused callsigns) are dimmed
+  with a "?" and a tooltip instead of shown as fact. (#15)
+- **Multi-stop flights show the leg being flown.** A flight number that
+  covers several legs (e.g. DAL-PHX-LAS) shows the current leg, with
+  the full chain on hover. (#15)
+
+### Removed
+
+- **track-service `/route/{callsign}` and `/route/batch`.** Nothing
+  calls them anymore; route lookups live in the frontend and nginx.
+
+---
+
 ## [0.11.0] - 2026-09-28
 
 Aircraft glide now. Big thanks to [@auggiesoft](https://github.com/auggiesoft)

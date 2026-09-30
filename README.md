@@ -43,7 +43,8 @@ This project is better because people showed up:
 - **[@rknobbe](https://github.com/rknobbe)** — asked the "can it render
   the mountains?" question ([#7](https://github.com/hook-365/adsb-3d/issues/7)) that became 3D terrain, then
   reported the settings bug behind tab-scoped settings ([#12](https://github.com/hook-365/adsb-3d/issues/12)) and the sideways
-  blimp that became real 3D balloons and airships ([#13](https://github.com/hook-365/adsb-3d/issues/13)).
+  blimp that became real 3D balloons and airships ([#13](https://github.com/hook-365/adsb-3d/issues/13)), and asked for
+  flight routes on live-only installs ([#15](https://github.com/hook-365/adsb-3d/issues/15)).
 - **[@auggiesoft](https://github.com/auggiesoft)**: contributed smooth
   motion ([#14](https://github.com/hook-365/adsb-3d/pull/14)), which makes aircraft
   glide between position updates instead of stepping, with adaptive
@@ -54,6 +55,9 @@ and translations count just as much as code.
 
 ## What's new
 
+- **v0.11.1: routes for everyone.** Origin and destination now show on
+  live-only installs too, and routes that don't match where the
+  aircraft actually is are marked with a "?" instead of shown as fact.
 - **v0.11.0: aircraft glide.** Smooth motion moves aircraft between
   position updates instead of ticking once per feed update, most
   noticeably on sparse remote feeds and in a headset. Each aircraft is
