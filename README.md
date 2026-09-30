@@ -55,6 +55,10 @@ and translations count just as much as code.
 
 ## What's new
 
+- **v0.11.2: fewer wrong routes.** Private and GA aircraft flying under
+  their registration no longer get an old route from the lookup, and
+  routes that don't match the aircraft's position carry an "Unverified"
+  label.
 - **v0.11.1: routes for everyone.** Origin and destination now show on
   live-only installs too, and routes that don't match where the
   aircraft actually is are marked with a "?" instead of shown as fact.

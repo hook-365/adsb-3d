@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.11.2] - 2026-09-30
+
+Routes you can trust a little more. Thanks to
+[@rknobbe](https://github.com/rknobbe) for the report (#15).
+
 ### Fixed
 
 - **No routes for registration callsigns.** adsb.im maps a callsign to
@@ -15,8 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   aircraft flying under its registration (N484EM) got an old trip from
   its history. Route lookups now only run for airline-style callsigns
   (three-letter airline code, then a digit), and other aircraft show no
-  route. Thanks to [@rknobbe](https://github.com/rknobbe) for the
-  report (#15).
+  route. (#15)
 - **Doubtful routes are easier to spot.** The small "?" beside a route
   adsb.im can't square with the aircraft's position is now an
   "Unverified" label, in the detail panel and the stereo panel. (#15)
