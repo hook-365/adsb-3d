@@ -3,6 +3,7 @@ export const detailStrings = {
   'detail.click_to_copy': 'Clic para copiar',
   'detail.route_source_acars': 'ACARS',
   'detail.route_source_acars_tooltip': 'Destino según enlace de datos ACARS',
+  'detail.route_unverified': 'No verificada',
   'detail.route_implausible_tooltip': 'La ruta no coincide con la posición de la aeronave; puede estar desactualizada',
   'detail.eta': 'ETA {time}',
   'detail.phase_at_gate': 'En puerta',

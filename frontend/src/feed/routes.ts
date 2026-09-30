@@ -34,6 +34,17 @@ export interface RouteQuery {
 
 const ROUTESET_URL = '/routeset';
 
+/**
+ * Airline-style callsign: three-letter ICAO airline code then a digit
+ * (UAL123, SWA1234). adsb.im maps a callsign to the route that flight
+ * number normally flies, so it only means something for scheduled
+ * flights. A registration callsign (N484EM, GABCD) flies somewhere
+ * different every trip, and any route on file for it is an old one.
+ */
+export function isAirlineCallsign(callsign: string): boolean {
+  return /^[A-Z]{3}\d/.test(callsign.trim().toUpperCase());
+}
+
 const cache = new Map<string, RouteInfo | null>();
 const inflight = new Map<string, Promise<RouteInfo | null>>();
 
@@ -160,6 +171,10 @@ export function getRoute(callsign: string): RouteInfo | null | undefined {
 export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
   const cached = cache.get(query.callsign);
   if (cached !== undefined) return Promise.resolve(cached);
+  if (!isAirlineCallsign(query.callsign)) {
+    cache.set(query.callsign, null);
+    return Promise.resolve(null);
+  }
   const existing = inflight.get(query.callsign);
   if (existing) return existing;
   const p = fetchRoutes([query])
@@ -203,6 +218,10 @@ export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
       if (!a.callsign) continue;
       if (cache.has(a.callsign)) continue;
       if (inflight.has(a.callsign)) continue;
+      if (!isAirlineCallsign(a.callsign)) {
+        cache.set(a.callsign, null);
+        continue;
+      }
       if (!queued.has(a.callsign)) added = true;
       queued.set(a.callsign, { callsign: a.callsign, lat: a.lat, lon: a.lon });
     }

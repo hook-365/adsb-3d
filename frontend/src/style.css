@@ -2508,15 +2508,15 @@ body.xr-on .acars-toggle {
 
 #panel-detail .route .route-doubt {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
-  border-radius: 50%;
-  width: 14px;
-  height: 14px;
-  line-height: 12px;
-  text-align: center;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 3px;
+  padding: 1px 5px;
   cursor: help;
 }
 

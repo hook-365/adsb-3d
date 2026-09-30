@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { currentLegIndex, normalizeRoute, type RawRouteEntry } from '../src/feed/routes';
+import { currentLegIndex, isAirlineCallsign, normalizeRoute, type RawRouteEntry } from '../src/feed/routes';
 
 const DAL = { iata: 'DAL', icao: 'KDAL', name: 'Dallas Love Field', lat: 32.85, lon: -96.85 };
 const PHX = { iata: 'PHX', icao: 'KPHX', name: 'Phoenix Sky Harbor', lat: 33.43, lon: -112.01 };
 const LAS = { iata: 'LAS', icao: 'KLAS', name: 'Harry Reid', lat: 36.08, lon: -115.15 };
+
+describe('isAirlineCallsign', () => {
+  it('accepts airline code plus flight number', () => {
+    for (const cs of ['UAL1', 'SWA1234', 'BAW12AB', 'dal2', ' AAL100 ']) {
+      expect(isAirlineCallsign(cs)).toBe(true);
+    }
+  });
+
+  it('rejects registrations and other non-flight-number callsigns', () => {
+    // N484EM is #15's example: adsb.im had an old MSP-EWR trip on file.
+    for (const cs of ['N484EM', 'N12345', 'GABCD', 'CFABC', 'DEABC', '']) {
+      expect(isAirlineCallsign(cs)).toBe(false);
+    }
+  });
+});
 
 describe('currentLegIndex', () => {
   it('picks the leg the position sits on', () => {

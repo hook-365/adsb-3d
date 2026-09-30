@@ -8,6 +8,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **No routes for registration callsigns.** adsb.im maps a callsign to
+  the route that flight number normally flies, so a private or GA
+  aircraft flying under its registration (N484EM) got an old trip from
+  its history. Route lookups now only run for airline-style callsigns
+  (three-letter airline code, then a digit), and other aircraft show no
+  route. Thanks to [@rknobbe](https://github.com/rknobbe) for the
+  report (#15).
+- **Doubtful routes are easier to spot.** The small "?" beside a route
+  adsb.im can't square with the aircraft's position is now an
+  "Unverified" label, in the detail panel and the stereo panel. (#15)
+
 ---
 
 ## [0.11.1] - 2026-09-30

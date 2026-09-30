@@ -302,7 +302,8 @@ export function createAircraftDetail(
     routeEl.title = http?.stops && !acarsDestActive ? http.stops.join(' → ') : '';
 
     // adsb.im couldn't square the route with the aircraft's position:
-    // likely stale or a reused callsign. Dim it rather than hide it. An
+    // likely stale or a reused callsign. Dim it and label it rather than
+    // hide it. An
     // ACARS destination comes from the aircraft itself, so it's not in doubt.
     const doubtful = !!http && !http.plausible && !acarsDestActive;
     routeEl.classList.toggle('implausible', doubtful);

@@ -12,6 +12,7 @@ import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact, fmtVerticalRate } from '../core/units';
 import { getTheme, subscribeTheme } from '../core/theme';
 import { getRoute, type RouteInfo } from '../feed/routes';
+import { t as tr } from '../core/i18n';
 import { getAcarsMessages } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
 import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
@@ -158,10 +159,10 @@ export class StereoPanel {
 
     // Route, when the cache has it.
     if (route) {
-      // Doubtful routes (adsb.im vs. position) are dimmed with a trailing "?".
+      // Doubtful routes (adsb.im vs. position) are dimmed and labeled.
       ctx.fillStyle = route.plausible ? t.fg : t.muted;
       ctx.font = '30px ui-monospace, "JetBrains Mono", Menlo, monospace';
-      ctx.fillText(`${route.origin} → ${route.destination}${route.plausible ? '' : ' ?'}`, 28, 148);
+      ctx.fillText(`${route.origin} → ${route.destination}${route.plausible ? '' : `  ${tr('detail.route_unverified')}`}`, 28, 148);
     }
 
     // Telemetry row: alt (+VS), speed, heading, squawk, range from home.
