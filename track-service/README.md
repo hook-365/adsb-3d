@@ -24,8 +24,6 @@ Combined collector + REST API service for historical aircraft track data.
 - `/stats/records` - Highest altitude and fastest groundspeed records
 - `/stats/time-analysis` - Time-of-day and day-of-week traffic patterns
 - `/stats/database` - Database size and TimescaleDB compression stats
-- `/route/{callsign}` - Single callsign → origin/destination route lookup
-- `/route/batch` - Batch callsign → route lookup
 - `/docs` - Swagger API documentation
 
 **WebSocket:**
@@ -178,30 +176,6 @@ Live database size, per-table sizes, TimescaleDB compression status (enabled,
 total chunks, compressed chunks, ratio), and row counts for both tables.
 
 Response: `{database_size, tables: [{schema, table, size}], compression: {enabled, total_chunks, compressed_chunks, compression_ratio}, row_counts: {aircraft_positions, aircraft_metadata}}`
-
-### Single Route Lookup
-```
-GET /route/{callsign}
-```
-Resolves one callsign to an origin/destination airport pair via the adsb.im
-routeset API. Results are cached in memory (1 h for positive, 5 min for
-negative). Sets `Cache-Control` and `ETag` response headers so the browser
-HTTP cache absorbs reloads; returns `304 Not Modified` when the ETag matches.
-
-Response: `{callsign, origin, destination, origin_name, destination_name, origin_icao, destination_icao, plausible, source: "adsb.im"}`
-
-### Batch Route Lookup
-```
-POST /route/batch
-Content-Type: application/json
-
-{"callsigns": ["AAL1690", "UAL432", ...]}  # up to 100 callsigns
-```
-Batch callsign → origin/destination lookup via adsb.im. Cache hits are
-returned immediately; misses are fetched from adsb.im in a single request.
-A circuit breaker opens for 120 s after 5 consecutive upstream failures.
-
-Response: `{results: {<callsign>: {callsign, origin, destination, ...}}, cached_count, fetched_count}`
 
 ## Architecture
 

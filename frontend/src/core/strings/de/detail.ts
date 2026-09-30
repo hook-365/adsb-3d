@@ -3,6 +3,7 @@ export const detailStrings = {
   'detail.click_to_copy': 'Zum Kopieren klicken',
   'detail.route_source_acars': 'ACARS',
   'detail.route_source_acars_tooltip': 'Ziel aus ACARS-Datalink',
+  'detail.route_implausible_tooltip': 'Route passt nicht zur Position des Flugzeugs und ist möglicherweise veraltet',
   'detail.eta': 'ETA {time}',
   'detail.phase_at_gate': 'Am Gate',
   'detail.phase_taxi_out': 'Rollt zum Start',

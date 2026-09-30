@@ -4,6 +4,7 @@ export const detailStrings = {
   'detail.click_to_copy': 'Click to copy',
   'detail.route_source_acars': 'ACARS',
   'detail.route_source_acars_tooltip': 'Destination from ACARS datalink',
+  'detail.route_implausible_tooltip': "Route doesn't match this aircraft's position; it may be outdated",
   'detail.eta': 'ETA {time}',
   'detail.phase_at_gate': 'At gate',
   'detail.phase_taxi_out': 'Taxiing out',

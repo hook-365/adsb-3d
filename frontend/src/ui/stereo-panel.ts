@@ -11,7 +11,7 @@ import type { AcarsMessage } from '../feed/acars';
 import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact, fmtVerticalRate } from '../core/units';
 import { getTheme, subscribeTheme } from '../core/theme';
-import { getRoute } from '../feed/routes';
+import { getRoute, type RouteInfo } from '../feed/routes';
 import { getAcarsMessages } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
 import { drawCoverPhoto, roundRect, withAlpha } from '../world/canvas-ui';
@@ -105,7 +105,7 @@ export class StereoPanel {
     const acarsKey = acars.length ? `${acars.length}@${acars[0]!.time}` : '';
     const key = [
       a.hex, a.callsign, a.altFt, a.groundSpeedKt, a.trackDeg, a.verticalRateFpm,
-      a.squawk, a.emergency, route?.origin, route?.destination, acarsKey,
+      a.squawk, a.emergency, route?.origin, route?.destination, route?.plausible, acarsKey,
     ].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
@@ -114,7 +114,7 @@ export class StereoPanel {
 
   private draw(
     a: Aircraft,
-    route: { origin?: string | null; destination?: string | null } | null,
+    route: RouteInfo | null,
     acars: readonly AcarsMessage[],
   ): void {
     const t = getTheme().tokens;
@@ -157,10 +157,11 @@ export class StereoPanel {
     ctx.fillText(truncateToWidth(ctx, identity, topRowMax), 28, 104);
 
     // Route, when the cache has it.
-    if (route?.origin || route?.destination) {
-      ctx.fillStyle = t.fg;
+    if (route) {
+      // Doubtful routes (adsb.im vs. position) are dimmed with a trailing "?".
+      ctx.fillStyle = route.plausible ? t.fg : t.muted;
       ctx.font = '30px ui-monospace, "JetBrains Mono", Menlo, monospace';
-      ctx.fillText(`${route.origin ?? '????'} → ${route.destination ?? '????'}`, 28, 148);
+      ctx.fillText(`${route.origin} → ${route.destination}${route.plausible ? '' : ' ?'}`, 28, 148);
     }
 
     // Telemetry row: alt (+VS), speed, heading, squawk, range from home.

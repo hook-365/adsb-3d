@@ -141,6 +141,7 @@ export function createAircraftDetail(
   const routeNamesEl = document.getElementById('detail-route-names') as HTMLElement;
   const routeSourceEl = document.getElementById('detail-route-source') as HTMLElement;
   const routeEtaEl = document.getElementById('detail-route-eta') as HTMLElement;
+  const routeDoubtEl = document.getElementById('detail-route-doubt') as HTMLElement;
   const originEl = document.getElementById('detail-origin')!;
   const destEl = document.getElementById('detail-destination')!;
   const phaseRowEl = document.getElementById('detail-phase-row') as HTMLElement;
@@ -265,7 +266,7 @@ export function createAircraftDetail(
       if (pendingRoute !== a.callsign) {
         pendingRoute = a.callsign;
         const target = a.callsign;
-        void ensureRoute(target).then(() => {
+        void ensureRoute({ callsign: target, lat: a.lat, lon: a.lon }).then(() => {
           if (selectedHex && store.snapshot.get(selectedHex)?.callsign === target) {
             const sa = store.snapshot.get(selectedHex);
             if (sa) updateRoute(sa);
@@ -297,6 +298,16 @@ export function createAircraftDetail(
     originEl.textContent = origin ?? '?';
     destEl.textContent = destination ?? '?';
     routeEl.hidden = false;
+    // Multi-leg flight numbers: we show the current leg, tooltip the chain.
+    routeEl.title = http?.stops && !acarsDestActive ? http.stops.join(' → ') : '';
+
+    // adsb.im couldn't square the route with the aircraft's position:
+    // likely stale or a reused callsign. Dim it rather than hide it. An
+    // ACARS destination comes from the aircraft itself, so it's not in doubt.
+    const doubtful = !!http && !http.plausible && !acarsDestActive;
+    routeEl.classList.toggle('implausible', doubtful);
+    routeDoubtEl.hidden = !doubtful;
+    routeDoubtEl.title = doubtful ? t('detail.route_implausible_tooltip') : '';
 
     if (acarsDestActive) {
       routeSourceEl.textContent = t('detail.route_source_acars');

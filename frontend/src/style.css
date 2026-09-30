@@ -2501,6 +2501,25 @@ body.xr-on .acars-toggle {
   line-height: 1.3;
 }
 
+#panel-detail .route.implausible .airport,
+#panel-detail .route.implausible .arrow {
+  opacity: 0.5;
+}
+
+#panel-detail .route .route-doubt {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+  text-align: center;
+  cursor: help;
+}
+
 #panel-detail .route .route-source {
   flex-shrink: 0;
   font-size: 9px;
