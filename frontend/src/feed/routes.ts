@@ -9,8 +9,8 @@ import type { AircraftStore } from '../aircraft/store';
 // returns a `plausible` flag, which we keep so the UI can mark stale or
 // wrong routes instead of stating them as fact.
 //
-// On first paint (and whenever new callsigns appear in the feed), debounce
-// briefly then POST the unseen set in one shot. Subsequent per-callsign
+// On first paint (and whenever new callsigns appear in the feed), collect
+// for BATCH_WINDOW_MS then POST the unseen set in one shot. Subsequent per-callsign
 // reads from `getRoute()` hit the cache. Both resolutions and "no route
 // known" are cached so we don't re-ask.
 
@@ -46,21 +46,32 @@ export function isAirlineCallsign(callsign: string): boolean {
 }
 
 const cache = new Map<string, RouteInfo | null>();
-const inflight = new Map<string, Promise<RouteInfo | null>>();
+// Callers waiting on a callsign that is queued for the next batch.
+const waiters = new Map<string, Array<(route: RouteInfo | null) => void>>();
 
-/** Drop all cached and in-flight route lookups. Used on feed switch. */
-export function clearRouteCache(): void {
-  cache.clear();
-  inflight.clear();
+function settle(callsign: string): void {
+  const list = waiters.get(callsign);
+  if (!list) return;
+  waiters.delete(callsign);
+  const value = cache.get(callsign) ?? null;
+  for (const resolve of list) resolve(value);
 }
 
-const BATCH_DEBOUNCE_MS = 300;
+/** Drop all cached route lookups and release anyone waiting. Used on feed switch. */
+export function clearRouteCache(): void {
+  cache.clear();
+  for (const [callsign, list] of waiters) {
+    waiters.delete(callsign);
+    for (const resolve of list) resolve(null);
+  }
+}
+
 const BATCH_MAX_CALLSIGNS = 100;
-// adsb.im asks callers to group callsigns for at least 30 s before posting.
-// The first batch after load goes out after the short debounce (one request
-// per page view is unavoidable); every later batch waits until at least this
-// long after the previous one, collecting new callsigns in the meantime.
-const BATCH_MIN_INTERVAL_MS = 30_000;
+// adsb.im (a one-person hobby service) asks callers to collect callsigns
+// for a minute or more and post them in one request
+// (hook-365/adsb-aircraft-tracker#7). The first unknown callsign starts the
+// timer; everything that appears before it fires goes out together.
+const BATCH_WINDOW_MS = 60_000;
 
 interface RawAirport {
   iata?: string | null;
@@ -155,12 +166,12 @@ async function fetchRoutes(queries: RouteQuery[]): Promise<void> {
     }
   } catch {
     // Mark each as null so we don't spam retries (rate limit, upstream
-    // down). The click-to-select path won't retry either; a feed switch
-    // or reload clears the cache.
+    // down). A feed switch or reload clears the cache.
     for (const q of queries) {
       if (!cache.has(q.callsign)) cache.set(q.callsign, null);
     }
   }
+  for (const q of queries) settle(q.callsign);
 }
 
 /** Returns cached entry, or `undefined` if the callsign hasn't been resolved yet. */
@@ -169,9 +180,11 @@ export function getRoute(callsign: string): RouteInfo | null | undefined {
 }
 
 /**
- * Per-callsign fetch (for the click-to-select path that wants an answer
- * fast, not whenever the next batch happens to fire). Coalesces against
- * any in-flight request for the same callsign.
+ * Per-callsign lookup for the click-to-select path. Resolves from the
+ * cache, or once the batch prefetcher's next request has answered for
+ * this callsign. It never sends a request of its own: a selected aircraft
+ * is in the store, so the prefetcher already has it queued, and one-off
+ * single-callsign requests are what adsb.im asked us to stop sending.
  */
 export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
   const cached = cache.get(query.callsign);
@@ -180,18 +193,16 @@ export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
     cache.set(query.callsign, null);
     return Promise.resolve(null);
   }
-  const existing = inflight.get(query.callsign);
-  if (existing) return existing;
-  const p = fetchRoutes([query])
-    .then(() => cache.get(query.callsign) ?? null)
-    .finally(() => inflight.delete(query.callsign));
-  inflight.set(query.callsign, p);
-  return p;
+  return new Promise((resolve) => {
+    const list = waiters.get(query.callsign);
+    if (list) list.push(resolve);
+    else waiters.set(query.callsign, [resolve]);
+  });
 }
 
 /**
  * Watch the store and warm the cache for callsigns we haven't seen yet,
- * batching them into a single routeset POST after a short debounce.
+ * batching them into a single routeset POST once the collection window closes.
  *
  * Returns an `unsubscribe` function so feed-switch teardown can stop the
  * prefetcher from emitting requests after switch.
@@ -199,31 +210,24 @@ export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
 export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let detached = false;
-  let lastFlushAt: number | null = null;
   // Latest position per queued callsign, so the lookup is checked
   // against where the aircraft is when the batch fires.
   const queued = new Map<string, RouteQuery>();
 
-  // Debounce for the first batch; afterwards never sooner than
-  // BATCH_MIN_INTERVAL_MS after the previous one.
-  const delayUntilNextFlush = (): number => {
-    if (lastFlushAt === null) return BATCH_DEBOUNCE_MS;
-    return Math.max(BATCH_DEBOUNCE_MS, lastFlushAt + BATCH_MIN_INTERVAL_MS - Date.now());
-  };
-
+  // Start the collection window on the first queued callsign; later
+  // arrivals ride along until it fires.
   const schedule = (): void => {
     if (detached || timer !== null) return;
-    timer = setTimeout(flush, delayUntilNextFlush());
+    timer = setTimeout(flush, BATCH_WINDOW_MS);
   };
 
   const flush = (): void => {
     timer = null;
     if (detached || queued.size === 0) return;
-    lastFlushAt = Date.now();
     const batch = Array.from(queued.values()).slice(0, BATCH_MAX_CALLSIGNS);
     for (const q of batch) queued.delete(q.callsign);
     void fetchRoutes(batch).then(() => {
-      // If more arrived during the request, queue the next (spaced) batch.
+      // Anything that arrived during the request opens a new window.
       if (queued.size > 0) schedule();
     });
   };
@@ -234,7 +238,6 @@ export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
     for (const a of snapshot.values()) {
       if (!a.callsign) continue;
       if (cache.has(a.callsign)) continue;
-      if (inflight.has(a.callsign)) continue;
       if (!isAirlineCallsign(a.callsign)) {
         cache.set(a.callsign, null);
         continue;
