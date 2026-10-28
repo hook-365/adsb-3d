@@ -34,10 +34,33 @@ logger = logging.getLogger(__name__)
 # FASTAPI APPLICATION
 # ============================================================================
 
+
+# ============================================================================
+# VERSION
+# ============================================================================
+# One version for the whole project: the repo-root VERSION file, copied into
+# the image next to this file at build time (with "+<build>" metadata for
+# non-release builds). Read once here; everything that reports a version —
+# FastAPI metadata, the root endpoint, outbound User-Agents — uses APP_VERSION.
+# Falls back to the repo-root file when run from a checkout (tests, dev).
+def _read_version() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "VERSION"), os.path.join(here, os.pardir, "VERSION")):
+        try:
+            with open(candidate, encoding="utf-8") as fh:
+                value = fh.read().strip()
+            if value:
+                return value
+        except OSError:
+            continue
+    return "0.0.0+unknown"
+
+
+APP_VERSION = _read_version()
 app = FastAPI(
     title="ADS-B Track Service",
     description="Historical aircraft track collection and API",
-    version="1.0.0"
+    version=APP_VERSION
 )
 
 # CORS for 3D viewer access
@@ -978,7 +1001,7 @@ async def root():
     """API root endpoint"""
     return {
         "name": "ADS-B Track Service",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "docs": "/docs",
         "components": {
             "collector": "active",
@@ -1007,7 +1030,7 @@ HEALTH_CACHE_TTL = 1.0
 # ---------------------------------------------------------------------------
 ROUTE_API_URL = os.getenv("ROUTE_API_URL", "http://adsb.im/api/0/routeset")
 ROUTE_API_CONTACT = os.getenv("ROUTE_API_CONTACT", "").strip()
-ROUTE_API_USER_AGENT = "adsb-3d/1.0 track-service (+https://github.com/hook-365/adsb-3d" + (
+ROUTE_API_USER_AGENT = f"adsb-3d/{APP_VERSION} track-service (+https://github.com/hook-365/adsb-3d" + (
     f"; {ROUTE_API_CONTACT}" if ROUTE_API_CONTACT else "") + ")"
 ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(4 * 3600)))
 ROUTE_BATCH_WINDOW = float(os.getenv("ROUTE_BATCH_WINDOW_SECONDS", "60"))

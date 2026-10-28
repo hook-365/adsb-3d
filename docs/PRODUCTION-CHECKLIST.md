@@ -128,8 +128,17 @@ Test aircraft.json ingestion with:
 
 ## Release steps
 
-1. Tag the commit: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-2. Push tag to trigger the publish workflow: `git push origin vX.Y.Z`
-3. Confirm packages appear at `https://github.com/orgs/hook-365/packages`
-4. Update `CHANGELOG.md` with the release date
-5. Create a GitHub Release referencing the tag with the changelog entry
+`VERSION` (repo root) is the only place the version is set; never edit it,
+`frontend/package.json` or the changelog date by hand for a release.
+
+1. Make sure `CHANGELOG.md` has everything under `## [Unreleased]` and the
+   tree is clean.
+2. `scripts/release.sh X.Y.Z` — writes `VERSION` + `package.json`, dates the
+   changelog section, commits `release: vX.Y.Z`, creates the annotated tag.
+3. Review `git show`, then `git push origin master vX.Y.Z`. The publish
+   workflow's `version-check` job fails the build if `VERSION`,
+   `package.json` and the tag disagree; tag builds get no `+build` suffix.
+4. Confirm packages appear at `https://github.com/orgs/hook-365/packages`
+   and `docker run --rm ghcr.io/hook-365/adsb-track-service:X.Y.Z cat VERSION`
+   prints exactly `X.Y.Z`.
+5. Create a GitHub Release referencing the tag with the changelog entry.

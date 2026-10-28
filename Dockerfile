@@ -26,6 +26,15 @@ RUN apk add --no-cache bc wget jq gettext curl
 # nginx tile cache dir and tle cache dir removed (satellite dropped)
 RUN mkdir -p /var/cache/nginx/tiles
 
+# Project version: VERSION at the repo root is the single source of truth.
+# entrypoint.sh reads /VERSION and feeds it to every User-Agent, config.js
+# and the UI. ADSB3D_BUILD (short git sha, "local", ...) is appended as
+# semver build metadata for anything that is not a tagged release, so a
+# master or local build can never be mistaken for the published version.
+ARG ADSB3D_BUILD=
+COPY VERSION /VERSION
+RUN if [ -n "$ADSB3D_BUILD" ]; then printf '%s+%s\n' "$(tr -d '[:space:]' < /VERSION)" "$ADSB3D_BUILD" > /VERSION; fi
+
 # Built frontend
 COPY --from=frontend-build /app/frontend/dist/ /usr/share/nginx/html/
 

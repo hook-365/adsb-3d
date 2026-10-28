@@ -219,3 +219,14 @@ work done.
   placeholder coordinates and TEST-NET (`192.0.2.x`) addresses.
 - `frontend/src/aircraft/shapes-data.json` is vendored from tar1090 and is
   **GPL v2+**; the rest of the source is MIT.
+- **Version:** `VERSION` at the repo root is the only place the version is
+  set. Never type a version number into nginx.conf, entrypoint.sh, the
+  Python services or the frontend — they read `/VERSION` (nginx image:
+  entrypoint → `ADSB3D_VERSION` / `ADSB3D_USER_AGENT` / `window.APP_VERSION`;
+  Python: `APP_VERSION`). Outbound User-Agents are
+  `adsb-3d/<version> (+https://github.com/hook-365/adsb-3d; $ROUTE_API_CONTACT)`
+  (track-service adds ` track-service`); never hardcode a contact. Release
+  with `scripts/release.sh X.Y.Z`; CI (`version-check`) rejects a mismatch
+  between `VERSION`, `frontend/package.json` and the tag. Non-release builds
+  get `+<sha>` (CI) or `+local` (compose) build metadata. The Python images
+  build with the repo root as context (`dockerfile: <svc>/Dockerfile`).

@@ -322,7 +322,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |
 | `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
-| `ROUTE_API_CONTACT` (track-service) | — | Contact (email or site) sent to adsb.im in the User-Agent of route lookups; they ask for one |
+| `ROUTE_API_CONTACT` (adsb-3d and track-service) | — | Contact (email or site) sent to adsb.im and tile providers in the User-Agent (`adsb-3d/<version> (+repo; contact)`); they ask for one. Unset = no contact sent, warning at start |
 | `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
 | `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |
 | `VOICE_STREAM_HOST` | — | required when voice is on; point at any reachable `host:port` (legacy Icecast block, not played by the frontend) |
@@ -383,6 +383,18 @@ pull, but review these first:
   host paths bind-mounted into them must be writable by that uid.
 
 Full detail in [CHANGELOG.md](CHANGELOG.md).
+
+### Versioning
+
+`VERSION` at the repository root is the single source of truth. Every image
+copies it at build time and reports it everywhere a version appears: the
+settings panel (`v0.12.1`), the `/api` and `/acars-api` root endpoints, the
+nginx `User-Agent` sent to adsb.im and tile providers, and track-service's
+`adsb-3d/<version> track-service` agent. Images built from a commit that is
+not a release tag carry build metadata (`0.12.1+a1b2c3d`, or `+local` for a
+local compose build), so a non-release build can never be mistaken for the
+published one. Releases are cut with `scripts/release.sh X.Y.Z`; CI refuses
+to publish if `VERSION`, `frontend/package.json` and the tag disagree.
 
 ## Architecture
 

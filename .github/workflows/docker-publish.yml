@@ -19,6 +19,34 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # One version, everywhere. VERSION at the repo root is the source of truth;
+  # frontend/package.json must match it and a release tag must equal vVERSION.
+  # Non-release builds get "+<short sha>" build metadata via ADSB3D_BUILD so a
+  # master image can never report the same string as the published release.
+  version-check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          PKG=$(node -p "require('./frontend/package.json').version")
+          echo "VERSION=$VERSION package.json=$PKG ref=$GITHUB_REF"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::VERSION '$VERSION' is not X.Y.Z"; exit 1; }
+          [[ "$PKG" == "$VERSION" ]] || { echo "::error::frontend/package.json version '$PKG' != VERSION '$VERSION' (run scripts/release.sh)"; exit 1; }
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$VERSION" ]] || { echo "::error::tag '$GITHUB_REF_NAME' != 'v$VERSION'"; exit 1; }
+            echo "build=" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   frontend-checks:
     uses: ./.github/workflows/frontend-ci.yml
 
@@ -26,7 +54,7 @@ jobs:
     uses: ./.github/workflows/backend-integration.yml
 
   build-and-push-viewer:
-    needs: [frontend-checks, backend-checks]
+    needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -64,6 +92,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          build-args: |
+            ADSB3D_BUILD=${{ needs.version-check.outputs.build }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -72,7 +102,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-track-service:
-    needs: [frontend-checks, backend-checks]
+    needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -109,7 +139,10 @@ jobs:
       - name: Build and push track-service
         uses: docker/build-push-action@v6
         with:
-          context: ./track-service
+          context: .
+          file: ./track-service/Dockerfile
+          build-args: |
+            ADSB3D_BUILD=${{ needs.version-check.outputs.build }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -118,7 +151,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-acars-service:
-    needs: [frontend-checks, backend-checks]
+    needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -155,7 +188,10 @@ jobs:
       - name: Build and push acars-service
         uses: docker/build-push-action@v6
         with:
-          context: ./acars-service
+          context: .
+          file: ./acars-service/Dockerfile
+          build-args: |
+            ADSB3D_BUILD=${{ needs.version-check.outputs.build }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

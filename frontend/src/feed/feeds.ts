@@ -82,6 +82,8 @@ declare global {
     FEEDS_CONFIG?: RawFeedConfig[] | null;
     FEED_MODE_CONFIG?: FeedModeConfig;
     ENV_CONFIG?: EnvConfigShape;
+    /** Project version from config.js (image /VERSION); "+<build>" marks a non-release build. */
+    APP_VERSION?: string;
   }
 }
 

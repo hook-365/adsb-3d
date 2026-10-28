@@ -8,6 +8,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **One version number, everywhere.** adsb.im's maintainer noticed our
+  requests arriving as `adsb-3d/1.0`, `adsb-3d/0.11` and `adsb-3d/0.12` on
+  the same day ([#16](https://github.com/hook-365/adsb-3d/issues/16)). The
+  `1.0` had been a placeholder in the nginx config since the first commit
+  and in both Python services' metadata; the real version lived only in
+  `package.json`. A repo-root `VERSION` file is now the single source of
+  truth: every image copies it at build time, and the settings panel, the
+  `/api` and `/acars-api` root endpoints, the nginx `User-Agent` (adsb.im,
+  tile providers, tile pre-cache) and track-service's
+  `adsb-3d/<version> track-service` agent all report it. Non-release builds
+  carry build metadata (`0.12.1+a1b2c3d`, `+local`). `scripts/release.sh`
+  cuts releases and CI refuses to publish when `VERSION`, `package.json`
+  and the tag disagree.
+- **Your contact, not ours.** The nginx route and tile proxies had the
+  project author's email hardcoded in the `User-Agent`, so every install
+  identified itself to adsb.im as the author. The viewer now reads
+  `ROUTE_API_CONTACT` (same variable track-service already used) and sends
+  no contact when it is unset, with a warning at start. Please set it.
+
+### Changed
+
+- track-service and acars-service images build from the repository root
+  (`context: .` + `dockerfile: <service>/Dockerfile`) so they can share
+  `VERSION`. Only matters if you build from source; published images are
+  unchanged in use.
+- The settings panel header shows the running version.
+
 ---
 
 ## [0.12.0] - 2026-10-28

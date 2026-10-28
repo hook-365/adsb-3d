@@ -637,6 +637,16 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   color: var(--fg);
 }
 
+.settings-version {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
 .settings-close {
   flex-shrink: 0;
   width: 28px;

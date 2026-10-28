@@ -4,14 +4,21 @@ WORKDIR /app
 
 # Install build deps, compile Python packages, then purge build tools — all in
 # one RUN layer so the compiler never appears in the final image history.
-COPY requirements.txt .
+COPY acars-service/requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ make libc6-dev \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y gcc g++ make libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Copy application
-COPY main.py .
-COPY decoder.py .
+# Copy application. Build context is the REPOSITORY ROOT (see
+# .github/workflows/docker-publish.yml and docker-compose.example.yml:
+# `context: .` + `dockerfile: acars-service/Dockerfile`) so the shared VERSION
+# file is available. ADSB3D_BUILD appends build metadata for non-release
+# builds, same convention as the viewer image.
+ARG ADSB3D_BUILD=
+COPY VERSION .
+RUN if [ -n "$ADSB3D_BUILD" ]; then printf '%s+%s\n' "$(tr -d '[:space:]' < VERSION)" "$ADSB3D_BUILD" > VERSION; fi
+COPY acars-service/main.py .
+COPY acars-service/decoder.py .
 
 # Non-root user for container security
 RUN useradd -r -u 10001 appuser && chown -R appuser /app

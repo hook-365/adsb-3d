@@ -557,6 +557,15 @@ export function mountSettingsPanel(): void {
   const title = document.createElement('h2');
   title.className = 'settings-title';
   title.textContent = t('settings.title');
+  // Version badge: the number users should quote in bug reports. It comes
+  // from config.js (window.APP_VERSION), which the container renders from
+  // its /VERSION file — the same value every User-Agent and health
+  // endpoint reports, so what is on screen is what the server says.
+  const version = document.createElement('span');
+  version.className = 'settings-version';
+  version.textContent = window.APP_VERSION ? `v${window.APP_VERSION}` : 'dev';
+  version.title = 'ADS-B 3D version';
+  title.appendChild(version);
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'settings-close';

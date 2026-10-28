@@ -49,7 +49,8 @@ services:
 
   track-service:
     build:
-      context: ../../track-service
+      context: ../..
+      dockerfile: track-service/Dockerfile
     environment:
       FEEDER_URL: http://fixture-feeder:8080
       COLLECTION_INTERVAL: "1"
@@ -79,7 +80,8 @@ services:
 
   acars-service:
     build:
-      context: ../../acars-service
+      context: ../..
+      dockerfile: acars-service/Dockerfile
     environment:
       ACARS_HOST: fixture-acars
       ACARS_PORT: "15550"
@@ -167,7 +169,8 @@ services:
 
   integration-tests:
     build:
-      context: ../../track-service
+      context: ../..
+      dockerfile: track-service/Dockerfile
     command: ["python", "/tests/verify.py"]
     environment:
       DB_HOST: timescaledb

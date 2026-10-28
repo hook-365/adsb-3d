@@ -13,6 +13,27 @@ if [ -n "$CARTO_API_KEY" ] && [ -n "$(printf '%s' "$CARTO_API_KEY" | tr -d 'A-Za
     exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Version and outbound identity. /VERSION is written at image build time from
+# the repo-root VERSION file (plus "+<build>" metadata for non-release builds)
+# and is the ONLY place a version number lives at runtime: the nginx
+# User-Agent for adsb.im / tile providers, the tile pre-cache fetcher and
+# config.js (shown in the settings panel) all read it from here.
+# ROUTE_API_CONTACT is the operator's contact adsb.im asks callers to send;
+# it is never defaulted to the project author's address.
+# ---------------------------------------------------------------------------
+ADSB3D_VERSION=$(tr -d '[:space:]' < /VERSION 2>/dev/null || true)
+: "${ADSB3D_VERSION:=0.0.0+unknown}"
+ROUTE_API_CONTACT=$(printf '%s' "${ROUTE_API_CONTACT:-}" | tr -d '"\\\n\r;()')
+if [ -n "$ROUTE_API_CONTACT" ]; then
+    ADSB3D_USER_AGENT="adsb-3d/${ADSB3D_VERSION} (+https://github.com/hook-365/adsb-3d; ${ROUTE_API_CONTACT})"
+else
+    ADSB3D_USER_AGENT="adsb-3d/${ADSB3D_VERSION} (+https://github.com/hook-365/adsb-3d)"
+    echo "[WARN] ROUTE_API_CONTACT is not set — route lookups to adsb.im will carry no contact; they ask for one"
+fi
+export ADSB3D_VERSION ADSB3D_USER_AGENT
+echo "[version] adsb-3d ${ADSB3D_VERSION} — User-Agent: ${ADSB3D_USER_AGENT}"
+
 # =============================================================================
 # Map Tile Pre-caching Function (runs in background)
 # =============================================================================
@@ -94,7 +115,7 @@ terrain_rgb|https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.
                     URL=$(echo "$URL_TEMPLATE" | sed "s/{z}/$ZOOM/g" | sed "s/{x}/$TILE_X/g" | sed "s/{y}/$TILE_Y/g")
 
                     # Download tile (silent, with timeout)
-                    if wget -q -T 10 --user-agent="adsb-3d/1.0 (homelab tile cache)" -O "$TILE_FILE" "$URL" 2>/dev/null; then
+                    if wget -q -T 10 --user-agent="$ADSB3D_USER_AGENT (tile pre-cache)" -O "$TILE_FILE" "$URL" 2>/dev/null; then
                         CACHED=$((CACHED + 1))
                     else
                         rm -f "$TILE_FILE"
@@ -368,6 +389,9 @@ const AUTO_BASE_PATH = (() => {
     // Default to root deployment
     return '';
 })();
+
+// Project version (from /VERSION in the image; "+<build>" marks a non-release build)
+window.APP_VERSION = '${ADSB3D_VERSION}';
 
 // Environment configuration
 window.ENV_CONFIG = {
@@ -801,7 +825,7 @@ export DNS_RESOLVER
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${ADSB3D_USER_AGENT} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then

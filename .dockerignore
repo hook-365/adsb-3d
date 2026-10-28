@@ -1,0 +1,17 @@
+# Build context is the repository root for all three images (the Python
+# services too, so they can COPY the shared VERSION file). Keep the
+# context small and deterministic.
+.git
+.github
+**/node_modules
+frontend/dist
+frontend/coverage
+recordings
+tests
+docs
+*.jpg
+*.mp4
+*.md
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache

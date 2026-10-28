@@ -35,10 +35,33 @@ logger = logging.getLogger(__name__)
 # FASTAPI APPLICATION
 # ============================================================================
 
+
+# ============================================================================
+# VERSION
+# ============================================================================
+# One version for the whole project: the repo-root VERSION file, copied into
+# the image next to this file at build time (with "+<build>" metadata for
+# non-release builds). Read once here; everything that reports a version —
+# FastAPI metadata, the root endpoint, outbound User-Agents — uses APP_VERSION.
+# Falls back to the repo-root file when run from a checkout (tests, dev).
+def _read_version() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "VERSION"), os.path.join(here, os.pardir, "VERSION")):
+        try:
+            with open(candidate, encoding="utf-8") as fh:
+                value = fh.read().strip()
+            if value:
+                return value
+        except OSError:
+            continue
+    return "0.0.0+unknown"
+
+
+APP_VERSION = _read_version()
 app = FastAPI(
     title="ACARS Service",
     description="ACARS message collection and API for adsb-3d",
-    version="1.0.0"
+    version=APP_VERSION
 )
 
 # CORS for 3D viewer access
@@ -761,7 +784,7 @@ async def root():
     """API root endpoint."""
     return {
         "name": "ACARS Service",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "docs": "/docs"
     }
 

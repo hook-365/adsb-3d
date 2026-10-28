@@ -33,6 +33,10 @@ services:
       - ALTITUDE=1000
       - LOCATION_NAME=My Station
       - FEEDER_URL=http://ultrafeeder
+      # Contact (email or site) sent to adsb.im in the User-Agent of route
+      # lookups and to tile providers — they ask for one. Nothing is sent
+      # if unset (the container warns at start). Same variable on track-service.
+      - ROUTE_API_CONTACT=you@example.com
 
       # ── Optional features ────────────────────────────────────────────
       - ENABLE_HISTORICAL=false       # true to enable historical playback

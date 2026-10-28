@@ -3,13 +3,20 @@ FROM python:3.11.13-slim
 WORKDIR /app
 
 # Install build tools (needed for asyncpg, aiohttp, etc. on ARM), then clean up
-COPY requirements.txt .
+COPY track-service/requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ make libc6-dev \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y gcc g++ make libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Copy application
-COPY main.py .
+# Copy application. Build context is the REPOSITORY ROOT (see
+# .github/workflows/docker-publish.yml and docker-compose.example.yml:
+# `context: .` + `dockerfile: track-service/Dockerfile`) so the shared VERSION
+# file is available. ADSB3D_BUILD appends build metadata for non-release
+# builds, same convention as the viewer image.
+ARG ADSB3D_BUILD=
+COPY VERSION .
+RUN if [ -n "$ADSB3D_BUILD" ]; then printf '%s+%s\n' "$(tr -d '[:space:]' < VERSION)" "$ADSB3D_BUILD" > VERSION; fi
+COPY track-service/main.py .
 
 # Non-root user for container security
 RUN useradd -r -u 10001 appuser && chown -R appuser /app
