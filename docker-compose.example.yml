@@ -103,6 +103,8 @@ services:
   #   environment:
   #     - FEEDER_URL=http://ultrafeeder
   #     - DB_HOST=timescaledb-adsb
+  #     # Shown to adsb.im in the User-Agent of shared route lookups (they ask for a contact)
+  #     - ROUTE_API_CONTACT=you@example.com
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
   #     - DB_USER=adsb

@@ -8,6 +8,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+Lighter on adsb.im. Their maintainer asked route API callers to batch,
+use http and identify themselves (hook-365/adsb-aircraft-tracker#7).
+
+### Added
+
+- **Shared route cache.** track-service now serves `/routeset`: a
+  cache shared by every open viewer, so adsb.im is asked about a
+  callsign at most once per 4 hours no matter how many browsers are
+  open, and unknown callsigns from all viewers are collected for 60 s
+  and sent in one request. nginx sends `/routeset` there and falls back
+  to the direct adsb.im proxy on live-only installs. `/api/routeset/stats`
+  shows viewer requests vs upstream calls. Set `ROUTE_API_CONTACT` on
+  track-service to put your contact in the User-Agent.
+
+### Changed
+
+- **Route lookups batch for a minute.** The first unknown callsign starts
+  a 60 s window and everything seen before it fires goes out together,
+  instead of a request per new flight after 300 ms. Selecting an aircraft
+  no longer sends its own request; it waits on the batch.
+- **Route requests go over plain http** and identify the project with a
+  contact in the User-Agent, as adsb.im asked.
+
 ---
 
 ## [0.11.2] - 2026-09-30

@@ -991,6 +991,176 @@ _health_cache: dict = {"ts": 0.0, "ok": False, "err": None}
 HEALTH_CACHE_TTL = 1.0
 
 
+# ---------------------------------------------------------------------------
+# Shared flight-route cache (adsb.im routeset)
+#
+# Every browser used to ask adsb.im for routes itself (via the nginx
+# /routeset proxy), so N open viewers meant N copies of every lookup and,
+# on a tab left open, one request per newly seen flight. adsb.im is a
+# one-person hobby service and asked callers to batch, use http and
+# identify themselves (hook-365/adsb-aircraft-tracker#7). This endpoint
+# answers all viewers from one cache: a callsign is asked about upstream
+# at most once per ROUTE_CACHE_TTL, and unknown callsigns from every
+# viewer are collected for ROUTE_BATCH_WINDOW seconds and sent in one
+# request. Callers with unknown callsigns wait (long-poll) for that batch
+# so the response is complete; cached callsigns answer immediately.
+# ---------------------------------------------------------------------------
+ROUTE_API_URL = os.getenv("ROUTE_API_URL", "http://adsb.im/api/0/routeset")
+ROUTE_API_CONTACT = os.getenv("ROUTE_API_CONTACT", "").strip()
+ROUTE_API_USER_AGENT = "adsb-3d/1.0 track-service (+https://github.com/hook-365/adsb-3d" + (
+    f"; {ROUTE_API_CONTACT}" if ROUTE_API_CONTACT else "") + ")"
+ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(4 * 3600)))
+ROUTE_BATCH_WINDOW = float(os.getenv("ROUTE_BATCH_WINDOW_SECONDS", "60"))
+ROUTE_BATCH_MAX = 100          # callsigns per upstream request
+ROUTE_BACKOFF = 600.0          # pause after a 403/429/5xx from upstream
+ROUTE_UPSTREAM_TIMEOUT = 20.0
+ROUTE_CALLSIGN_RE = re.compile(r"^[A-Z0-9]{2,8}$")
+
+
+class RouteBatcher:
+    """Per-callsign cache + one shared collection window for upstream calls."""
+
+    def __init__(self):
+        self.cache: dict = {}            # callsign -> (entry or None, expires_at monotonic)
+        self.pending: dict = {}          # callsign -> (lat, lng) waiting for the next batch
+        self._batch_done: Optional[asyncio.Future] = None
+        self._task: Optional[asyncio.Task] = None
+        self._blocked_until = 0.0
+        self.stats = {"requests": 0, "callsigns": 0, "cache_hits": 0, "upstream_calls": 0, "upstream_callsigns": 0}
+
+    def cached(self, callsign: str):
+        """(found, entry) — found False when unknown or expired."""
+        hit = self.cache.get(callsign)
+        if hit and hit[1] > time.monotonic():
+            return True, hit[0]
+        return False, None
+
+    async def lookup(self, planes: list) -> list:
+        """planes: [{callsign, lat, lng}]. Returns upstream-shaped entries for
+        every callsign with a known route (missing = no route known)."""
+        self.stats["requests"] += 1
+        wanted = []
+        for p in planes:
+            cs = str(p.get("callsign", "")).strip().upper()
+            if cs and ROUTE_CALLSIGN_RE.match(cs) and cs not in wanted:
+                wanted.append(cs)
+                self.stats["callsigns"] += 1
+                found, _ = self.cached(cs)
+                if found:
+                    self.stats["cache_hits"] += 1
+                elif cs not in self.pending:
+                    self.pending[cs] = (p.get("lat"), p.get("lng"))
+        unknown = [cs for cs in wanted if not self.cached(cs)[0]]
+        if unknown and time.monotonic() >= self._blocked_until:
+            await self._join_batch()
+        out = []
+        for cs in wanted:
+            found, entry = self.cached(cs)
+            if found and entry is not None:
+                out.append(entry)
+        return out
+
+    async def _join_batch(self):
+        if self._batch_done is None or self._batch_done.done():
+            self._batch_done = asyncio.get_running_loop().create_future()
+            self._task = asyncio.create_task(self._run_batch(self._batch_done))
+        await asyncio.shield(self._batch_done)
+
+    async def _run_batch(self, done: asyncio.Future):
+        try:
+            await asyncio.sleep(ROUTE_BATCH_WINDOW)
+            batch = list(self.pending.items())
+            self.pending.clear()
+            for i in range(0, len(batch), ROUTE_BATCH_MAX):
+                await self._fetch(batch[i:i + ROUTE_BATCH_MAX])
+        except Exception as e:  # never leave waiters hanging
+            logger.warning(f"routeset batch failed: {e}")
+        finally:
+            if not done.done():
+                done.set_result(None)
+            # Callsigns that arrived while the request was in flight start a new window
+            if self.pending and time.monotonic() >= self._blocked_until:
+                self._batch_done = asyncio.get_running_loop().create_future()
+                self._task = asyncio.create_task(self._run_batch(self._batch_done))
+
+    async def _fetch(self, batch: list):
+        """One upstream request for `batch` [(callsign, (lat, lng))]; caches every callsign."""
+        payload = {"planes": [{"callsign": cs, "lat": pos[0] or 0.0, "lng": pos[1] or 0.0} for cs, pos in batch]}
+        self.stats["upstream_calls"] += 1
+        self.stats["upstream_callsigns"] += len(batch)
+        status, data = await self._post_upstream(payload)
+        expires = time.monotonic() + ROUTE_CACHE_TTL
+        if status == 200 and isinstance(data, list):
+            by_cs = {}
+            for entry in data:
+                if isinstance(entry, dict) and entry.get("callsign"):
+                    by_cs[str(entry["callsign"]).strip().upper()] = entry
+            for cs, _ in batch:
+                self.cache[cs] = (by_cs.get(cs), expires)
+            logger.info(f"routeset: {len(batch)} callsigns in one upstream call, {len(by_cs)} routes "
+                        f"(totals: {self.stats['requests']} viewer requests, {self.stats['upstream_calls']} upstream calls)")
+            return
+        if status in (403, 429) or (status is not None and status >= 500):
+            self._blocked_until = time.monotonic() + ROUTE_BACKOFF
+            logger.warning(f"routeset upstream returned HTTP {status}; pausing route lookups for {ROUTE_BACKOFF:.0f}s")
+        else:
+            logger.warning(f"routeset upstream failed (status {status}); will retry these callsigns next window")
+        # Leave the batch uncached so it is retried after the pause, but
+        # don't make the same viewers re-wait for it: short negative cache.
+        for cs, _ in batch:
+            self.cache[cs] = (None, time.monotonic() + 60.0)
+
+    async def _post_upstream(self, payload: dict):
+        """Returns (status, json_or_None). Split out so tests can stub it."""
+        timeout = aiohttp.ClientTimeout(total=ROUTE_UPSTREAM_TIMEOUT)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(ROUTE_API_URL, json=payload,
+                                        headers={"User-Agent": ROUTE_API_USER_AGENT, "Accept": "application/json"}) as r:
+                    if r.status != 200:
+                        return r.status, None
+                    return 200, await r.json(content_type=None)
+        except Exception as e:
+            logger.warning(f"routeset upstream error: {e}")
+            return None, None
+
+
+route_batcher = RouteBatcher()
+
+
+class RoutePlane(BaseModel):
+    callsign: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class RouteSetRequest(BaseModel):
+    planes: List[RoutePlane]
+
+
+@app.post("/routeset")
+async def routeset(req: RouteSetRequest):
+    """Flight routes for a set of callsigns, shared-cached across all viewers.
+    Same request/response shape as adsb.im's /api/0/routeset."""
+    if len(req.planes) > 500:
+        raise HTTPException(status_code=413, detail="too many callsigns")
+    return await route_batcher.lookup([p.dict() for p in req.planes])
+
+
+@app.get("/routeset/stats")
+async def routeset_stats():
+    """How much the shared cache is saving adsb.im."""
+    now = time.monotonic()
+    return {
+        **route_batcher.stats,
+        "cached_callsigns": sum(1 for _, (_, exp) in route_batcher.cache.items() if exp > now),
+        "pending_callsigns": len(route_batcher.pending),
+        "backing_off": now < route_batcher._blocked_until,
+        "batch_window_seconds": ROUTE_BATCH_WINDOW,
+        "cache_ttl_seconds": ROUTE_CACHE_TTL,
+    }
+
+
 @app.get("/health")
 async def health_check():
     """Health check. DB ping result is cached for 1s so frequent probes
