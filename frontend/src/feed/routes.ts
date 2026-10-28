@@ -56,6 +56,11 @@ export function clearRouteCache(): void {
 
 const BATCH_DEBOUNCE_MS = 300;
 const BATCH_MAX_CALLSIGNS = 100;
+// adsb.im asks callers to group callsigns for at least 30 s before posting.
+// The first batch after load goes out after the short debounce (one request
+// per page view is unavoidable); every later batch waits until at least this
+// long after the previous one, collecting new callsigns in the meantime.
+const BATCH_MIN_INTERVAL_MS = 30_000;
 
 interface RawAirport {
   iata?: string | null;
@@ -194,20 +199,32 @@ export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
 export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let detached = false;
+  let lastFlushAt: number | null = null;
   // Latest position per queued callsign, so the lookup is checked
   // against where the aircraft is when the batch fires.
   const queued = new Map<string, RouteQuery>();
 
+  // Debounce for the first batch; afterwards never sooner than
+  // BATCH_MIN_INTERVAL_MS after the previous one.
+  const delayUntilNextFlush = (): number => {
+    if (lastFlushAt === null) return BATCH_DEBOUNCE_MS;
+    return Math.max(BATCH_DEBOUNCE_MS, lastFlushAt + BATCH_MIN_INTERVAL_MS - Date.now());
+  };
+
+  const schedule = (): void => {
+    if (detached || timer !== null) return;
+    timer = setTimeout(flush, delayUntilNextFlush());
+  };
+
   const flush = (): void => {
     timer = null;
     if (detached || queued.size === 0) return;
+    lastFlushAt = Date.now();
     const batch = Array.from(queued.values()).slice(0, BATCH_MAX_CALLSIGNS);
     for (const q of batch) queued.delete(q.callsign);
     void fetchRoutes(batch).then(() => {
-      // If more arrived during the request, schedule another flush.
-      if (!detached && queued.size > 0 && timer === null) {
-        timer = setTimeout(flush, BATCH_DEBOUNCE_MS);
-      }
+      // If more arrived during the request, queue the next (spaced) batch.
+      if (queued.size > 0) schedule();
     });
   };
 
@@ -225,9 +242,7 @@ export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
       if (!queued.has(a.callsign)) added = true;
       queued.set(a.callsign, { callsign: a.callsign, lat: a.lat, lon: a.lon });
     }
-    if (added && timer === null) {
-      timer = setTimeout(flush, BATCH_DEBOUNCE_MS);
-    }
+    if (added) schedule();
   });
 
   return () => {
