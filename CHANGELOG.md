@@ -8,8 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-Lighter on adsb.im. Their maintainer asked route API callers to batch,
-use http and identify themselves (hook-365/adsb-aircraft-tracker#7).
+---
+
+## [0.12.0] - 2026-10-28
+
+Lighter on adsb.im. Routes in this project come from
+[adsb.im](https://adsb.im), a one-person hobby service, and its
+maintainer asked route API callers to batch, use http and identify
+themselves ([#16](https://github.com/hook-365/adsb-3d/issues/16)).
+Thanks to [@dirkhh](https://github.com/dirkhh) for running it and for
+the clear, friendly ask.
 
 ### Added
 

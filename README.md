@@ -49,12 +49,28 @@ This project is better because people showed up:
   motion ([#14](https://github.com/hook-365/adsb-3d/pull/14)), which makes aircraft
   glide between position updates instead of stepping, with adaptive
   per-aircraft timing, coverage-gap handling, and a thorough test suite.
+- **[@dirkhh](https://github.com/dirkhh)** — runs [adsb.im](https://adsb.im),
+  which answers every "where is that flight going?" in this project, and
+  asked for route lookups to be batched, plain-http and identified
+  ([#16](https://github.com/hook-365/adsb-3d/issues/16)). That request became
+  the shared route cache in v0.12.0. If routes are useful to you,
+  consider [supporting adsb.im](https://adsb.im).
 
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
 
 ## What's new
 
+- **v0.12.0: lighter on adsb.im.** Flight routes come from
+  [adsb.im](https://adsb.im), a one-person hobby service. This release
+  does what its maintainer asked ([#16](https://github.com/hook-365/adsb-3d/issues/16)):
+  the server keeps one route cache shared by every open viewer, so a
+  callsign is looked up at most once per 4 hours no matter how many
+  browsers are open; unknown callsigns are collected for a minute and
+  sent in one request; requests go over plain http and identify the
+  project. Set `ROUTE_API_CONTACT` on `track-service` to put your own
+  contact in the User-Agent. Live-only installs keep working through
+  the direct proxy, now batched the same way.
 - **v0.11.2: fewer wrong routes.** Private and GA aircraft flying under
   their registration no longer get an old route from the lookup, and
   routes that don't match the aircraft's position carry an "Unverified"
@@ -306,6 +322,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |
 | `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
+| `ROUTE_API_CONTACT` (track-service) | — | Contact (email or site) sent to adsb.im in the User-Agent of route lookups; they ask for one |
 | `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
 | `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |
 | `VOICE_STREAM_HOST` | — | required when voice is on; point at any reachable `host:port` (legacy Icecast block, not played by the frontend) |
@@ -423,7 +440,9 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
   GPL v2+) — SVG aircraft shape catalog and the altitude → color palette.
 - **readsb / dump1090-fa** — upstream Mode S/ADS-B decoder.
 - **planespotters.net** — aircraft photographs in the detail panel.
-- **adsb.im** — callsign → route resolution.
+- **[adsb.im](https://adsb.im)** — callsign → route resolution, run by
+  one person as a hobby service. Lookups are cached and batched to keep
+  the load small; please keep it that way if you fork this.
 - **OpenStreetMap, ESRI, OpenTopoMap** — basemap tile providers, proxied
   and cached by the container; credited on screen.
 - **[CARTO](https://carto.com/attributions)** — Dark / Voyager basemaps,
