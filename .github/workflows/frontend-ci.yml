@@ -74,10 +74,7 @@ jobs:
         run: npm run lint
 
   e2e:
-    # Pinned: ubuntu-latest rolled to 26.04 on 2026-11-05 and Playwright
-    # refuses to install Chromium there ("does not support chromium on
-    # ubuntu26.04-x64"). Bump when Playwright adds support.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     continue-on-error: true
     defaults:
       run:
@@ -102,16 +99,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
+      # No `playwright install`: the runner image ships Google Chrome and
+      # the config's PW_CHANNEL drives it directly, so the job does not
+      # depend on Playwright supporting the runner's Ubuntu release
+      # (ubuntu-latest moved to 26.04 before Playwright 1.59 did).
       - name: Playwright e2e
+        env:
+          PW_CHANNEL: chrome
         run: npm run test:e2e
 
       - name: Upload test results

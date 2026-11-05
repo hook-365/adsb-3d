@@ -21,6 +21,10 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: process.env.E2E_BASE_URL ?? localServerUrl,
+    // PW_CHANNEL=chrome drives an installed Google Chrome instead of
+    // Playwright's bundled Chromium. CI uses it so the job needs no
+    // browser download and keeps working whatever Ubuntu the runner is.
+    ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
     headless: true,
     viewport: { width: 1280, height: 800 },
     // Trace on failure helps when the WebGL pipeline silently barfs.
