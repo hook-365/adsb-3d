@@ -383,6 +383,13 @@ pull, but review these first:
 - **`track-service` / `acars-service` run as non-root** (uid `10001`) —
   host paths bind-mounted into them must be writable by that uid.
 
+**Routes (origin / destination) stopped showing?** Releases before
+0.12 sent route lookups to [adsb.im](https://adsb.im) one callsign at a
+time and may be rate-limited or blocked there. Pull a current image
+(`:latest` or `0.12.2`+) and restart; routes come back, and from 0.12.2
+the settings panel tells you when a newer release exists. See
+[#17](https://github.com/hook-365/adsb-3d/issues/17).
+
 Full detail in [CHANGELOG.md](CHANGELOG.md).
 
 ### Versioning
