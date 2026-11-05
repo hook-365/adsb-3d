@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.12.2] - 2026-11-05
+
 ### Added
 
 - **Update check.** Self-hosted installs had no way to learn a release
