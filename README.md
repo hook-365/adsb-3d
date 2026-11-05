@@ -15,10 +15,6 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 **[Live demo →](https://adsb3d.hook.technology)** — explore a running instance in your browser.
 
-> [!WARNING]
-> **Ran the older monolithic version?** This is a ground-up rewrite and
-> carries **breaking changes** — read [Upgrading](#upgrading) before you pull.
-
 ![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
 
 ## Built with the community
@@ -389,16 +385,10 @@ the view (moves the center point).
 
 ## Upgrading
 
-The older version was a single ~14k-line vanilla-JS app; this is a
-TypeScript / Three.js rewrite. Most deployments keep working after a
-pull, but review these first:
-
-- **`ENABLE_HISTORICAL` defaults to `false`** (was `true`) — set it
-  explicitly to `true` if you run `track-service`.
-- **`ENABLE_VOICE=true` now requires `VOICE_STREAM_HOST` +
-  `VOICE_EVENTS_HOST`** — the container fails fast without them.
-- **`track-service` / `acars-service` run as non-root** (uid `10001`) —
-  host paths bind-mounted into them must be writable by that uid.
+Pull the new image and restart; settings and data carry over. From
+0.12.2 the settings panel shows an **Update available** badge when a
+newer release exists, and the first load after an upgrade shows what
+changed.
 
 **Routes (origin / destination) stopped showing?** Releases before
 0.12 sent route lookups to [adsb.im](https://adsb.im) one callsign at a

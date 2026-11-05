@@ -10,44 +10,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **Panel style.** Settings → Appearance → Panel style: *Glass* is the
-  floating translucent look; *Docked* attaches opaque panels to the
-  viewport edges — the aircraft list as a full-height column on the
-  right, a full-width footer that carries the map attribution, and the
-  HUD, ACARS messages and selected-aircraft card as a matching column on
-  the left. Settings and voice popovers dock with them. In Docked the 3D
-  projection is re-centred in the uncovered part of the canvas so HOME
-  stays in the middle of what you can see.
-- **Weather radar.** Settings → Map → Weather radar overlays RainViewer
-  precipitation radar on the basemap, refreshed every few minutes and
-  proxied + cached by nginx like the other tiles (`/weather/radar-frames`,
-  `/tiles/radar/…`). The attribution line credits RainViewer while it is
-  on.
-- **Emergency alerts.** When an aircraft starts squawking 7500 / 7600 /
-  7700, a toast at the top names the flight and the condition (click it
-  to select the aircraft), the label in the scene turns red and shows the
-  squawk next to the flight name, and the ground ring pulses. Live mode
-  only, no sound.
-- **What's new.** The first load after an upgrade shows this changelog's
-  section for the new version, once per browser.
-- **Reduced motion.** A browser whose OS asks for reduced motion starts
-  with smooth motion and auto-orbit off (first run only; your own choices
-  always win), and the pulsing emergency chrome holds still.
+- **Panel style** (Settings → Appearance): *Glass* floats cards over the map; *Docked* attaches solid panels to the edges.
+- **Weather radar** (Settings → Map): RainViewer precipitation overlay, proxied and cached by nginx.
+- **Emergency alerts**: toast, red label with the squawk, pulsing ring on 7500 / 7600 / 7700. Live only, no sound.
+- **What's new**: this note, once per version after an upgrade.
+- **Reduced motion**: smooth motion and auto-orbit start off when the OS asks for it.
 
 ### Changed
 
-- track-service's shared route cache keeps answers for 24 h instead of 4
-  (`ROUTE_CACHE_TTL_SECONDS`), roughly halving requests to adsb.im again.
+- Shared route cache keeps answers for 24 h (`ROUTE_CACHE_TTL_SECONDS`).
 
 ### Fixed
 
-- The floating footer was translucent enough for map labels to show
-  through the altitude legend; it now uses the settings panel's
-  near-solid surface. It also stops short of the bottom-right corner so
-  it can no longer cover the OpenStreetMap / CARTO credit on wide
-  screens, and on phones the credit sits above the bar.
-- CI's Playwright job broke the day `ubuntu-latest` became 26.04; it now
-  drives the runner's own Chrome and needs no browser download.
+- Footer is solid and no longer covers the map credit.
+- CI's Playwright job runs on the latest Ubuntu again.
 
 ---
 
