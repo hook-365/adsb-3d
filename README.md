@@ -31,6 +31,7 @@ and translations count just as much as code.
 
 ## What's new
 
+- **v0.13** (unreleased, on `master`): Glass or Docked panel style; RainViewer weather radar; emergency toasts with the squawk on the label; a what's-new note once per version; reduced-motion defaults; 24 h shared route cache.
 - **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
 - **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
 - **v0.10**: AR diorama matured: placeable, resizable clip box, auto-orbit, follow-random-aircraft, high-res basemap option.
