@@ -48,6 +48,14 @@ export type XrTurnStyle = 'snap' | 'smooth';
  */
 export type LanguageSelection = 'auto' | 'en' | 'de' | 'es';
 /**
+ * Chrome layout. 'glass' = floating translucent cards inset from the
+ * viewport edges (the original look); 'docked' = opaque panels attached
+ * to the edges: sidebar flush right, footer full-width along the bottom
+ * with the map attribution inside it. Pure CSS: main.ts mirrors the value
+ * onto <html data-panel-style>.
+ */
+export type PanelStyle = 'glass' | 'docked';
+/**
  * In-air aircraft marker style. 'cone' = classic heading cone; 'sphere' =
  * undirected orb (trails carry the heading); 'silhouette' = the aircraft's
  * tar1090 type silhouette extruded into a flat 3D shape (see
@@ -208,6 +216,10 @@ export interface Settings {
    * See core/theme.ts for the registry and authoring guide.
    */
   theme: ThemeSelection;
+  /** Floating glass cards or opaque panels docked to the viewport edges. */
+  panelStyle: PanelStyle;
+  /** RainViewer precipitation radar drawn translucently over the basemap. */
+  weatherRadar: boolean;
   /**
    * UI language. 'auto' resolves navigator.language against the locales
    * registered in core/i18n.ts, falling back to English. Changing this
@@ -277,6 +289,8 @@ const DEFAULTS: Settings = {
   speedUnit: 'kt',
   altitudeUnit: 'ft',
   theme: 'auto',
+  panelStyle: 'glass',
+  weatherRadar: false,
   language: 'auto',
   altitudeCurveBias: 0,
   altitudeExaggeration: '12',
@@ -308,6 +322,22 @@ function saveTabCopy(s: Settings): void {
   }
 }
 
+/**
+ * Defaults for a browser with no stored settings. Honours the OS "reduce
+ * motion" preference by starting with the two continuously-animating
+ * options off; the user can switch them back on and that choice persists.
+ * Only consulted on first run so an explicit choice is never overridden.
+ */
+export function firstRunDefaults(reduced?: boolean): Settings {
+  const prefersReduced =
+    reduced ??
+    (typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (!prefersReduced) return { ...DEFAULTS };
+  return { ...DEFAULTS, smoothMotion: false, autoOrbit: 0 };
+}
+
 function load(): Settings {
   return loadTabCopy() ?? loadShared();
 }
@@ -315,7 +345,7 @@ function load(): Settings {
 function loadShared(): Settings {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return firstRunDefaults();
     const parsed = JSON.parse(raw) as Partial<Settings>;
     // trailLength migration (0.8.0-0.8.3 stored a POINT count with
     // 0 = full; now minutes with -1 = full, 0 = none). Points landed at

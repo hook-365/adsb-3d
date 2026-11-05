@@ -183,6 +183,11 @@ features get dummy upstreams so the generated nginx config is always valid.
   owns availability (`isBasemapAvailable`, OSM fallback) and the
   per-provider attribution HTML shown by `ui/map-attribution.ts`; keep
   that attribution visible — it is a licence condition.
+- **Weather radar**: `world/radar.ts` polls `/weather/radar-frames`
+  (nginx proxy of RainViewer's frames index, cached 2 min) and draws the
+  newest frame as a translucent overlay tile layer (`createTileLayer`
+  with `overlay: true` + `frame`), proxied + cached under
+  `/tiles/radar/<frame>/`. Credit RainViewer in the attribution while on.
 - **FAA chart tiles** (sectional, IFR, helicopter): `entrypoint.sh` scrapes
   `vfrmap.com/js/map.js` at boot to discover the current 56-day chart cycle
   date, exports it as `${VFRMAP_CYCLE}`, and envsubst bakes it into the

@@ -1032,7 +1032,7 @@ ROUTE_API_URL = os.getenv("ROUTE_API_URL", "http://adsb.im/api/0/routeset")
 ROUTE_API_CONTACT = os.getenv("ROUTE_API_CONTACT", "").strip()
 ROUTE_API_USER_AGENT = f"adsb-3d/{APP_VERSION} track-service (+https://github.com/hook-365/adsb-3d" + (
     f"; {ROUTE_API_CONTACT}" if ROUTE_API_CONTACT else "") + ")"
-ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(4 * 3600)))
+ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(24 * 3600)))
 ROUTE_BATCH_WINDOW = float(os.getenv("ROUTE_BATCH_WINDOW_SECONDS", "60"))
 ROUTE_BATCH_MAX = 100          # callsigns per upstream request
 ROUTE_BACKOFF = 600.0          # pause after a 403/429/5xx from upstream

@@ -12,6 +12,7 @@ docs
 *.jpg
 *.mp4
 *.md
+!CHANGELOG.md
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache

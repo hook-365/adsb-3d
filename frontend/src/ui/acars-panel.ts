@@ -107,7 +107,9 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
   function place(): void {
     if (!isOpen) return;
     const r = hud.getBoundingClientRect();
-    root.style.top = `${Math.round(r.bottom + 8)}px`;
+    // Docked chrome butts straight against the HUD; glass keeps a gap.
+    const gap = document.documentElement.dataset.panelStyle === 'docked' ? 0 : 8;
+    root.style.top = `${Math.round(r.bottom + gap)}px`;
   }
   const hudObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
   hudObserver?.observe(hud);

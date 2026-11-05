@@ -995,12 +995,19 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   flex-wrap: wrap;
   gap: 8px 14px;
   padding: 8px 14px;
-  background: color-mix(in srgb, var(--panel-base) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  /* Same surface as the settings panel: near-solid so map labels never
+     bleed through the legend row, blur for whatever still shows at the
+     edges, and a faint drop shadow so it sits on the map, not in it. */
+  background: color-mix(in srgb, var(--panel-base) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
   border-radius: 6px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--bg) 35%, transparent);
   font-size: 11px;
   color: var(--muted);
-  max-width: calc(100vw - 32px);
+  /* Leave the bottom-right corner to .map-attribution: on a wide laptop
+     the bar used to reach the corner and cover the OSM credit. */
+  max-width: calc(100vw - 32px - 210px);
 }
 
 @media (max-width: 600px) {
@@ -1018,6 +1025,10 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
      a more useful story at-a-glance. */
   #status #frame-rate {
     display: none;
+  }
+  /* The bar spans the width here, so the attribution rides above it. */
+  .map-attribution {
+    bottom: calc(var(--footer-h, 48px) + 10px);
   }
 }
 
@@ -1664,6 +1675,16 @@ body.xr-on .acars-toggle {
   background: color-mix(in srgb, var(--acars) 22%, transparent);
   border: 1px solid color-mix(in srgb, var(--acars) 45%, transparent);
   text-shadow: none;
+}
+
+/* Emergency squawk: red chrome + a breathing halo, the squawk code is
+   appended to the label text by the reconciler. */
+.aircraft-label.emergency {
+  border-color: var(--emergency);
+  animation: emergency-pulse 1.4s ease-in-out infinite;
+  /* The label renderer sets an inline depth-sorted z-index; an emergency
+     must never hide behind a nearer, ordinary label. */
+  z-index: 100000 !important;
 }
 
 .aircraft-label.selected {
@@ -3073,4 +3094,250 @@ body.xr-on .acars-toggle {
   border-color: color-mix(in srgb, var(--emergency) 85%, transparent);
   background: color-mix(in srgb, var(--emergency) 65%, transparent);
   animation: emergency-pulse 1.4s ease-in-out infinite;
+}
+
+
+/* ── Docked panel style ──────────────────────────────────────────────
+   settings.panelStyle = 'docked' (main.ts mirrors it onto <html>). Same
+   DOM, same behaviour; only the chrome moves from floating glass cards
+   to opaque panels fixed to the viewport edges. The sidebar runs from
+   the top edge (its top padding leaves room for the button row that
+   floats over it) down to the footer; the footer spans the full width
+   and owns the map attribution at its right end. */
+html[data-panel-style="docked"] #hud {
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: min(340px, 100vw);
+  max-width: none;
+  border-radius: 0;
+  border-width: 0 1px 1px 0;
+  background: var(--panel-base);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* Left column: ACARS hangs under the HUD (acars-panel.ts places its top
+   at the HUD's bottom edge), the selected-aircraft card rises from the
+   footer. Both share the HUD's 340px so the column reads as one panel. */
+html[data-panel-style="docked"] .acars-panel {
+  left: 0;
+  /* Fill the column down to the footer; the list scrolls inside. */
+  bottom: calc(var(--footer-h, 48px) - 1px);
+  max-height: none;
+  width: min(340px, 100vw);
+  max-width: none;
+  border-radius: 0;
+  border-width: 0 1px 1px 0;
+  background: var(--panel-base);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-panel-style="docked"] #panel-detail {
+  left: 0;
+  z-index: 12; /* above the ACARS column it rises over */
+  bottom: calc(var(--footer-h, 48px) - 1px);
+  box-sizing: border-box;
+  width: min(340px, 100vw);
+  border-radius: 0;
+  border-width: 1px 1px 0 0;
+  background: var(--panel-base);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-panel-style="docked"] #status {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: none;
+  padding: 8px 220px 8px 16px;
+  border-radius: 0;
+  border-width: 1px 0 0 0;
+  background: var(--panel-base);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-panel-style="docked"] #aircraft-panel {
+  top: 0;
+  right: 0;
+  /* 1px into the footer so no map hairline shows at the seam. */
+  bottom: calc(var(--footer-h, 48px) - 1px);
+  width: min(320px, 100vw);
+  padding-top: 64px;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  background: var(--panel-base);
+  backdrop-filter: none;
+}
+html[data-panel-style="docked"] #aircraft-panel.collapsed {
+  transform: translateX(100%);
+}
+
+/* Settings popover docks too: flush right under the toolbar row, down to
+   the footer, and flush against the sidebar's left edge when that is open.
+   The voice popover follows the same geometry (flush, no 8px gaps). */
+html[data-panel-style="docked"] .settings-panel {
+  top: 64px;
+  right: 0;
+  bottom: calc(var(--footer-h, 48px) - 1px);
+  max-height: none;
+  border-radius: 0;
+  border-width: 1px 0 0 1px;
+  background: var(--panel-base);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+html[data-panel-style="docked"] body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
+  right: 320px;
+}
+html[data-panel-style="docked"] body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed)) .voice-panel,
+html[data-panel-style="docked"] body:has(#voice-toggle[aria-expanded="true"]):has(.settings-button.open) .voice-panel {
+  right: 320px;
+}
+html[data-panel-style="docked"] body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed)):has(.settings-button.open) .voice-panel {
+  right: 640px;
+}
+
+/* Attribution lives inside the footer's reserved right end. */
+html[data-panel-style="docked"] .map-attribution {
+  right: 12px;
+  bottom: 9px;
+  z-index: 11;
+  background: transparent;
+}
+
+@media (max-width: 600px) {
+  html[data-panel-style="docked"] #status {
+    padding: 6px 10px;
+  }
+  html[data-panel-style="docked"] .map-attribution {
+    bottom: calc(var(--footer-h, 48px) + 6px);
+    right: 8px;
+    z-index: 13; /* above the docked detail card, which spans the width here */
+    background: color-mix(in srgb, var(--panel-base) 78%, transparent);
+  }
+}
+
+
+/* ── Toasts (emergency alerts) ─────────────────────────────────────── */
+.toasts {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+.toast {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 8px 14px;
+  border-radius: 6px;
+  color: var(--emergency-text);
+  background: color-mix(in srgb, var(--emergency) 82%, var(--panel-base));
+  border: 1px solid color-mix(in srgb, var(--emergency-text) 35%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: toast-in 220ms ease-out, emergency-pulse 1.4s ease-in-out infinite;
+}
+.toast.leaving {
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+@keyframes toast-in {
+  from { transform: translateY(-12px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* ── What's new (once per version) ─────────────────────────────────── */
+.whats-new {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel-base) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  color: var(--fg);
+  font-size: 12px;
+}
+.whats-new header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.whats-new h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.whats-new-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.whats-new-close:hover { color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.whats-new-body {
+  overflow-y: auto;
+  padding: 6px 16px 10px;
+  line-height: 1.5;
+}
+.whats-new-body h4 {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.whats-new-body ul { margin: 0; padding-left: 18px; }
+.whats-new-body li { margin: 4px 0; }
+.whats-new-body code {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.whats-new-body a, .whats-new footer a { color: var(--accent); }
+.whats-new footer {
+  padding: 8px 16px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
+  font-size: 11px;
+}
+
+/* Reduced motion: no breathing halos, no slide-ins. */
+@media (prefers-reduced-motion: reduce) {
+  .aircraft-label.emergency,
+  .toast,
+  #panel-list .flight .tags .tag.emergency {
+    animation: none;
+  }
 }

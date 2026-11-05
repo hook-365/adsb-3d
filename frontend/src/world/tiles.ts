@@ -53,7 +53,10 @@ export type TileProvider =
   | 'sectional_hybrid'  // VFR sectional overlaid with OSM roads
   | 'helicopter'        // helicopter route chart
   | 'ifr_low'           // IFR low-altitude enroute
-  | 'ifr_high';         // IFR high-altitude enroute
+  | 'ifr_high'          // IFR high-altitude enroute
+  // RainViewer precipitation radar (world/radar.ts). Not a basemap: an
+  // overlay layer whose URL carries the frame timestamp.
+  | 'radar';
 
 // Per-provider metadata. `tms: true` means the upstream uses the TMS
 // y-axis convention (origin at south) instead of standard XYZ — the
@@ -70,6 +73,7 @@ const PROVIDER_META: Record<TileProvider, { tms: boolean }> = {
   helicopter: { tms: true },
   ifr_low: { tms: true },
   ifr_high: { tms: true },
+  radar: { tms: false },
 };
 
 const DEFAULT_ZOOM = 8;
@@ -79,12 +83,20 @@ const DEFAULT_ZOOM = 8;
  * tile coordinate so a layer fans out over a-d, as their Leaflet snippet
  * does); everything else goes through the nginx proxy at /tiles.
  */
-function tileUrl(provider: TileProvider, basePath: string, z: number, x: number, yForUrl: number): string {
+function tileUrl(
+  provider: TileProvider,
+  basePath: string,
+  z: number,
+  x: number,
+  yForUrl: number,
+  frame?: string,
+): string {
   const cartoPath = CARTO_PATHS[provider as Basemap];
   if (cartoPath && CARTO_API_KEY) {
     const sub = CARTO_SUBDOMAINS[(x + yForUrl) % CARTO_SUBDOMAINS.length]!;
     return `https://${sub}.basemaps.cartocdn.com/${cartoPath}/${z}/${x}/${yForUrl}.png?key=${encodeURIComponent(CARTO_API_KEY)}`;
   }
+  if (provider === 'radar') return `${basePath}/tiles/radar/${frame ?? '0'}/${z}/${yForUrl}/${x}`;
   return `${basePath}/tiles/${provider}/${z}/${yForUrl}/${x}`;
 }
 
@@ -303,7 +315,7 @@ interface LayerState {
 
 const layerStates = new WeakMap<Group, LayerState>();
 
-function createChunk(terrain: boolean): Chunk {
+function createChunk(terrain: boolean, overlay: boolean): Chunk {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = CHUNK_TILES * CELL_PX;
   const texture = new CanvasTexture(canvas);
@@ -313,9 +325,13 @@ function createChunk(terrain: boolean): Chunk {
   // camera looks down at +y so without DoubleSide the tile is culled.
   // Terrain writes depth — mountains must occlude aircraft, trails, and
   // rings behind them; the flat map stays out of the depth buffer.
+  // Overlays (radar) blend over the basemap and never write depth, so
+  // the terrain beneath still occludes aircraft correctly.
   const material = new MeshBasicMaterial({
     map: texture,
-    depthWrite: terrain,
+    depthWrite: terrain && !overlay,
+    transparent: overlay,
+    opacity: overlay ? 0.78 : 1,
     side: DoubleSide,
     clippingPlanes: DIORAMA_PLANES,
   });
@@ -352,7 +368,9 @@ function rebuildChunk(group: Group, chunk: Chunk, key: string): void {
     chunk.mesh.geometry = geom;
   } else {
     chunk.mesh = new Mesh(geom, chunk.material);
-    chunk.mesh.renderOrder = -10; // draw before transparent overlays (rings, trails, altitude lines)
+    // Basemap first, then overlay tiles, then transparent scene chrome
+    // (rings, trails, altitude lines).
+    chunk.mesh.renderOrder = chunk.material.transparent ? -9 : -10;
     chunk.mesh.userData = { kind: 'tile-chunk', chunk: key };
     group.add(chunk.mesh);
   }
@@ -366,6 +384,10 @@ export interface TileLayerOptions {
   basePath?: string;
   /** Drop tiles slightly below y=0 so range rings/grids stay crisply on top. */
   dropY?: number;
+  /** Translucent layer drawn over the basemap (radar). */
+  overlay?: boolean;
+  /** Frame id baked into the tile URL (radar: RainViewer's opaque frame id). */
+  frame?: string;
 }
 
 export function createTileLayer(options: TileLayerOptions = {}): Group {
@@ -373,6 +395,8 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   const zoom = options.zoom ?? DEFAULT_ZOOM;
   const basePath = options.basePath ?? '';
   const dropY = options.dropY ?? -0.4;
+  const overlay = options.overlay ?? false;
+  const frame = options.frame;
   const terrain = terrainActive();
 
   const group = new Group();
@@ -427,7 +451,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       // proxies what we send straight through to the upstream, so flip
       // here before constructing the URL.
       const yForUrl = PROVIDER_META[provider].tms ? nMax - 1 - y : y;
-      const url = tileUrl(provider, basePath, zoom, x, yForUrl);
+      const url = tileUrl(provider, basePath, zoom, x, yForUrl, frame);
 
       const place = (image: HTMLImageElement): void => {
         // The layer may have been disposed (feed switch / basemap change)
@@ -435,7 +459,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
         if (group.userData['disposed']) return;
         let chunk = state.chunks.get(chunkKey);
         if (!chunk) {
-          chunk = createChunk(terrain);
+          chunk = createChunk(terrain, overlay);
           state.chunks.set(chunkKey, chunk);
         }
         chunk.ctx.drawImage(image, lx * CELL_PX, ly * CELL_PX, CELL_PX, CELL_PX);
@@ -459,13 +483,27 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
           // before building, so edge vertices sample loaded neighbors and
           // two adjacent tiles agree at their shared seam. Elevation is
           // always sampled at ELEVATION_ZOOM, whatever the basemap zoom.
-          const shift = Math.max(0, zoom - ELEVATION_ZOOM);
-          const ex = x >> shift;
-          const ey = y >> shift;
+          // A layer coarser than ELEVATION_ZOOM (the z7 radar overlay)
+          // spans a block of elevation tiles; ensure the whole block.
           const ensures: Promise<void>[] = [];
-          for (let ny = -1; ny <= 1; ny++) {
-            for (let nx = -1; nx <= 1; nx++) {
-              ensures.push(ensureElevationTile(ELEVATION_ZOOM, ex + nx, ey + ny));
+          if (zoom >= ELEVATION_ZOOM) {
+            const shift = zoom - ELEVATION_ZOOM;
+            const ex = x >> shift;
+            const ey = y >> shift;
+            for (let ny = -1; ny <= 1; ny++) {
+              for (let nx = -1; nx <= 1; nx++) {
+                ensures.push(ensureElevationTile(ELEVATION_ZOOM, ex + nx, ey + ny));
+              }
+            }
+          } else {
+            const up = ELEVATION_ZOOM - zoom;
+            const ex0 = x << up;
+            const ey0 = y << up;
+            const span = 1 << up;
+            for (let ny = -1; ny <= span; ny++) {
+              for (let nx = -1; nx <= span; nx++) {
+                ensures.push(ensureElevationTile(ELEVATION_ZOOM, ex0 + nx, ey0 + ny));
+              }
             }
           }
           void Promise.all(ensures).then(() => place(image));

@@ -125,6 +125,16 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'choice',
+        key: 'panelStyle',
+        label: t('settings.panel_style'),
+        description: t('settings.panel_style_desc'),
+        options: [
+          { value: 'glass', label: t('settings.panel_style_glass') },
+          { value: 'docked', label: t('settings.panel_style_docked') },
+        ],
+      },
+      {
+        kind: 'choice',
         key: 'language',
         label: t('settings.language'),
         description: t('settings.language_desc'),
@@ -246,6 +256,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'hiResTiles',
         label: t('settings.hi_res_tiles'),
         description: t('settings.hi_res_tiles_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'weatherRadar',
+        label: t('settings.weather_radar'),
+        description: t('settings.weather_radar_desc'),
       },
       {
         kind: 'toggle',

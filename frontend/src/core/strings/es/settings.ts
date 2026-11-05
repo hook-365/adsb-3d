@@ -12,6 +12,10 @@ export const settingsStrings = {
   'settings.language': 'Idioma',
   'settings.language_desc': 'Idioma de la interfaz. Auto sigue la configuración regional del navegador. Cambiarlo recarga la página.',
   'settings.language_auto': 'Auto',
+  'settings.panel_style': 'Estilo de paneles',
+  'settings.panel_style_desc': 'Cristal flota tarjetas translúcidas sobre el mapa. Acoplado fija paneles sólidos a los bordes: la lista a la derecha y un pie a todo lo ancho.',
+  'settings.panel_style_glass': 'Cristal',
+  'settings.panel_style_docked': 'Acoplado',
 
   // Display section
   'settings.section_aircraft': 'Aeronaves',
@@ -153,4 +157,6 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_linear': 'equilibrado',
   'settings.altitude_curve_fmt_low': 'baja {n}%',
   'settings.altitude_curve_fmt_high': 'alta {n}%',
+  'settings.weather_radar': 'Radar meteorológico',
+  'settings.weather_radar_desc': 'Radar de precipitación de RainViewer sobre el mapa, actualizado cada pocos minutos. La cobertura depende de las redes de radar nacionales.',
 } as const;

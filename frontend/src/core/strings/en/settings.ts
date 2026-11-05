@@ -13,6 +13,10 @@ export const settingsStrings = {
   'settings.language': 'Language',
   'settings.language_desc': "UI language. Auto follows your browser's locale. Changing this reloads the page.",
   'settings.language_auto': 'Auto',
+  'settings.panel_style': 'Panel style',
+  'settings.panel_style_desc': 'Glass floats translucent cards over the map. Docked attaches solid panels to the edges, with the list down the right side and a full-width footer.',
+  'settings.panel_style_glass': 'Glass',
+  'settings.panel_style_docked': 'Docked',
 
   // Aircraft section
   'settings.section_aircraft': 'Aircraft',
@@ -157,4 +161,6 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_linear': 'balanced',
   'settings.altitude_curve_fmt_low': 'low {n}%',
   'settings.altitude_curve_fmt_high': 'high {n}%',
+  'settings.weather_radar': 'Weather radar',
+  'settings.weather_radar_desc': 'Precipitation radar from RainViewer drawn over the map, refreshed every few minutes. Coverage depends on national radar networks.',
 } as const;

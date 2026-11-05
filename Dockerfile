@@ -10,6 +10,8 @@ RUN npm ci --no-audit --no-fund
 
 # Copy the rest of the frontend source and build
 COPY frontend/ ./
+# Bundled into the "What's new" dialog (frontend/src/ui/whats-new.ts imports ../../../CHANGELOG.md).
+COPY CHANGELOG.md /app/CHANGELOG.md
 RUN npm run build
 
 # =============================================================================

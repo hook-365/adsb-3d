@@ -71,4 +71,9 @@ export const miscStrings = {
   'misc.xr_basemap_helicopter': 'FAA Helicóptero',
   'misc.xr_basemap_ifr_low': 'IFR bajo',
   'misc.xr_basemap_ifr_high': 'IFR alto',
+  'misc.emergency_toast': '⚠ {flight} · {detail}',
+  'misc.emergency_toast_hint': 'Clic para seleccionar esta aeronave',
+  'misc.whats_new_title': 'Novedades en v{version}',
+  'misc.whats_new_full': 'Registro de cambios completo',
+  'misc.whats_new_close': 'Cerrar',
 } as const;

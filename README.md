@@ -164,6 +164,22 @@ Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
 3D scene re-tints in place. Plays especially well with the FAA chart
 basemaps below.
 
+**Weather radar** — Settings → Map → Weather radar overlays
+[RainViewer](https://www.rainviewer.com/) precipitation radar on any
+basemap, refreshed every few minutes. Proxied and cached by nginx like the
+other tiles; the attribution line credits RainViewer while it is on.
+
+![RainViewer precipitation radar overlaid on the live 3D view: a storm cell with yellow and red cores over Door County and Lake Michigan, aircraft and trails above it](Radar.jpg)
+
+**Emergency alerts** — an aircraft squawking 7500 / 7600 / 7700 raises a
+toast (click to select it), gets a red label with the squawk next to the
+flight name, and a pulsing ring on the ground. Live mode only, no sound.
+
+**Panel style** — *Glass* (default) floats translucent cards over the map;
+*Docked* attaches solid panels to the edges: list down the right, HUD /
+ACARS / aircraft card down the left, full-width footer with the map
+credit inside it. Settings → Appearance.
+
 **Languages** — English, German, and Spanish (translations are
 machine-drafted pending native review — corrections welcome). `Auto`
 follows your browser locale.
@@ -323,6 +339,7 @@ Parsing stops at the first missing `FEEDN_NAME`.
 | `ENABLE_UPDATE_CHECK` | `true` | The container asks GitHub once a day for the latest release and the settings panel shows a badge when it is newer. Runs server-side only (one request per deployment per day, no viewer IPs); `false` disables it entirely |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |
 | `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
+| `ROUTE_CACHE_TTL_SECONDS` (track-service) | `86400` | How long the shared route cache keeps an answer before asking adsb.im again |
 | `ROUTE_API_CONTACT` (adsb-3d and track-service) | — | Contact (email or site) sent to adsb.im and tile providers in the User-Agent (`adsb-3d/<version> (+repo; contact)`); they ask for one. Unset = no contact sent, warning at start |
 | `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
 | `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |

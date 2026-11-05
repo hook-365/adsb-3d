@@ -42,6 +42,10 @@ import { attachPanelToggle, setAircraftListExpanded } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
 import { startUpdateCheck } from './core/update-check';
+import { mountViewOffset } from './world/view-offset';
+import { mountWeatherRadar } from './world/radar';
+import { mountEmergencyToasts } from './ui/emergency-toast';
+import { mountWhatsNew } from './ui/whats-new';
 import { mountShapeChip } from './ui/shape-chip';
 import { mountAltitudeLegend } from './ui/altitude-legend';
 import { mountHud, refreshSubtitle } from './ui/hud';
@@ -172,6 +176,12 @@ for (const side of ['left', 'right'] as const) {
 // re-running the whole theme pipeline (CSS vars, canvas redraws) each
 // frame is pure waste when the selection hasn't moved.
 setTheme(getSettings().theme);
+// Panel style is pure CSS keyed off <html data-panel-style> (style.css).
+const applyPanelStyle = (): void => {
+  document.documentElement.dataset.panelStyle = getSettings().panelStyle;
+};
+applyPanelStyle();
+subscribeSettings(applyPanelStyle);
 let lastThemeSelection = getSettings().theme;
 subscribeSettings((s) => {
   if (s.theme !== lastThemeSelection) {
@@ -862,6 +872,13 @@ subscribeXr((s) => {
   // (caught by tyzbit's issue #6 logs).
   if (!s.presenting) requestAnimationFrame(applyWindowSize);
 });
+// Docked panel style re-centres the projection in the uncovered canvas
+// (world/view-offset.ts). Registered after the resize handler above so
+// its offset is applied on top of the fresh aspect.
+mountViewOffset(world.camera);
+mountWeatherRadar(world.xrRoot);
+mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
+mountWhatsNew();
 
 // ────────────────────────────────────────────────────────────────────
 // Session manager: owns live/historical bundles, feed switching, and

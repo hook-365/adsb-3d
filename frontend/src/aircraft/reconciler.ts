@@ -331,10 +331,17 @@ const PING_MAX_SCALE = 4.5;
 // Slightly larger so it haloes around the cyan selection ring when both apply.
 const EMERGENCY_RING_GEOMETRY = new RingGeometry(2.9, 3.6, 64);
 EMERGENCY_RING_GEOMETRY.rotateX(-Math.PI / 2);
+// Pulsed per frame below (shared material: every emergency ring breathes
+// in step). Held steady when the OS asks for reduced motion.
+const EMERGENCY_RING_OPACITY = 0.85;
+const REDUCED_MOTION =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EMERGENCY_RING_MATERIAL = new MeshBasicMaterial({
   color: new Color(themeThree().emergencyRing),
   transparent: true,
-  opacity: 0.85,
+  opacity: EMERGENCY_RING_OPACITY,
   depthWrite: false,
   side: DoubleSide,
   clippingPlanes: DIORAMA_PLANES,
@@ -374,9 +381,10 @@ const PICK_MATERIAL = new MeshBasicMaterial({ transparent: true, opacity: 0, dep
 export const PICK_LAYER = 1;
 
 function aircraftLabelText(a: Aircraft): string {
-  if (a.callsign) return a.callsign;
-  if (a.registration) return a.registration;
-  return a.hex.toUpperCase();
+  const name = a.callsign ?? a.registration ?? a.hex.toUpperCase();
+  // An emergency squawk rides next to the name so the aircraft is
+  // identifiable at a glance in the scene, not only in the list.
+  return a.emergency !== null && a.squawk ? `${name} ${a.squawk}` : name;
 }
 
 export function aircraftLabelClass(a: Aircraft): string {
@@ -388,6 +396,7 @@ export function aircraftLabelClass(a: Aircraft): string {
   // high-altitude already differentiate via the inline altitude color.
   let cls = 'aircraft-label';
   if (a.onGround) cls += ' ground';
+  if (a.emergency !== null) cls += ' emergency';
   if (getSettings().acarsMessages && hasAcars(a.hex)) cls += ' acars';
   return cls;
 }
@@ -1516,6 +1525,9 @@ export class AircraftReconciler {
     elevationRefreshPending = false;
     const now = Date.now();
     const perfNow = performance.now();
+    if (!REDUCED_MOTION) {
+      EMERGENCY_RING_MATERIAL.opacity = 0.5 + 0.4 * (0.5 + 0.5 * Math.sin(perfNow / 160));
+    }
     // Instanced icon + altitude-line rebuild: cursors reset here, every
     // visible aircraft pushes its cached state in the loop below, commit()
     // publishes counts. Zero-instance frames cost no draw calls.

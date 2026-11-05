@@ -12,6 +12,10 @@ export const settingsStrings = {
   'settings.language': 'Sprache',
   'settings.language_desc': 'Sprache der Oberfläche. Auto folgt der Spracheinstellung des Browsers. Eine Änderung lädt die Seite neu.',
   'settings.language_auto': 'Auto',
+  'settings.panel_style': 'Panelstil',
+  'settings.panel_style_desc': 'Glas legt halbtransparente Karten über die Karte. Angedockt hängt feste Panels an die Ränder: die Liste rechts, die Fußleiste über die volle Breite.',
+  'settings.panel_style_glass': 'Glas',
+  'settings.panel_style_docked': 'Angedockt',
 
   // Display section
   'settings.section_aircraft': 'Flugzeuge',
@@ -153,4 +157,6 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_linear': 'ausgewogen',
   'settings.altitude_curve_fmt_low': 'niedrig {n}%',
   'settings.altitude_curve_fmt_high': 'hoch {n}%',
+  'settings.weather_radar': 'Wetterradar',
+  'settings.weather_radar_desc': 'Niederschlagsradar von RainViewer über der Karte, alle paar Minuten aktualisiert. Abdeckung je nach nationalem Radarnetz.',
 } as const;

@@ -7,12 +7,17 @@ import { basemapAttribution, effectiveBasemap } from '../core/basemaps';
 // conspicuous, on every CARTO basemap); the other providers get their
 // customary credit through the same element.
 
+const RAINVIEWER_LINK =
+  'radar <a href="https://www.rainviewer.com/api.html" target="_blank" rel="noopener">© RainViewer</a>';
+
 export function mountMapAttribution(): void {
   const el = document.getElementById('map-attribution');
   if (!el) return;
   let last = '';
   const apply = (): void => {
-    const html = basemapAttribution(effectiveBasemap(getSettings().basemap));
+    const s = getSettings();
+    let html = basemapAttribution(effectiveBasemap(s.basemap));
+    if (s.weatherRadar) html += `, ${RAINVIEWER_LINK}`;
     if (html === last) return;
     last = html;
     el.innerHTML = html;

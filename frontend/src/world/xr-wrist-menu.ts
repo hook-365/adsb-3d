@@ -355,6 +355,7 @@ export const WRIST_MENU_KEYS: readonly (keyof Settings)[] = PAGES.flat()
  */
 export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string>>> = {
   language: 'changing it reloads the page, which would kill the XR session',
+  panelStyle: 'lays out the desktop DOM chrome; there is no DOM inside a headset',
   stereo: 'desktop side-by-side mode — meaningless inside a headset',
   stereoStrength: 'desktop side-by-side mode — meaningless inside a headset',
   vrScale: 'live-driven by the left thumbstick; a menu row would fight it',
@@ -364,6 +365,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   altitudeExaggeration: 'changing it reloads the page, which would kill the XR session',
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
   acarsPings: 'map decoration toggle; panel-only to keep the wrist pages lean',
+  weatherRadar: 'map decoration toggle; panel-only to keep the wrist pages lean',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */
