@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Update check.** Self-hosted installs had no way to learn a release
+  existed, which is why months-old instances were still hammering adsb.im
+  with the pre-0.12 route batching
+  ([#16](https://github.com/hook-365/adsb-3d/issues/16)). The container
+  (never the browser) now asks the GitHub releases API once a day and
+  writes `/update.json`; the settings panel shows an "Update available"
+  link beside the version and a dot on the gear when a newer release
+  exists. One request per deployment per day, no viewer IPs, no CSP
+  change. `ENABLE_UPDATE_CHECK=false` turns it off.
+
 ---
 
 ## [0.12.1] - 2026-10-28
