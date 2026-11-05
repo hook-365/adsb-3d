@@ -9,6 +9,7 @@ import {
   type Settings,
 } from '../core/settings';
 import { t } from '../core/i18n';
+import { subscribeUpdateInfo } from '../core/update-check';
 import { isBasemapAvailable } from '../core/basemaps';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
@@ -566,6 +567,25 @@ export function mountSettingsPanel(): void {
   version.textContent = window.APP_VERSION ? `v${window.APP_VERSION}` : 'dev';
   version.title = 'ADS-B 3D version';
   title.appendChild(version);
+  // Update badge: fed by core/update-check.ts from /update.json, which the
+  // container refreshes daily. Rendered only when the release is newer than
+  // what this page is running, and mirrored as a dot on the gear button so
+  // the hint is visible without opening the panel.
+  const update = document.createElement('a');
+  update.className = 'settings-update';
+  update.target = '_blank';
+  update.rel = 'noopener';
+  update.hidden = true;
+  title.appendChild(update);
+  subscribeUpdateInfo((info) => {
+    const show = info !== null && info.newer;
+    update.hidden = !show;
+    button.classList.toggle('has-update', show);
+    if (info && show) {
+      update.href = info.url;
+      update.textContent = t('settings.update_available', { version: info.latest });
+    }
+  });
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'settings-close';

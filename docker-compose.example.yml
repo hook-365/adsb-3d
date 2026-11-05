@@ -47,6 +47,8 @@ services:
       #                               # one key per deployment, never share it)
       # - ENABLE_TERRAIN=true         # deploy-level 3D-terrain kill switch;
       #                               # false hides the per-user terrain toggle entirely
+      # - ENABLE_UPDATE_CHECK=true    # container checks GitHub daily for a newer release
+      #                               # and the settings panel shows a badge; false = off
       # - DNS_RESOLVER=10.96.0.10     # nginx upstream DNS; default is Docker's
       #                               # embedded 127.0.0.11 — override on runtimes
       #                               # without it (e.g. Kubernetes CoreDNS)

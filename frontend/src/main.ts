@@ -41,6 +41,7 @@ import { createAircraftDetail } from './ui/aircraft-detail';
 import { attachPanelToggle, setAircraftListExpanded } from './ui/panel-toggle';
 import { mountFeedSelector } from './ui/feed-selector';
 import { mountSettingsPanel } from './ui/settings-panel';
+import { startUpdateCheck } from './core/update-check';
 import { mountShapeChip } from './ui/shape-chip';
 import { mountAltitudeLegend } from './ui/altitude-legend';
 import { mountHud, refreshSubtitle } from './ui/hud';
@@ -86,6 +87,7 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 
 mountFeedSelector({ feeds: getFeeds(), active: getActiveFeed(), mode: getFeedMode() });
 mountSettingsPanel();
+startUpdateCheck();
 mountShapeChip();
 mountTimeControls();
 mountAltitudeLegend();

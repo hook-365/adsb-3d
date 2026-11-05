@@ -4,6 +4,7 @@ export const settingsStrings = {
   // Panel chrome
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
+  'settings.update_available': 'Update available: v{version}',
 
   // Appearance section
   'settings.section_appearance': 'Appearance',

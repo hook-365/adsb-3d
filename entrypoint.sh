@@ -363,6 +363,7 @@ ENABLE_ACARS_JS=$(_bool "${ENABLE_ACARS:-false}")
 ENABLE_VOICE_JS=$(_bool "${ENABLE_VOICE:-false}")
 ENABLE_TERRAIN_JS=$(_bool "${ENABLE_TERRAIN:-true}")
 HIDE_TOWER_JS=$(_bool "${HIDE_TOWER:-false}")
+ENABLE_UPDATE_CHECK_JS=$(_bool "${ENABLE_UPDATE_CHECK:-true}")
 CARTO_API_KEY_JS=$(_js_escape "${CARTO_API_KEY:-}")
 
 # Generate config.js from environment variables
@@ -440,6 +441,13 @@ window.TOWER_CONFIG = {
 // Deploy-level kill switch; users also get a per-browser settings toggle.
 window.TERRAIN_CONFIG = {
     enabled: ${ENABLE_TERRAIN_JS}
+};
+
+// Update check. When enabled the CONTAINER (never the browser) asks GitHub
+// once a day for the latest release and writes /update.json; the settings
+// panel reads that same-origin file and shows a badge when it is newer.
+window.UPDATE_CHECK_CONFIG = {
+    enabled: ${ENABLE_UPDATE_CHECK_JS}
 };
 
 // Basemap provider configuration. CARTO tiles are fetched by the browser
@@ -860,6 +868,76 @@ if [ -d "/tiles" ] && [ -w "/tiles" ]; then
     precache_tiles &
 else
     echo "Tile caching disabled (no /tiles volume mounted)"
+fi
+
+# ---------------------------------------------------------------------------
+# Update check (ENABLE_UPDATE_CHECK, default true). Old installs cannot be
+# reached by anything we control — the only reason an operator learns a
+# release exists is this. It runs in the container, not in viewers'
+# browsers, so GitHub sees one request per deployment per day and no
+# viewer IPs. The result lands in /update.json, which nginx serves same-
+# origin with no-cache headers and the settings panel reads. Any failure
+# (offline host, rate limit, odd response) just keeps the previous file.
+# ---------------------------------------------------------------------------
+UPDATE_JSON=/usr/share/nginx/html/update.json
+UPDATE_CHECK_URL="https://api.github.com/repos/hook-365/adsb-3d/releases/latest"
+rm -f "$UPDATE_JSON"
+
+# "1.2.3" style only; strips "+build" first so dev builds compare as their base.
+_semver_base() {
+    printf '%s' "$1" | sed -e 's/^v//' -e 's/[+-].*$//'
+}
+# prints "newer" when $1 > $2 (both X.Y.Z), else "same"
+_semver_newer() {
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        n = split(a, x, "."); split(b, y, ".");
+        for (i = 1; i <= 3; i++) {
+            if ((x[i]+0) > (y[i]+0)) { print "newer"; exit }
+            if ((x[i]+0) < (y[i]+0)) { print "same"; exit }
+        }
+        print "same"
+    }'
+}
+
+update_check_once() {
+    LATEST_TAG=$(curl -fsS --max-time 10 \
+        -H "Accept: application/vnd.github+json" \
+        -A "$ADSB3D_USER_AGENT (update check)" \
+        "$UPDATE_CHECK_URL" 2>/dev/null \
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
+    LATEST=$(_semver_base "$LATEST_TAG")
+    case "$LATEST" in
+        [0-9]*.[0-9]*.[0-9]*) ;;
+        *) echo "[update] check failed (no release tag in response)"; return 1 ;;
+    esac
+    CURRENT=$(_semver_base "$ADSB3D_VERSION")
+    NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    printf '{"current":"%s","latest":"%s","url":"https://github.com/hook-365/adsb-3d/releases/tag/%s","checkedAt":"%s"}\n' \
+        "$ADSB3D_VERSION" "$LATEST" "$LATEST_TAG" "$NOW" > "$UPDATE_JSON.tmp" \
+        && mv "$UPDATE_JSON.tmp" "$UPDATE_JSON"
+    if [ "$(_semver_newer "$LATEST" "$CURRENT")" = "newer" ]; then
+        echo "[update] v${LATEST} is available (running ${ADSB3D_VERSION}): https://github.com/hook-365/adsb-3d/releases/tag/${LATEST_TAG}"
+    else
+        echo "[update] ${ADSB3D_VERSION} is current (latest release ${LATEST})"
+    fi
+}
+
+update_check_loop() {
+    sleep 60
+    while :; do
+        if update_check_once; then
+            sleep 86400
+        else
+            sleep 3600
+        fi
+    done
+}
+
+if [ "$(_bool "${ENABLE_UPDATE_CHECK:-true}")" = "true" ]; then
+    echo "[update] daily release check enabled (ENABLE_UPDATE_CHECK=false to turn off)"
+    update_check_loop &
+else
+    echo "[update] release check disabled"
 fi
 
 # Validate the rendered config before handing off to nginx. A malformed

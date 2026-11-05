@@ -3,6 +3,7 @@ export const settingsStrings = {
   // Panel chrome
   'settings.title': 'Ajustes',
   'settings.close': 'Cerrar ajustes',
+  'settings.update_available': 'Actualización disponible: v{version}',
 
   // Theme section
   'settings.section_appearance': 'Apariencia',

@@ -158,6 +158,10 @@ features get dummy upstreams so the generated nginx config is always valid.
   `/tiles/terrain_rgb/` proxy; `world/elevation.ts` decodes and samples
   them, and everything altitude-shaped flows through `toScene()` so
   terrain follows the altitude-curve slider automatically.
+  `ENABLE_UPDATE_CHECK` (default `true`): the entrypoint asks the GitHub
+  releases API once a day and writes `/update.json`; `core/update-check.ts`
+  polls it and the settings panel shows a badge when it is newer. Browsers
+  never contact GitHub, so no CSP change and no viewer IPs leave the site.
 - Multi-feed: flat `FEEDN_*` env vars; the entrypoint synthesizes per-feed
   nginx proxy blocks. Slot 1 is always the local feed.
 - Security posture: nginx ships conservative security headers

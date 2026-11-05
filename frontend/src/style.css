@@ -530,6 +530,7 @@ body:has(#voice-toggle[aria-expanded="true"]):has(#aircraft-panel:not(.collapsed
 }
 
 .settings-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -645,6 +646,36 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   text-transform: none;
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
+}
+
+.settings-update {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  border-radius: 4px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.settings-update:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* Gear button dot when a newer release exists (see .settings-update). */
+.settings-button.has-update::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--panel-base) 85%, transparent);
 }
 
 .settings-close {
