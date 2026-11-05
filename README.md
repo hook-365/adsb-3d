@@ -19,220 +19,57 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 ## Built with the community
 
-This project is better because people showed up:
-
-- **[@tyzbit](https://github.com/tyzbit)** — requested VR support
-  ([#6](https://github.com/hook-365/adsb-3d/issues/6)), then became the
-  entire hardware QA department for it: Quest 3 testing of every VR/AR
-  release and fix from v0.6.0 through v0.10.0, with annotated videos for
-  each pass. That covers the bug isolation that cracked the AR rendering
-  freeze, the control-scheme design that became free-fly mode, the desk
-  diorama, follow mode and the upright info card, the altitude-scale idea
-  ([#8](https://github.com/hook-365/adsb-3d/issues/8)) that became the
-  vertical scale setting, and the VR/AR demo video below. Huge thanks.
-- **[@ValkyrieUK](https://github.com/ValkyrieUK)** — built the
-  full-stack Docker integration test suite and CI workflow ([#9](https://github.com/hook-365/adsb-3d/issues/9)), and
-  caught a bug that silently broke retention on every fresh install.
-- **[@unLieb](https://github.com/unLieb)** — scoped the localization
-  architecture before a line was written ([#10](https://github.com/hook-365/adsb-3d/issues/10)) and is the native-speaker
-  reviewer for the German translation.
-- **[@rknobbe](https://github.com/rknobbe)** — asked the "can it render
-  the mountains?" question ([#7](https://github.com/hook-365/adsb-3d/issues/7)) that became 3D terrain, then
-  reported the settings bug behind tab-scoped settings ([#12](https://github.com/hook-365/adsb-3d/issues/12)) and the sideways
-  blimp that became real 3D balloons and airships ([#13](https://github.com/hook-365/adsb-3d/issues/13)), and asked for
-  flight routes on live-only installs ([#15](https://github.com/hook-365/adsb-3d/issues/15)).
-- **[@auggiesoft](https://github.com/auggiesoft)**: contributed smooth
-  motion ([#14](https://github.com/hook-365/adsb-3d/pull/14)), which makes aircraft
-  glide between position updates instead of stepping, with adaptive
-  per-aircraft timing, coverage-gap handling, and a thorough test suite.
-- **[@dirkhh](https://github.com/dirkhh)** — runs [adsb.im](https://adsb.im),
-  which answers every "where is that flight going?" in this project, and
-  asked for route lookups to be batched, plain-http and identified
-  ([#16](https://github.com/hook-365/adsb-3d/issues/16)). That request became
-  the shared route cache in v0.12.0. If routes are useful to you,
-  consider [supporting adsb.im](https://adsb.im).
+- **[@tyzbit](https://github.com/tyzbit)**: asked for VR ([#6](https://github.com/hook-365/adsb-3d/issues/6)) and then Quest-3-tested every VR/AR release with annotated videos; the altitude-scale idea ([#8](https://github.com/hook-365/adsb-3d/issues/8)).
+- **[@ValkyrieUK](https://github.com/ValkyrieUK)**: the full-stack Docker integration tests and CI ([#9](https://github.com/hook-365/adsb-3d/issues/9)), plus a retention bug every fresh install had.
+- **[@unLieb](https://github.com/unLieb)**: scoped the localization architecture ([#10](https://github.com/hook-365/adsb-3d/issues/10)); German native review.
+- **[@rknobbe](https://github.com/rknobbe)**: 3D terrain ([#7](https://github.com/hook-365/adsb-3d/issues/7)), tab-scoped settings ([#12](https://github.com/hook-365/adsb-3d/issues/12)), real balloons and airships ([#13](https://github.com/hook-365/adsb-3d/issues/13)), routes on live-only installs ([#15](https://github.com/hook-365/adsb-3d/issues/15)).
+- **[@auggiesoft](https://github.com/auggiesoft)**: contributed smooth motion ([#14](https://github.com/hook-365/adsb-3d/pull/14)).
+- **[@dirkhh](https://github.com/dirkhh)**: runs [adsb.im](https://adsb.im), the source of every route here, and asked for the batching that became the shared route cache ([#16](https://github.com/hook-365/adsb-3d/issues/16)). If routes are useful to you, [support adsb.im](https://adsb.im).
 
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
 
 ## What's new
 
-- **v0.12.0: lighter on adsb.im.** Flight routes come from
-  [adsb.im](https://adsb.im), a one-person hobby service. This release
-  does what its maintainer asked ([#16](https://github.com/hook-365/adsb-3d/issues/16)):
-  the server keeps one route cache shared by every open viewer, so a
-  callsign is looked up at most once per 4 hours no matter how many
-  browsers are open; unknown callsigns are collected for a minute and
-  sent in one request; requests go over plain http and identify the
-  project. Set `ROUTE_API_CONTACT` on `track-service` to put your own
-  contact in the User-Agent. Live-only installs keep working through
-  the direct proxy, now batched the same way.
-- **v0.11.2: fewer wrong routes.** Private and GA aircraft flying under
-  their registration no longer get an old route from the lookup, and
-  routes that don't match the aircraft's position carry an "Unverified"
-  label.
-- **v0.11.1: routes for everyone.** Origin and destination now show on
-  live-only installs too, and routes that don't match where the
-  aircraft actually is are marked with a "?" instead of shown as fact.
-- **v0.11.0: aircraft glide.** Smooth motion moves aircraft between
-  position updates instead of ticking once per feed update, most
-  noticeably on sparse remote feeds and in a headset. Each aircraft is
-  shown about one update behind live and never guesses ahead of real
-  data. Contributed by [@auggiesoft](https://github.com/auggiesoft);
-  toggle it under Settings. Also new: per-tab settings and feed, and
-  upright 3D balloons and airships.
-- **AR diorama mode, matured.** The scope clips to an open-top box you
-  place on real furniture and resize from the wrist menu; panning
-  slides the map beneath the fixed frame (yaw-only, so a tilted head
-  never lifts the floor). New **auto-orbit** slowly circles the scope
-  center or a followed aircraft for a proper desk-ornament view, with
-  an optional **follow-random-aircraft** mode that re-targets the chase
-  when the followed aircraft drops off the feed. A **high-res basemap**
-  option fetches tiles one zoom level sharper — low-res tiles are the
-  first thing a headset makes obvious.
-- **v0.9.2: ACARS lands on the map, CARTO goes legit.** ACARS is now a
-  panel docked under the HUD instead of a modal, aircraft with datalink
-  messages wear an `A` badge on their 3D label, and every selected-
-  aircraft surface (detail card, stereo panel, XR billboard) shows the
-  latest message. Message-to-aircraft matching finally works on the
-  VDL Mode 2 lane, whose decoder spells addresses in decimal. CARTO
-  basemaps moved to browser-direct fetching under your own free
-  `CARTO_API_KEY` with on-screen attribution, as their terms require.
-- **v0.9.0: the hardening release.** A full-project audit in one drop:
-  security headers with a configurable CORS lockdown, per-client rate
-  limiting behind reverse proxies, backend loops that survive bad
-  upstream data and report honest healthchecks, a broad frontend
-  performance pass, keyboard and screen-reader access for the aircraft
-  list, and test coverage from one placeholder test to 750+ real ones
-  with eslint, ruff, and pytest wired into CI.
-- **v0.7.0: aircraft that look like aircraft.** Every common silhouette
-  now has a real 3D body built from its own tar1090 drawing: a lofted
-  fuselage that follows the drawn width, engines with intake lips on
-  the drawn pods, tail fins, a proper T-tail on the C-17, and rotor
-  blades on helicopters at the angles the artist drew.
+- **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
+- **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
+- **v0.10**: AR diorama matured: placeable, resizable clip box, auto-orbit, follow-random-aircraft, high-res basemap option.
+- **v0.9**: ACARS panel on the map with decoded messages and position pings; CARTO basemaps browser-direct under your own key; the hardening release (security headers, rate limiting, 750+ tests in CI).
+- **v0.7**: real 3D aircraft bodies built from each tar1090 silhouette.
 
 Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 [releases page](https://github.com/hook-365/adsb-3d/releases).
 
 ## What you get
 
-**Live mode** — per-second updates with a tar1090 altitude color palette
-across cones, trails, ground icons, and labels. Click an aircraft for a
-detail card: photo, filed route, airframe, and autopilot data when
-broadcast. Filter pills (`All / Air / Ground / Mil / Emerg`) drive both
-the list and the 3D scene; emergency squawks get a pulsing red ring.
-Mobile-friendly — the sidebar collapses and settings open as a sheet.
+- **Live mode**: per-second updates, tar1090 altitude colours on cones, trails, ground icons and labels. Click an aircraft for photo, route, airframe and autopilot data. Filter pills (`All / Air / Ground / Mil / Emerg`) drive the list and the scene. Mobile-friendly.
 
 ![Following a SkyWest E175 inbound to Salt Lake: 3D silhouette over terrain, detail card with photo, route and airframe, aircraft list with filter pills](Aircraft-Details.jpg)
 
-**Historical mode** (needs track-service + TimescaleDB) — scrub a
-timestamp cursor across the last 1h / 24h / 7d at 1×–60× speed. The **3D
-airway-density** overlay renders every flight path at its real altitude,
-so busy airways and approach corridors light up as bright bundles in the
-sky.
+- **Historical mode** (track-service + TimescaleDB): scrub the last 1h / 24h / 7d at 1x to 60x, with a 3D airway-density overlay that draws every flight path at its real altitude.
 
 ![A week of traffic as a 3D airway-density heatmap, cruise-altitude airways above low-altitude local traffic](Heatmap.jpg)
 
-**ACARS** (needs acars-service) — per-aircraft datalink messages in the
-detail card with an OOOI flight-phase chip (taxi-out / airborne / taxi-in
-/ at gate) and a searchable message panel docked under the HUD, opened
-from a 📡 button in the top-right cluster (the HUD's ACARS chip is a
-status indicator). Aircraft with messages get an `A` badge on the 3D
-label and list row, and a ping ring fires on-scope when a message lands.
-Message content is decoded into a plain-language summary shown above the
-raw text — position reports (with a `#DFB`/`#M1x` route + lat/lon +
-temperature/wind), arrivals, weather requests, and CPDLC/ADS-C/AFN
-datalink; see [acars-service/README.md](acars-service/README.md#message-decoding).
-Any message carrying GPS coordinates also drops a fading **position
-ping** on the map at that spot, even for aircraft outside ADS-B range
-(toggle: *ACARS position pings*, Map settings). Messages are matched to
-aircraft by ICAO hex (decimal addresses from vdlm2dec are normalized),
-then by flight number or registration.
+- **ACARS** (acars-service): a searchable message panel, per-aircraft messages in the detail card with an OOOI phase chip, an `A` badge on label and list row, and decoded summaries for position reports, arrivals, weather and CPDLC/ADS-C/AFN (details in [acars-service/README.md](acars-service/README.md#message-decoding)). Messages with coordinates drop a position ping on the map, even beyond ADS-B range.
 
 ![Docked ACARS panel with decoded position and waypoint reports, and A badges in the aircraft list](Acars.jpg)
 
-**Multi-feed** — point at several receivers and the status bar grows a
-feed picker. Switching is in-place — no page reload.
-
-**Themes** — five built-in palettes (Midnight Glass, Daylight, Sectional
-Chart, Phosphor CRT, High Contrast) pickable from the settings panel.
-`Auto` follows your system light/dark preference. Switching is live; the
-3D scene re-tints in place. Plays especially well with the FAA chart
-basemaps below.
-
-**Weather radar** — Settings → Map → Weather radar overlays
-[RainViewer](https://www.rainviewer.com/) precipitation radar on any
-basemap, refreshed every few minutes. Proxied and cached by nginx like the
-other tiles; the attribution line credits RainViewer while it is on.
+- **Weather radar**: [RainViewer](https://www.rainviewer.com/) precipitation over any basemap, refreshed every few minutes, proxied and cached by nginx, credited on screen while on.
 
 ![RainViewer precipitation radar overlaid on the live 3D view: a storm cell with yellow and red cores over Door County and Lake Michigan, aircraft and trails above it](Radar.jpg)
 
-**Emergency alerts** — an aircraft squawking 7500 / 7600 / 7700 raises a
-toast (click to select it), gets a red label with the squawk next to the
-flight name, and a pulsing ring on the ground. Live mode only, no sound.
+- **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
+- **Panel style**: *Glass* floats cards over the map; *Docked* attaches solid panels to the edges with the map credit inside the footer.
+- **Multi-feed**: several receivers, a feed picker in the status bar, in-place switching.
+- **Themes**: Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast, or `Auto` from your system preference. The 3D scene re-tints live.
+- **Languages**: English, German, Spanish (machine-drafted pending native review; corrections welcome).
+- **3D terrain** (opt-in): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
+- **VR / AR**: WebXR with laser-pointer controllers, a wrist menu with full settings parity, comfort locomotion, AR scope placement and the diorama clip box. Quest 3 tested; demo in [VR & AR](#vr--ar). Side-by-side stereo for anything without WebXR.
+- **Basemaps**: OpenStreetMap, OpenTopoMap, ESRI relief and satellite, FAA charts, and CARTO Dark / Voyager with your own free `CARTO_API_KEY` (browser-direct, as [their terms](https://carto.com/legal/basemap-terms/) require). Attribution always on screen. Optional high-res mode fetches one zoom level deeper.
 
-**Panel style** — *Glass* (default) floats translucent cards over the map;
-*Docked* attaches solid panels to the edges: list down the right, HUD /
-ACARS / aircraft card down the left, full-width footer with the map
-credit inside it. Settings → Appearance.
+![The same view over Salt Lake City on four basemaps: satellite, hillshade, FAA sectional, and topo, with 3D terrain at x12](Basemaps.jpg)
 
-**Languages** — English, German, and Spanish (translations are
-machine-drafted pending native review — corrections welcome). `Auto`
-follows your browser locale.
-
-**3D terrain** (opt-in) — the basemap rises to real ground elevation,
-with range rings, markers, and aircraft ground icons draped over the
-hills and an above-ground-level readout in the detail card. Free
-elevation data, no API key. Pairs beautifully with the OpenTopoMap
-basemap. With terrain off, the flat map stands at the home field's
-elevation, so landing traffic meets the map instead of floating at
-field-elevation height above it. A companion
-**altitude scale** slider warps the vertical axis toward low-altitude
-detail (pattern traffic spreads out) or high-altitude detail (flight
-levels spread out) — terrain and aircraft stay consistent at any
-position.
-
-**VR / AR** — immersive WebXR sessions with laser-pointer controllers,
-a wrist menu with full settings parity, comfort locomotion (scope or
-free-fly, snap or smooth turning), and AR placement of the scope onto
-real furniture. The diorama clip box turns AR into a desk ornament:
-airspace confined to a placeable, resizable open-top box, with follow
-mode, slow auto-orbit, and an optional random-aircraft chase.
-Hardware-tested on a Quest 3; see [VR & AR](#vr--ar) below for the
-demo video. Side-by-side stereo (Cardboard) is still there for
-anything without WebXR.
-
-**Basemaps** — OpenStreetMap (default), OpenTopoMap, ESRI shaded relief
-and satellite, FAA charts (below), plus CARTO Dark and Voyager when you
-supply a free `CARTO_API_KEY`. Provider attribution is always on screen
-(bottom-right). Every basemap except CARTO is proxied and cached by the
-container's nginx; CARTO tiles go straight from the browser to CARTO's
-CDN because [their basemap terms](https://carto.com/legal/basemap-terms/)
-forbid server-side proxying or caching and require each deployment to
-use its own key. Carto currently serves us raster PNG tiles; they have
-announced raster is being retired in favour of vector tiles, which this
-Three.js texture pipeline does not yet consume.
-
-![The same view over Salt Lake City on four basemaps: satellite, hillshade, FAA sectional, and topo, with 3D terrain at ×12](Basemaps.jpg)
-
-**High-res basemaps** — an optional sharper-tile mode fetches the
-basemap one zoom level deeper (4× the tiles for the same coverage).
-Worth it on a headset or a 4K display; costs bandwidth accordingly.
-
-**Keyboard & screen readers** — the aircraft list is a real listbox:
-arrow keys move, Enter/Space selects, and screen readers get proper
-roles, a keyboard-operable ACARS panel (a top-right button opens it, `Esc` closes),
-and a throttled live aircraft count instead of per-second chatter.
-
-**FAA aeronautical charts** (US only) — Sectional, Helicopter, IFR Low,
-IFR High, and a sectional + roads hybrid, served through the same tile
-proxy as the regular basemaps. The container auto-discovers the current
-FAA 56-day chart cycle at start, so the upstream URL stays valid through
-each rotation as long as you restart the container occasionally.
-
-**Voice scanner** (needs a separate voice stack) — an optional VHF
-airband call feed, shown only on the local feed. See
-[docs/VOICE.md](docs/VOICE.md).
+- **Keyboard and screen readers**: the aircraft list is a real listbox with arrow-key navigation, proper roles, a keyboard-operable ACARS panel, and a throttled live count.
 
 ## Prerequisites
 
