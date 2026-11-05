@@ -74,7 +74,10 @@ jobs:
         run: npm run lint
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest rolled to 26.04 on 2026-11-05 and Playwright
+    # refuses to install Chromium there ("does not support chromium on
+    # ubuntu26.04-x64"). Bump when Playwright adds support.
+    runs-on: ubuntu-24.04
     continue-on-error: true
     defaults:
       run:
