@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.0] - 2026-11-06
+
 ### Added
 
 - **Panel style** (Settings → Appearance): *Docked* (default) attaches solid panels to the edges; *Glass* floats cards over the map, the previous look.
