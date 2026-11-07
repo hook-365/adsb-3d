@@ -79,4 +79,7 @@ export const miscStrings = {
   'misc.whats_new_title': "What's new in v{version}",
   'misc.whats_new_full': 'Full changelog',
   'misc.whats_new_close': 'Close',
+  'misc.severe_hail': 'hail {mm} mm',
+  'misc.severe_rotation': 'rotation',
+  'misc.lightning_nearby': '{rate}/km²/min nearby',
 } as const;

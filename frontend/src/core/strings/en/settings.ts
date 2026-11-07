@@ -138,6 +138,10 @@ export const settingsStrings = {
     'Any movement input pauses it.',
   // Slider label for the 0°/s stop.
   'settings.auto_orbit_off': 'Off',
+  'settings.camera_mode': 'Camera',
+  'settings.camera_mode_desc': 'Orbit circles a pivot (drag to turn, wheel to zoom, right-drag to pan). Free flies the eye itself: drag to look, WASD or arrows to move, R/F up and down, Shift for speed, wheel to push forward.',
+  'settings.camera_mode_orbit': 'Orbit',
+  'settings.camera_mode_free': 'Free',
   'settings.terrain_3d': '3D terrain',
   'settings.terrain_3d_desc':
     'Raise the basemap to real ground elevation. Rings and markers follow ' +
@@ -162,5 +166,17 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_low': 'low {n}%',
   'settings.altitude_curve_fmt_high': 'high {n}%',
   'settings.weather_radar': 'Weather radar',
-  'settings.weather_radar_desc': 'Precipitation radar from RainViewer drawn over the map, refreshed every few minutes. Coverage depends on national radar networks.',
+  'settings.weather_radar_desc': 'Precipitation on the map: NOAA MRMS rate and type (rain, snow, convective, hail) where weather-service covers, RainViewer elsewhere. Refreshed every few minutes.',
+  'settings.weather_storms_3d': '3D storms',
+  'settings.weather_storms_3d_desc': 'Storm cells as volumes at their real altitude, from NOAA MRMS radar. US coverage only. Replaces the flat weather radar while on.',
+  'settings.auto_orbit_direction': 'Spin direction',
+  'settings.auto_orbit_direction_desc': 'Which way the auto-orbit circles.',
+  'settings.auto_orbit_right': 'Right',
+  'settings.auto_orbit_left': 'Left',
+  'settings.weather_freezing': 'Freezing level',
+  'settings.weather_freezing_desc': 'A translucent sheet at the 0 °C height from NOAA MRMS, where icing lives. US coverage only.',
+  'settings.weather_severe': 'Severe cells',
+  'settings.weather_severe_desc': 'Rings and labels on cells with large hail or rotation, from NOAA MRMS MESH and RotationTrack. US coverage only.',
+  'settings.weather_lightning': 'Lightning',
+  'settings.weather_lightning_desc': 'Cloud-to-ground flashes from NOAA MRMS lightning density (NLDN). US coverage only.',
 } as const;

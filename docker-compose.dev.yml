@@ -41,8 +41,10 @@ services:
       # you want ACARS messages back.
       - ENABLE_ACARS=${ENABLE_ACARS:-false}
       - ENABLE_VOICE=${ENABLE_VOICE:-true}
+      - ENABLE_WEATHER3D=${ENABLE_WEATHER3D:-false}
       - TRACK_API_HOST=track-service:8000
       - ACARS_API_HOST=acars-service:8000
+      - WEATHER_API_HOST=weather-service:8000
       # Voice services live in the rf-services/voice-services stack.
       # Both reachable inside seg_monitoring by container name.
       - VOICE_STREAM_HOST=voice-icecast:8000
@@ -52,6 +54,25 @@ services:
       - "8186:80"
     volumes:
       - adsb-3d-redesign-tiles:/tiles
+    networks:
+      - seg_monitoring
+
+  # 3D storms sidecar, built from this tree (track-service and acars-service
+  # come from the rf-services stack instead). Reachable by name from the
+  # viewer via WEATHER_API_HOST above. Serves every feed; LATITUDE /
+  # LONGITUDE only pre-warm the local feed's volume.
+  weather-service:
+    build:
+      context: .
+      dockerfile: weather-service/Dockerfile
+    container_name: weather-service
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LATITUDE=${LATITUDE:-45.0000}
+      - LONGITUDE=${LONGITUDE:--90.0000}
+      - ROUTE_API_CONTACT=${ROUTE_API_CONTACT:-}
     networks:
       - seg_monitoring
 

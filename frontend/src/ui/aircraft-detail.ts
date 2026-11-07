@@ -9,6 +9,9 @@ import { getAcarsMessages, getAcarsSummary, subscribeAcars, type AcarsPhase, typ
 import { getSettings, subscribeSettings } from '../core/settings';
 import { t, type StringKey } from '../core/i18n';
 import { elevationFtAt } from '../world/elevation';
+import { stormsActive } from '../world/storms';
+import { getField, subscribeField } from '../world/weather-fields';
+import { lightningActive, lightningNear } from '../world/lightning';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
 
@@ -157,6 +160,10 @@ export function createAircraftDetail(
   const classLabelEl = document.getElementById('detail-class-label')!;
   const chipsEl = document.getElementById('detail-chips') as HTMLElement;
   const altEl = document.getElementById('detail-alt')!;
+  const stormTopLabelEl = document.getElementById('detail-stormtop-label')!;
+  const stormTopEl = document.getElementById('detail-stormtop')!;
+  const lightningLabelEl = document.getElementById('detail-lightning-label')!;
+  const lightningEl = document.getElementById('detail-lightning')!;
   const vrateEl = document.getElementById('detail-vrate')!;
   const spdEl = document.getElementById('detail-spd')!;
   const hdgEl = document.getElementById('detail-hdg')!;
@@ -419,6 +426,18 @@ export function createAircraftDetail(
     // With 3D terrain data present, append height above ground — only when
     // the ground is meaningfully elevated (≥100 ft) so sea-level
     // deployments don't show a redundant near-identical AGL.
+    // Storm top (MRMS EchoTop_18, km MSL) within a couple of cells of the
+    // aircraft while 3D storms are on: the number a pilot deviating around
+    // a cell actually wants next to their own altitude.
+    const tops = stormsActive() ? getField('echotop18') : null;
+    const topKm = tops ? tops.maxNear(a.lat, a.lon, 2) : Number.NaN;
+    setRow(stormTopLabelEl, stormTopEl, t('detail.storm_top'),
+      Number.isFinite(topKm) && topKm >= 3 ? t('detail.storm_top_value', { alt: fmtAltitude(Math.round((topKm * 3280.84) / 100) * 100) }) : null);
+
+    const strikes = lightningActive() ? lightningNear(a.lat, a.lon) : Number.NaN;
+    setRow(lightningLabelEl, lightningEl, t('detail.lightning'),
+      Number.isFinite(strikes) && strikes > 0 ? t('misc.lightning_nearby', { rate: strikes.toFixed(strikes < 1 ? 2 : 1) }) : null);
+
     const groundFt = elevationFtAt(a.lat, a.lon);
     altEl.textContent = a.onGround
       ? t('detail.on_ground')
@@ -551,6 +570,11 @@ export function createAircraftDetail(
       .map((c) => `<span class="chip${c.cls ? ` ${c.cls}` : ''}">${escapeHtml(c.label)}</span>`)
       .join('');
   }
+
+  // Keep the echo-top grid warm; the per-second detail refresh reads it.
+  subscribeField('echotop18', () => {
+    /* grid arrival is picked up by the next render */
+  });
 
   function setRow(dt: HTMLElement, dd: HTMLElement, label: string, value: string | null): boolean {
     if (value === null) {

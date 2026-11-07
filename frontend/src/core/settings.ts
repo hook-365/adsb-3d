@@ -55,6 +55,8 @@ export type LanguageSelection = 'auto' | 'en' | 'de' | 'es';
  * onto <html data-panel-style>.
  */
 export type PanelStyle = 'glass' | 'docked';
+/** Desktop camera: OrbitControls around a pivot, or a free-flying eye (world/free-camera.ts). */
+export type CameraMode = 'orbit' | 'free';
 /**
  * In-air aircraft marker style. 'cone' = classic heading cone; 'sphere' =
  * undirected orb (trails carry the heading); 'silhouette' = the aircraft's
@@ -157,6 +159,10 @@ export interface Settings {
    * than XR-gating it.
    */
   autoOrbit: number;
+  /** Which way the auto-orbit turns. */
+  autoOrbitDirection: 'right' | 'left';
+  /** Orbit around a pivot (default) or fly the camera freely. */
+  cameraMode: CameraMode;
   /**
    * Basemap tile zoom +1 over the default (world/tiles.ts DEFAULT_ZOOM):
    * 4x the tile count for the same ground coverage, sharper imagery at
@@ -221,6 +227,19 @@ export interface Settings {
   /** RainViewer precipitation radar drawn translucently over the basemap. */
   weatherRadar: boolean;
   /**
+   * Raymarched NOAA MRMS storm volume at true altitude (world/storms.ts).
+   * ANDed with the deploy-level WEATHER3D_ENABLED flag; US feeds only
+   * (the service crops around whichever feed is active). While on, it
+   * replaces the flat weather radar overlay.
+   */
+  weatherStorms3d: boolean;
+  /** Translucent sheet at the 0 °C height from MRMS (weather-service only). */
+  weatherFreezingLevel: boolean;
+  /** Hail and rotation markers from MRMS MESH / RotationTrack (weather-service only). */
+  weatherSevere: boolean;
+  /** Cloud-to-ground lightning flashes from MRMS NLDN density (weather-service only). */
+  weatherLightning: boolean;
+  /**
    * UI language. 'auto' resolves navigator.language against the locales
    * registered in core/i18n.ts, falling back to English. Changing this
    * reloads the page (strings are baked into the DOM at panel build time).
@@ -238,6 +257,8 @@ export interface Settings {
    * Vertical exaggeration factor (issue #6 round 5 — tyzbit asked for a
    * "true altitude scale" separate from the emphasis curve above).
    * Reloads the page like the curve; the same baked geometry applies.
+   * Default 4x (was 12x until the Explore feed: with real terrain under
+   * a hub, 12x turned every approach into a cliff).
    */
   altitudeExaggeration: AltitudeExaggeration;
   /**
@@ -274,6 +295,8 @@ const DEFAULTS: Settings = {
   xrFollow: false,
   followRandomAircraft: false,
   autoOrbit: 0,
+  autoOrbitDirection: 'right',
+  cameraMode: 'orbit',
   hiResTiles: false,
   stereo: false,
   stereoStrength: 50,
@@ -289,11 +312,15 @@ const DEFAULTS: Settings = {
   speedUnit: 'kt',
   altitudeUnit: 'ft',
   theme: 'auto',
-  panelStyle: 'glass',
+  panelStyle: 'docked',
   weatherRadar: false,
+  weatherStorms3d: false,
+  weatherFreezingLevel: false,
+  weatherSevere: false,
+  weatherLightning: false,
   language: 'auto',
   altitudeCurveBias: 0,
-  altitudeExaggeration: '12',
+  altitudeExaggeration: '4',
   // Off by default: an extra ~25 tile fetches + displaced geometry that
   // deserves an opt-in, and flat remains the familiar baseline look.
   terrain3d: false,

@@ -38,8 +38,10 @@ export interface RawAircraft {
 
 export interface AircraftJsonFeed {
   now: number;
-  messages: number;
-  aircraft: RawAircraft[];
+  messages?: number;
+  aircraft?: RawAircraft[];
+  /** readsb-format aggregator APIs (FlyItalyADSB, adsb.lol, airplanes.live) use `ac` instead. */
+  ac?: RawAircraft[];
 }
 
 export interface Aircraft {

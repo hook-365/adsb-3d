@@ -1,5 +1,4 @@
 import {
-  AUTO_ORBIT_SPEEDS,
   BASEMAP_VALUES,
   getSettings,
   getDefaultSettings,
@@ -9,6 +8,7 @@ import {
   type Settings,
 } from '../core/settings';
 import { t } from '../core/i18n';
+import { WEATHER3D_ENABLED } from '../core/config';
 import { subscribeUpdateInfo } from '../core/update-check';
 import { isBasemapAvailable } from '../core/basemaps';
 import { THEME_OPTIONS } from '../core/theme';
@@ -109,6 +109,16 @@ export interface SettingsSection {
 export const PANEL_EXCLUDED_KEYS: Record<string, string> = {
   vrScale: 'written by VR thumbstick locomotion every frame; not a form control',
   arScale: 'written by AR thumbstick locomotion every frame; not a form control',
+  // The row exists only on deployments running weather-service; elsewhere
+  // the key stays at its default and has nothing to show.
+  ...(WEATHER3D_ENABLED
+    ? {}
+    : {
+        weatherStorms3d: 'row is gated on ENABLE_WEATHER3D (weather-service)',
+        weatherFreezingLevel: 'row is gated on ENABLE_WEATHER3D (weather-service)',
+        weatherSevere: 'row is gated on ENABLE_WEATHER3D (weather-service)',
+        weatherLightning: 'row is gated on ENABLE_WEATHER3D (weather-service)',
+      }),
 };
 
 export const SETTINGS_SCHEMA: SettingsSection[] = [
@@ -263,6 +273,36 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         label: t('settings.weather_radar'),
         description: t('settings.weather_radar_desc'),
       },
+      // Only deployments running weather-service (ENABLE_WEATHER3D) get the
+      // 3D storms toggle; MRMS is a US-only product.
+      ...(WEATHER3D_ENABLED
+        ? [
+            {
+              kind: 'toggle' as const,
+              key: 'weatherStorms3d' as const,
+              label: t('settings.weather_storms_3d'),
+              description: t('settings.weather_storms_3d_desc'),
+            },
+            {
+              kind: 'toggle' as const,
+              key: 'weatherFreezingLevel' as const,
+              label: t('settings.weather_freezing'),
+              description: t('settings.weather_freezing_desc'),
+            },
+            {
+              kind: 'toggle' as const,
+              key: 'weatherSevere' as const,
+              label: t('settings.weather_severe'),
+              description: t('settings.weather_severe_desc'),
+            },
+            {
+              kind: 'toggle' as const,
+              key: 'weatherLightning' as const,
+              label: t('settings.weather_lightning'),
+              description: t('settings.weather_lightning_desc'),
+            },
+          ]
+        : []),
       {
         kind: 'toggle',
         key: 'rangeRings',
@@ -455,16 +495,34 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.follow_random_desc'),
       },
       {
+        kind: 'choice',
+        key: 'cameraMode',
+        label: t('settings.camera_mode'),
+        description: t('settings.camera_mode_desc'),
+        options: [
+          { value: 'orbit', label: t('settings.camera_mode_orbit') },
+          { value: 'free', label: t('settings.camera_mode_free') },
+        ],
+      },
+      {
         kind: 'range',
         key: 'autoOrbit',
         label: t('settings.auto_orbit'),
         description: t('settings.auto_orbit_desc'),
-        // Stop list, not a linear slider (issue #6 round 4: two speeds).
         min: 0,
-        max: 6,
-        step: 3,
-        values: AUTO_ORBIT_SPEEDS,
+        max: 12,
+        step: 1,
         format: (v) => (v === 0 ? t('settings.auto_orbit_off') : `${v}°/s`),
+      },
+      {
+        kind: 'choice',
+        key: 'autoOrbitDirection',
+        label: t('settings.auto_orbit_direction'),
+        description: t('settings.auto_orbit_direction_desc'),
+        options: [
+          { value: 'right', label: t('settings.auto_orbit_right') },
+          { value: 'left', label: t('settings.auto_orbit_left') },
+        ],
       },
       {
         kind: 'toggle',

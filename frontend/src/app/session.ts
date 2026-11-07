@@ -148,6 +148,7 @@ export function initSession(opts: {
     const liveFeed = new LiveFeed({
       liveUrl: feed.liveUrl,
       wsUrl: feed.supportsWs ? `${feed.apiBase}/ws/live` : null,
+      pollMs: feed.pollMs,
     });
     liveFeed.subscribe((records, status) => {
       if (connectLoader && status.ok) {
@@ -172,8 +173,10 @@ export function initSession(opts: {
     scope.own(() => history.stop());
 
     // Route lookups hit adsb.im via the nginx /routeset proxy, so they
-    // work on every feed, with or without track-service.
-    scope.own(attachRouteBatchPrefetcher(store));
+    // work on every feed, with or without track-service. Explore feeds
+    // skip the prefetcher: a hub's traffic churns too fast to warm, so
+    // routes are asked for on selection only (feed/routes.ts).
+    if (feed.prefetchRoutes) scope.own(attachRouteBatchPrefetcher(store));
 
     // ACARS — only when this feed has it configured AND the user hasn't
     // disabled the feature. The settings toggle can flip mid-session, so

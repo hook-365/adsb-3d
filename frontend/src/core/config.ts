@@ -45,8 +45,14 @@ export const TERRAIN_ENABLED: boolean =
   (typeof window !== 'undefined' &&
     (window as { TERRAIN_CONFIG?: { enabled?: boolean } }).TERRAIN_CONFIG?.enabled) !== false;
 
+// 3D storms need weather-service (ENABLE_WEATHER3D); off unless the deploy
+// says so, and then still behind the weatherStorms3d user setting.
+export const WEATHER3D_ENABLED: boolean =
+  typeof window !== 'undefined' &&
+  (window as { WEATHER3D_CONFIG?: { enabled?: boolean } }).WEATHER3D_CONFIG?.enabled === true;
+
 // Scene scale: 1 unit = 1 nautical mile horizontally. Vertical exaggeration
-// (12x by default so altitude reads at a glance) is the altitudeExaggeration
+// (4x by default: enough to read, not enough to turn terrain into cliffs) is the altitudeExaggeration
 // setting, applied in core/coords.ts.
 
 // Polling cadence (ms). readsb publishes ~1 Hz.

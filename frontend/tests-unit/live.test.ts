@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyWsMessage, LiveFeed, type DiffMsg, type SnapshotMsg } from '../src/feed/live';
+import { applyWsMessage, epochToMs, LiveFeed, type DiffMsg, type SnapshotMsg } from '../src/feed/live';
 import { setHome } from '../src/core/config';
 import type { RawAircraft } from '../src/core/types';
 
@@ -114,7 +114,45 @@ function okFetch(aircraft: RawAircraft[] = []) {
   });
 }
 
+describe('epochToMs', () => {
+  it('accepts seconds (readsb, FlyItalyADSB) and milliseconds (adsb.lol, adsb.fi, airplanes.live)', () => {
+    expect(epochToMs(1_793_980_000)).toBe(1_793_980_000_000);
+    expect(epochToMs(1_793_980_000_123)).toBe(1_793_980_000_123);
+    expect(epochToMs(1_793_980_000.6)).toBe(1_793_980_000_600);
+    expect(Math.abs(epochToMs(undefined) - Date.now())).toBeLessThan(1000);
+  });
+});
+
 describe('LiveFeed transport', () => {
+  it('accepts the aggregator `ac` envelope (Explore feed) in place of `aircraft`', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ now: Date.now() / 1000, count: 1, ac: [{ hex: 'abc123', lat: 45, lon: -90, flight: 'RYR42KD ' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const feed = new LiveFeed({ liveUrl: '/data/explore/aircraft.json?lat=45&lon=-90', wsUrl: null });
+    const seen: Array<{ hex: string; callsign: string | null }> = [];
+    feed.subscribe((records) => seen.push(...records.map((r) => ({ hex: r.hex, callsign: r.callsign }))));
+    feed.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual([{ hex: 'abc123', callsign: 'RYR42KD' }]);
+    feed.stop();
+  });
+
+  it('polls at the configured pollMs instead of the 1 Hz default', async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const feed = new LiveFeed({ liveUrl: '/data/aircraft.json', wsUrl: null, pollMs: 5000 });
+    feed.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    feed.stop();
+  });
+
   it('wsUrl null → polling only, no WebSocket constructed', async () => {
     const fetchMock = okFetch();
     vi.stubGlobal('fetch', fetchMock);

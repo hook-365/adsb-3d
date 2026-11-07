@@ -357,6 +357,8 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   language: 'changing it reloads the page, which would kill the XR session',
   panelStyle: 'lays out the desktop DOM chrome; there is no DOM inside a headset',
   stereo: 'desktop side-by-side mode — meaningless inside a headset',
+  cameraMode: 'desktop mouse/keyboard camera; the headset owns the camera in XR',
+  autoOrbitDirection: 'footer spin control and settings panel; the wrist keeps the speed stepper only',
   stereoStrength: 'desktop side-by-side mode — meaningless inside a headset',
   vrScale: 'live-driven by the left thumbstick; a menu row would fight it',
   arScale: 'live-driven by the left thumbstick in AR; a menu row would fight it',
@@ -366,6 +368,10 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   trailLength: 'slider needs the stepper pattern and page space; panel-only for now',
   acarsPings: 'map decoration toggle; panel-only to keep the wrist pages lean',
   weatherRadar: 'map decoration toggle; panel-only to keep the wrist pages lean',
+  weatherStorms3d: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
+  weatherFreezingLevel: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
+  weatherSevere: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
+  weatherLightning: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

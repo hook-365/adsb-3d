@@ -61,4 +61,7 @@ export const detailStrings = {
   'detail.compass_sw': 'SW',
   'detail.compass_w': 'W',
   'detail.compass_nw': 'NW',
+  'detail.storm_top': 'Gewitteroberkante',
+  'detail.storm_top_value': '{alt} in der Nähe',
+  'detail.lightning': 'Blitze',
 } as const;

@@ -134,6 +134,10 @@ export const settingsStrings = {
     'Orbita lentamente alrededor de la aeronave seguida (o el centro del ' +
     'radar). Cualquier entrada de movimiento la pausa.',
   'settings.auto_orbit_off': 'Desactivada',
+  'settings.camera_mode': 'Cámara',
+  'settings.camera_mode_desc': 'Órbita gira alrededor de un pivote (arrastrar gira, rueda acerca, arrastrar con botón derecho desplaza). Libre mueve el propio ojo: arrastrar para mirar, WASD o flechas para volar, R/F sube y baja, Mayús para velocidad, rueda empuja hacia delante.',
+  'settings.camera_mode_orbit': 'Órbita',
+  'settings.camera_mode_free': 'Libre',
   'settings.terrain_3d': 'Terreno 3D',
   'settings.terrain_3d_desc':
     'Eleva el mapa a la altitud real del terreno. Los anillos y marcadores ' +
@@ -158,5 +162,17 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_low': 'baja {n}%',
   'settings.altitude_curve_fmt_high': 'alta {n}%',
   'settings.weather_radar': 'Radar meteorológico',
-  'settings.weather_radar_desc': 'Radar de precipitación de RainViewer sobre el mapa, actualizado cada pocos minutos. La cobertura depende de las redes de radar nacionales.',
+  'settings.weather_radar_desc': 'Precipitación sobre el mapa: tasa y tipo (lluvia, nieve, convectiva, granizo) de NOAA MRMS donde cubre weather-service, RainViewer en el resto. Se actualiza cada pocos minutos.',
+  'settings.weather_storms_3d': 'Tormentas 3D',
+  'settings.weather_storms_3d_desc': 'Células de tormenta como volúmenes a su altitud real, del radar NOAA MRMS. Solo cobertura de EE. UU. Sustituye al radar meteorológico plano mientras está activo.',
+  'settings.auto_orbit_direction': 'Dirección del giro',
+  'settings.auto_orbit_direction_desc': 'Hacia dónde circula la órbita automática.',
+  'settings.auto_orbit_right': 'Derecha',
+  'settings.auto_orbit_left': 'Izquierda',
+  'settings.weather_freezing': 'Nivel de congelación',
+  'settings.weather_freezing_desc': 'Una lámina translúcida a la altura de 0 °C según NOAA MRMS, donde se forma hielo. Solo EE. UU.',
+  'settings.weather_severe': 'Células severas',
+  'settings.weather_severe_desc': 'Anillos y etiquetas en células con granizo grande o rotación, de NOAA MRMS MESH y RotationTrack. Solo EE. UU.',
+  'settings.weather_lightning': 'Rayos',
+  'settings.weather_lightning_desc': 'Descargas nube-tierra según la densidad de rayos de NOAA MRMS (NLDN). Solo EE. UU.',
 } as const;

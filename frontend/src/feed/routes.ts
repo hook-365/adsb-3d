@@ -9,10 +9,20 @@ import type { AircraftStore } from '../aircraft/store';
 // returns a `plausible` flag, which we keep so the UI can mark stale or
 // wrong routes instead of stating them as fact.
 //
-// On first paint (and whenever new callsigns appear in the feed), collect
-// for BATCH_WINDOW_MS then POST the unseen set in one shot. Subsequent per-callsign
-// reads from `getRoute()` hit the cache. Both resolutions and "no route
-// known" are cached so we don't re-ask.
+// Two ways a callsign gets asked about:
+//
+// - Prefetch (feeds with `prefetchRoutes`, i.e. receivers): whenever new
+//   callsigns appear in the feed, collect for BATCH_WINDOW_MS then POST
+//   the unseen set in one shot, so a click shows the route instantly.
+// - On demand (Explore cities, where the whole view churns): nothing is
+//   asked until someone selects an aircraft. ensureRoute() then collects
+//   for ON_DEMAND_WINDOW_MS (double clicks, a second viewer) and POSTs
+//   with `priority: true`, which the track-service answers from its short
+//   lane. Volume becomes "callsigns people looked at", deduplicated for
+//   24 h server-side, instead of every aircraft over a hub.
+//
+// Subsequent per-callsign reads from `getRoute()` hit the cache. Both
+// resolutions and "no route known" are cached so we don't re-ask.
 
 export interface RouteInfo {
   /** Endpoints of the leg the aircraft is currently flying. */
@@ -64,6 +74,31 @@ export function clearRouteCache(): void {
     waiters.delete(callsign);
     for (const resolve of list) resolve(null);
   }
+  onDemandQueue.clear();
+  if (onDemandTimer !== null) {
+    clearTimeout(onDemandTimer);
+    onDemandTimer = null;
+  }
+}
+
+// Whether a prefetcher is attached for the active feed. Without one,
+// ensureRoute() is the only path that asks upstream.
+let prefetcherActive = false;
+// Short collection window for on-demand lookups: long enough to merge a
+// burst of clicks, short enough that the detail panel fills promptly.
+const ON_DEMAND_WINDOW_MS = 2000;
+const onDemandQueue = new Map<string, RouteQuery>();
+let onDemandTimer: ReturnType<typeof setTimeout> | null = null;
+
+function requestOnDemand(query: RouteQuery): void {
+  onDemandQueue.set(query.callsign, query);
+  if (onDemandTimer !== null) return;
+  onDemandTimer = setTimeout(() => {
+    onDemandTimer = null;
+    const batch = Array.from(onDemandQueue.values());
+    onDemandQueue.clear();
+    void fetchRoutes(batch, true);
+  }, ON_DEMAND_WINDOW_MS);
 }
 
 const BATCH_MAX_CALLSIGNS = 100;
@@ -142,7 +177,7 @@ export function normalizeRoute(entry: RawRouteEntry | undefined, lat: number, lo
   return out;
 }
 
-async function fetchRoutes(queries: RouteQuery[]): Promise<void> {
+async function fetchRoutes(queries: RouteQuery[], priority = false): Promise<void> {
   if (queries.length === 0) return;
   try {
     const res = await fetch(ROUTESET_URL, {
@@ -150,6 +185,7 @@ async function fetchRoutes(queries: RouteQuery[]): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         planes: queries.map((q) => ({ callsign: q.callsign, lat: q.lat, lng: q.lon })),
+        ...(priority ? { priority: true } : {}),
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -181,10 +217,11 @@ export function getRoute(callsign: string): RouteInfo | null | undefined {
 
 /**
  * Per-callsign lookup for the click-to-select path. Resolves from the
- * cache, or once the batch prefetcher's next request has answered for
- * this callsign. It never sends a request of its own: a selected aircraft
- * is in the store, so the prefetcher already has it queued, and one-off
- * single-callsign requests are what adsb.im asked us to stop sending.
+ * cache, or once a request has answered for this callsign. With a
+ * prefetcher attached it never sends a request of its own: the selected
+ * aircraft is in the store, so the prefetcher already has it queued.
+ * Without one (Explore), it queues an on-demand request through the
+ * short window, still batched and still via the shared server cache.
  */
 export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
   const cached = cache.get(query.callsign);
@@ -193,11 +230,17 @@ export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
     cache.set(query.callsign, null);
     return Promise.resolve(null);
   }
+  if (!prefetcherActive) requestOnDemand(query);
   return new Promise((resolve) => {
     const list = waiters.get(query.callsign);
     if (list) list.push(resolve);
     else waiters.set(query.callsign, [resolve]);
   });
+}
+
+/** True while a prefetcher is attached (receiver feeds); false on Explore. */
+export function isRoutePrefetchActive(): boolean {
+  return prefetcherActive;
 }
 
 /**
@@ -210,6 +253,7 @@ export function ensureRoute(query: RouteQuery): Promise<RouteInfo | null> {
 export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let detached = false;
+  prefetcherActive = true;
   // Latest position per queued callsign, so the lookup is checked
   // against where the aircraft is when the batch fires.
   const queued = new Map<string, RouteQuery>();
@@ -250,6 +294,7 @@ export function attachRouteBatchPrefetcher(store: AircraftStore): () => void {
 
   return () => {
     detached = true;
+    prefetcherActive = false;
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;

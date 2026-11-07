@@ -10,9 +10,10 @@ nginx Docker image serves a Vite / TypeScript / Three.js frontend and reverse-
 proxies a user-supplied ADS-B feeder plus two optional FastAPI services. The
 frontend uses **no framework** — DOM and Three.js directly.
 
-Three feature tiers, all optional and off by default: historical playback
+Four feature tiers, all optional and off by default: historical playback
 (needs `track-service` + TimescaleDB), ACARS messages (needs `acars-service`),
-and a VHF voice scanner (needs an external voice-services stack).
+3D storms (needs `weather-service`, one sidecar for all feeds), and a VHF voice scanner (needs an
+external voice-services stack).
 
 ## Repo layout
 
@@ -21,6 +22,9 @@ and a VHF voice scanner (needs an external voice-services stack).
 - `track-service/` — FastAPI + asyncpg. Live WebSocket diff stream + a
   historical-data collector writing to TimescaleDB.
 - `acars-service/` — FastAPI bridge to an external acarshub TCP JSON feed.
+- `weather-service/` — FastAPI + numpy + Pillow sidecar. Downloads NOAA MRMS
+  3D reflectivity once and crops a small gzip volume per feed location. No
+  database.
 - `nginx/` — reverse-proxy + static-host config templates.
 - `Dockerfile` + `entrypoint.sh` — single image. The entrypoint renders
   `config.js` (frontend runtime config) and the nginx config from environment
@@ -49,19 +53,32 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
   `url-state`, `config`, `basemaps` (provider availability + attribution),
   `types`.
 - `feed/` — data sources: `live`, `historical`, `history`, `acars`, `routes`,
-  `feeds` (multi-feed switching), `voice-calls`, `normalize`.
+  `feeds` (multi-feed switching), `explore` + `explore-places` (the
+  Explore feed: preset cities through FlyItalyADSB's radius API, proxied
+  at `/data/explore/` with the key injected by nginx; the slot's feed id
+  carries the place so a city pick is an ordinary feed switch; routes
+  are on-demand there, `prefetchRoutes: false`), `voice-calls`,
+  `normalize`.
 - `aircraft/` — `store`, `reconciler`, `shapes` (vendored tar1090 catalog),
   `shape-geometry` (extrudes silhouettes + merges procedural 3D features),
   `shape-features` (hand/auto-measured feature annotations per shape),
   `fuselage-profiles.json` (generated width profiles; regenerate by
   rasterizing silhouettes, do not hand-edit), `shape-lab` (dev-only tuning
   harness, `npm run dev` + `?shapeLab=1`), `acars-store`.
-- `world/` — `scene`, `controls` (Three.js OrbitControls), `tiles` (basemap),
+- `world/` — `scene`, `controls` (Three.js OrbitControls), `free-camera`
+  (free-fly alternative, `Settings.cameraMode`; main.ts gates every
+  orbit-specific tick step on `freeMode`), `tiles` (basemap; also
+  `terrainSurface()`, the drawn-mesh height that ground anchors use),
   `labels`, `heatmap` (3D airway-density), `acars-pings` (transient map pings
-  at ACARS-reported coordinates).
+  at ACARS-reported coordinates), `storms` (raymarched MRMS storm volume
+  from `/weather-api/`, capped per column by the echo-top field),
+  `weather-fields` (the one poller for MRMS 2-D grids; features
+  `subscribeField(id)`), `precip-layer` (draped rate/type overlay that
+  pre-empts RainViewer inside coverage), `freezing-level`, `severe-cells`,
+  `lightning`.
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
-  `feed-selector`, etc.
+  `feed-selector`, `place-picker` (searchable Explore city list), etc.
 - `interaction/` — `picking` (raycaster).
 - `main.ts` — wires everything together at boot.
 
@@ -143,7 +160,24 @@ types, unit abbreviations) is deliberately not translated.
   human-readable summaries (`decoder.py`: position reports, arrivals,
   weather, and CPDLC/ADS-C/AFN datalink) stored in a `decoded` JSONB
   column, persists to TimescaleDB, and exposes REST + a `/ws` push socket.
-- Both run as a non-root user (uid `10001`) and declare a `HEALTHCHECK`.
+- `weather-service` — every `WEATHER3D_REFRESH_S` (300) downloads the 33
+  constant-altitude NOAA MRMS merged-reflectivity slices (keyless, public
+  domain, CONUS only) once, whatever the feed count. The frontend sends the
+  active feed's home position (`GET /volume?lat=&lon=`); the service
+  registers that location, crops a `WEATHER3D_RADIUS_NM` box around it,
+  downsamples to at most 256 cells per side and serves the manifest
+  (`coverage, time, builtAt, bounds, nx, ny, nz, heightsKm, levelsMissing,
+  url`) + `/volume.bin?loc=<key>` (gzip uint8 dBZ). `LATITUDE`/`LONGITUDE`
+  are optional and pre-warm one pinned location; others expire after
+  `WEATHER3D_LOCATION_TTL_S` (1800) idle, max 16, stalest evicted. A feed
+  outside CONUS gets `coverage: false` and the toggle draws nothing for it.
+  `/health` lists `locations` and is 503 only after two refresh periods
+  without a download. 2-D products (`WEATHER_FIELDS`, `mrms.PRODUCTS`:
+  echo tops, freezing level, precip rate/type, MESH, rotation, NLDN
+  lightning; bright band opt-in) are fetched on their own cadence, cropped
+  the same way and packed to uint8 (`pack_field`): `GET /fields?lat=&lon=`
+  is the per-location manifest, `/field.bin?loc=&f=<id>` a grid.
+- All three run as a non-root user (uid `10001`) and declare a `HEALTHCHECK`.
 
 ## Configuration & runtime
 
@@ -151,8 +185,18 @@ All deploy-time config is environment variables. `entrypoint.sh` renders
 `config.js` and the nginx proxy blocks from them at container start; disabled
 features get dummy upstreams so the generated nginx config is always valid.
 
-- Feature flags: `ENABLE_HISTORICAL`, `ENABLE_ACARS`, `ENABLE_VOICE` — all
-  default `false`. `ENABLE_TERRAIN` (default `true`) is the deploy-level
+- Feature flags: `ENABLE_HISTORICAL`, `ENABLE_ACARS`, `ENABLE_WEATHER3D`,
+  `ENABLE_VOICE` — all default `false`. `EXPLORE_PROVIDER` (flyitalyadsb
+  with `EXPLORE_API_KEY`, or keyless adsb.lol / adsb.fi / airplanes.live)
+  turns on the Explore feed and `EXPLORE_POLL_S` (default 10) its poll
+  cadence and per-city nginx cache window; every provider answers in
+  readsb record format under an `ac` key (`now` in s or ms). Routes on
+  Explore are on-demand only (`Feed.prefetchRoutes`), through the
+  track-service batcher's priority lane. `ENABLE_WEATHER3D` needs
+  `weather-service` (`WEATHER_API_HOST`, proxied at `/weather-api/`) and
+  shows the `weatherStorms3d` setting; `WEATHER3D_RADIUS_NM`,
+  `WEATHER3D_REFRESH_S` and `WEATHER3D_LOCATION_TTL_S` tune the sidecar.
+  `ENABLE_TERRAIN` (default `true`) is the deploy-level
   kill switch for 3D terrain; users also get a `terrain3d` settings toggle.
   Elevation comes from AWS Open Data terrarium tiles via the nginx
   `/tiles/terrain_rgb/` proxy; `world/elevation.ts` decodes and samples
@@ -208,8 +252,9 @@ From `frontend/`:
 - `npm run build` — `tsc -b && vite build` → `dist/`.
 
 Backend: each service has a pytest suite (`cd track-service && pytest`,
-same for `acars-service` — run per-service, both modules are `main.py`)
-and `ruff check track-service acars-service` from the repo root.
+same for `acars-service` and `weather-service` — run per-service, all
+modules are `main.py`) and `ruff check track-service acars-service
+weather-service` from the repo root.
 
 Full container against an existing backend:
 `docker compose -f docker-compose.dev.yml --project-directory . up --build`.

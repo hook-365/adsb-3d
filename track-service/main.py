@@ -1034,22 +1034,54 @@ ROUTE_API_USER_AGENT = f"adsb-3d/{APP_VERSION} track-service (+https://github.co
     f"; {ROUTE_API_CONTACT}" if ROUTE_API_CONTACT else "") + ")"
 ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(24 * 3600)))
 ROUTE_BATCH_WINDOW = float(os.getenv("ROUTE_BATCH_WINDOW_SECONDS", "60"))
+# Floor on the spacing between upstream calls. A busy area (the Explore feed
+# over a hub) sees a few new callsigns every minute, which would otherwise
+# turn the collection window into one tiny request a minute; with the floor
+# they coalesce into one call every few minutes. A quiet feed's lookup still
+# answers after the window alone, since its last call was long ago.
+ROUTE_MIN_INTERVAL = float(os.getenv("ROUTE_MIN_INTERVAL_SECONDS", "180"))
+# On-demand lane: a viewer selected an aircraft whose route nobody has
+# asked about. Feeds without the prefetcher (Explore cities) use only this
+# lane, so the volume is "callsigns people clicked", deduplicated by the
+# cache; the short window still merges near-simultaneous clicks.
+ROUTE_PRIORITY_WINDOW = 10.0
+ROUTE_PRIORITY_MIN_INTERVAL = 15.0
 ROUTE_BATCH_MAX = 100          # callsigns per upstream request
 ROUTE_BACKOFF = 600.0          # pause after a 403/429/5xx from upstream
 ROUTE_UPSTREAM_TIMEOUT = 20.0
 ROUTE_CALLSIGN_RE = re.compile(r"^[A-Z0-9]{2,8}$")
 
 
+class _RouteLane:
+    """One collection window + spacing floor. `bulk` serves the prefetchers
+    (every callsign in view); `priority` serves on-demand lookups for an
+    aircraft someone selected, which get a short window so the panel fills
+    in seconds instead of minutes."""
+
+    def __init__(self, window, min_interval):
+        self.window = window                  # callables: read the module setting at use time
+        self.min_interval = min_interval
+        self.pending: dict = {}               # callsign -> (lat, lng) waiting for the next call
+        self.done: Optional[asyncio.Future] = None
+        self.task: Optional[asyncio.Task] = None
+        self.last_call = float("-inf")        # monotonic time of this lane's last upstream call
+
+
 class RouteBatcher:
-    """Per-callsign cache + one shared collection window for upstream calls."""
+    """Per-callsign cache + shared collection windows for upstream calls."""
 
     def __init__(self):
         self.cache: dict = {}            # callsign -> (entry or None, expires_at monotonic)
-        self.pending: dict = {}          # callsign -> (lat, lng) waiting for the next batch
-        self._batch_done: Optional[asyncio.Future] = None
-        self._task: Optional[asyncio.Task] = None
+        self.bulk = _RouteLane(lambda: ROUTE_BATCH_WINDOW, lambda: ROUTE_MIN_INTERVAL)
+        self.priority = _RouteLane(lambda: ROUTE_PRIORITY_WINDOW, lambda: ROUTE_PRIORITY_MIN_INTERVAL)
         self._blocked_until = 0.0
-        self.stats = {"requests": 0, "callsigns": 0, "cache_hits": 0, "upstream_calls": 0, "upstream_callsigns": 0}
+        self.stats = {"requests": 0, "callsigns": 0, "cache_hits": 0, "upstream_calls": 0,
+                      "upstream_callsigns": 0, "priority_calls": 0}
+
+    @property
+    def pending(self) -> dict:
+        """Everything waiting in either lane (stats)."""
+        return {**self.bulk.pending, **self.priority.pending}
 
     def cached(self, callsign: str):
         """(found, entry) — found False when unknown or expired."""
@@ -1058,10 +1090,12 @@ class RouteBatcher:
             return True, hit[0]
         return False, None
 
-    async def lookup(self, planes: list) -> list:
+    async def lookup(self, planes: list, priority: bool = False) -> list:
         """planes: [{callsign, lat, lng}]. Returns upstream-shaped entries for
-        every callsign with a known route (missing = no route known)."""
+        every callsign with a known route (missing = no route known).
+        `priority` routes unknown callsigns through the short lane."""
         self.stats["requests"] += 1
+        lane = self.priority if priority else self.bulk
         wanted = []
         for p in planes:
             cs = str(p.get("callsign", "")).strip().upper()
@@ -1071,11 +1105,11 @@ class RouteBatcher:
                 found, _ = self.cached(cs)
                 if found:
                     self.stats["cache_hits"] += 1
-                elif cs not in self.pending:
-                    self.pending[cs] = (p.get("lat"), p.get("lng"))
+                elif cs not in lane.pending:
+                    lane.pending[cs] = (p.get("lat"), p.get("lng"))
         unknown = [cs for cs in wanted if not self.cached(cs)[0]]
         if unknown and time.monotonic() >= self._blocked_until:
-            await self._join_batch()
+            await self._join_batch(lane)
         out = []
         for cs in wanted:
             found, entry = self.cached(cs)
@@ -1083,17 +1117,32 @@ class RouteBatcher:
                 out.append(entry)
         return out
 
-    async def _join_batch(self):
-        if self._batch_done is None or self._batch_done.done():
-            self._batch_done = asyncio.get_running_loop().create_future()
-            self._task = asyncio.create_task(self._run_batch(self._batch_done))
-        await asyncio.shield(self._batch_done)
+    async def _join_batch(self, lane: _RouteLane):
+        if lane.done is None or lane.done.done():
+            lane.done = asyncio.get_running_loop().create_future()
+            lane.task = asyncio.create_task(self._run_batch(lane, lane.done))
+        await asyncio.shield(lane.done)
 
-    async def _run_batch(self, done: asyncio.Future):
+    async def _run_batch(self, lane: _RouteLane, done: asyncio.Future):
         try:
-            await asyncio.sleep(ROUTE_BATCH_WINDOW)
-            batch = list(self.pending.items())
-            self.pending.clear()
+            await asyncio.sleep(lane.window())
+            spacing = lane.last_call + lane.min_interval() - time.monotonic()
+            if spacing > 0:
+                await asyncio.sleep(spacing)
+            # A priority call is going out anyway: take the bulk lane's
+            # waiting callsigns along for free, so its own call later has
+            # less (or nothing) to ask for.
+            if lane is self.priority and self.bulk.pending:
+                for cs, pos in self.bulk.pending.items():
+                    lane.pending.setdefault(cs, pos)
+                self.bulk.pending.clear()
+            # Skip anything another lane answered while we waited.
+            batch = [(cs, pos) for cs, pos in lane.pending.items() if not self.cached(cs)[0]]
+            lane.pending.clear()
+            if batch:
+                lane.last_call = time.monotonic()
+                if lane is self.priority:
+                    self.stats["priority_calls"] += 1
             for i in range(0, len(batch), ROUTE_BATCH_MAX):
                 await self._fetch(batch[i:i + ROUTE_BATCH_MAX])
         except Exception as e:  # never leave waiters hanging
@@ -1102,9 +1151,9 @@ class RouteBatcher:
             if not done.done():
                 done.set_result(None)
             # Callsigns that arrived while the request was in flight start a new window
-            if self.pending and time.monotonic() >= self._blocked_until:
-                self._batch_done = asyncio.get_running_loop().create_future()
-                self._task = asyncio.create_task(self._run_batch(self._batch_done))
+            if lane.pending and time.monotonic() >= self._blocked_until:
+                lane.done = asyncio.get_running_loop().create_future()
+                lane.task = asyncio.create_task(self._run_batch(lane, lane.done))
 
     async def _fetch(self, batch: list):
         """One upstream request for `batch` [(callsign, (lat, lng))]; caches every callsign."""
@@ -1159,6 +1208,9 @@ class RoutePlane(BaseModel):
 
 class RouteSetRequest(BaseModel):
     planes: List[RoutePlane]
+    # True for an on-demand lookup (an aircraft someone selected): short
+    # collection window instead of the bulk one.
+    priority: bool = False
 
 
 @app.post("/routeset")
@@ -1167,7 +1219,7 @@ async def routeset(req: RouteSetRequest):
     Same request/response shape as adsb.im's /api/0/routeset."""
     if len(req.planes) > 500:
         raise HTTPException(status_code=413, detail="too many callsigns")
-    return await route_batcher.lookup([p.dict() for p in req.planes])
+    return await route_batcher.lookup([p.dict() for p in req.planes], priority=req.priority)
 
 
 @app.get("/routeset/stats")
@@ -1180,6 +1232,9 @@ async def routeset_stats():
         "pending_callsigns": len(route_batcher.pending),
         "backing_off": now < route_batcher._blocked_until,
         "batch_window_seconds": ROUTE_BATCH_WINDOW,
+        "min_interval_seconds": ROUTE_MIN_INTERVAL,
+        "priority_window_seconds": ROUTE_PRIORITY_WINDOW,
+        "priority_min_interval_seconds": ROUTE_PRIORITY_MIN_INTERVAL,
         "cache_ttl_seconds": ROUTE_CACHE_TTL,
     }
 

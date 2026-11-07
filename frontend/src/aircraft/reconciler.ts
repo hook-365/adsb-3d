@@ -26,7 +26,8 @@ import { hasAcars } from './acars-store';
 import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
-import { elevationFtAt, subscribeElevation } from '../world/elevation';
+import { subscribeElevation } from '../world/elevation';
+import { terrainActive, terrainSurface } from '../world/tiles';
 
 // Elevation tiles decode asynchronously; until they land, ground anchors
 // sample 0 (sea level) and sit far below real terrain in high-elevation
@@ -48,6 +49,7 @@ import { getTimeContext } from '../core/time-context';
 import { MotionTracker, type SampledFix } from './motion';
 import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
 import { DIORAMA_PLANES } from '../world/diorama-clip';
+import { groundIconFade, markerViewScale } from './marker-scale';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -245,6 +247,15 @@ interface RenderEntry {
   // aircraftShape style — see markerBodyFor.
   baseScale: number;
   bodyRotates: boolean;
+  // World-size scale of the body before the per-frame camera-distance
+  // factor (aircraft/marker-scale.ts): altitude growth × baseScale. The
+  // ground icon keeps its designed footprint here for the same reason.
+  bodyScale: number;
+  iconBaseW: number;
+  /** View-scale ceiling that keeps the icon under ICON_TERRAIN_MAX_FOOTPRINT on terrain (Infinity when flat). */
+  iconMaxViewScale: number;
+  iconBaseH: number;
+  lastViewScale: number;
   emergencyRing: Mesh;
   pingRing: Mesh;
   pingMaterial: MeshBasicMaterial;
@@ -253,6 +264,13 @@ interface RenderEntry {
   labelEl: HTMLElement;
   selectionRing: Mesh;
   lastTrailLength: number;
+  // Smooth-motion head clip (clipTrailHead): the solid segment whose end
+  // vertex is currently pulled back to the displayed position, and the
+  // true end it must be restored to. -1 = no clip in effect.
+  clipSegIdx: number;
+  clipEndX: number;
+  clipEndY: number;
+  clipEndZ: number;
   lastLabelText: string;
   lastLabelClass: string;
   lastLabelColor: string;
@@ -516,8 +534,10 @@ function buildEntry(a: Aircraft): RenderEntry {
   const iconCache = getShapeTexture(shapeName);
   const aspect = iconCache?.aspect ?? 1;
   const icon = defaultIconState();
-  icon.w = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
-  icon.h = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  const iconBaseW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
+  const iconBaseH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  icon.w = iconBaseW;
+  icon.h = iconBaseH;
   icon.r = headColor.r;
   icon.g = headColor.g;
   icon.b = headColor.b;
@@ -604,6 +624,11 @@ function buildEntry(a: Aircraft): RenderEntry {
     shapeName,
     shapeScaling: scaling,
     baseScale: body.baseScale,
+    bodyScale: body.baseScale,
+    iconBaseW,
+    iconMaxViewScale: iconMaxViewScale(iconBaseW, iconBaseH),
+    iconBaseH,
+    lastViewScale: 1,
     bodyRotates: body.rotates,
     emergencyRing,
     pingRing,
@@ -613,6 +638,10 @@ function buildEntry(a: Aircraft): RenderEntry {
     labelEl,
     selectionRing,
     lastTrailLength: 0,
+    clipSegIdx: -1,
+    clipEndX: 0,
+    clipEndY: 0,
+    clipEndZ: 0,
     lastLabelText: '',
     lastLabelClass: '',
     lastLabelColor: '',
@@ -665,8 +694,12 @@ function refreshShape(entry: RenderEntry, a: Aircraft): void {
   // so only the cached footprint + yaw eligibility need refreshing here.
   const iconCache = getShapeTexture(shapeName);
   const aspect = iconCache?.aspect ?? 1;
-  entry.icon.w = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
-  entry.icon.h = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  entry.iconBaseW = ICON_BASE_SIZE * scaling * (aspect >= 1 ? aspect : 1);
+  entry.iconBaseH = ICON_BASE_SIZE * scaling * (aspect >= 1 ? 1 : 1 / aspect);
+  entry.iconMaxViewScale = iconMaxViewScale(entry.iconBaseW, entry.iconBaseH);
+  const iv = Math.min(entry.lastViewScale, entry.iconMaxViewScale);
+  entry.icon.w = entry.iconBaseW * iv;
+  entry.icon.h = entry.iconBaseH * iv;
   entry.iconRotates = shapeRotates(shapeName);
   if (!entry.iconRotates) entry.icon.yaw = 0;
 }
@@ -702,11 +735,12 @@ function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void 
   const altFt = at ? at.altFt : a.altFt;
   const trackDeg = at ? at.trackDeg : a.trackDeg;
   toScene(lat, lon, altFt, tmpPos);
-  // Ground anchor (icon + altitude-line foot) sits on the terrain surface;
-  // elevationFtAt() is 0 everywhere when 3D terrain is off. The clamp
-  // keeps cones from sinking under the mesh on baro/ellipsoid quirks when
-  // an aircraft is on or near the ground.
-  toScene(lat, lon, elevationFtAt(lat, lon), tmpGround);
+  // Ground anchor (icon + altitude-line foot) sits on the DRAWN terrain
+  // (world/tiles.ts terrainSurface: the mesh's own triangles, which cut
+  // under sharp ridges the raw sample would float over); y=0 plane when
+  // 3D terrain is off. The clamp keeps cones from sinking under the mesh
+  // on baro/ellipsoid quirks when an aircraft is on or near the ground.
+  terrainSurface(lat, lon, tmpGround);
   if (tmpPos.y < tmpGround.y) tmpPos.y = tmpGround.y;
 
   entry.cone.position.copy(tmpPos);
@@ -734,7 +768,8 @@ function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void 
   altArr[5] = tmpGround.z;
 
   const s = a.onGround ? 0.6 : 0.7 + Math.min(1, altFt / 35000) * 0.5;
-  entry.cone.scale.setScalar(s * entry.baseScale);
+  entry.bodyScale = s * entry.baseScale;
+  entry.cone.scale.setScalar(entry.bodyScale * entry.lastViewScale);
 
   // Ground icon anchor + terrain tilt, cached for the pool rebuild pass.
   // The old per-aircraft path draped a 6x6 plane with 49 elevation samples;
@@ -747,22 +782,25 @@ function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void 
   const icon = entry.icon;
   icon.x = tmpGround.x;
   icon.z = tmpGround.z;
-  if (tmpGround.y === 0) {
+  if (!terrainActive()) {
     icon.y = ICON_GROUND_Y;
     icon.nx = 0;
     icon.ny = 1;
     icon.nz = 0;
   } else {
-    // Lift absorbs ridge convexity under the now-planar quad (the draped
-    // mesh could hug a crest; a plane would slice into it).
-    icon.y = tmpGround.y + ICON_DRAPE_LIFT;
-    const d = Math.max(icon.w, icon.h) * 0.5;
+    // Lift grows with the icon's world footprint: markers hold a constant
+    // screen size, so from afar one quad spans several mesh triangles and
+    // needs more clearance over a crest than it does up close, where it
+    // is small and the tilt alone keeps it on the surface.
+    const d = Math.max(entry.iconBaseW, entry.iconBaseH) * 0.5;
+    const footprint = d * 2 * Math.min(entry.lastViewScale, entry.iconMaxViewScale);
+    icon.y = tmpGround.y + ICON_DRAPE_LIFT + footprint * ICON_DRAPE_LIFT_PER_UNIT;
     const cosLat = Math.cos((lat * Math.PI) / 180);
     const lonE = lon + d / (60 * cosLat);
-    toScene(lat, lonE, elevationFtAt(lat, lonE), tmpDrape);
+    terrainSurface(lat, lonE, tmpDrape);
     const yE = tmpDrape.y;
     const latN = lat + d / 60; // scene +z = south, so north is -z
-    toScene(latN, lon, elevationFtAt(latN, lon), tmpDrape);
+    terrainSurface(latN, lon, tmpDrape);
     const yN = tmpDrape.y;
     // Surface y(x, z): normal = (-dy/dx, 1, -dy/dz); the north sample sits
     // at z = -d, so dy/dz = (center - north) / d.
@@ -772,7 +810,16 @@ function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void 
   }
 }
 
-const ICON_DRAPE_LIFT = 0.35;
+const ICON_DRAPE_LIFT = 0.06;
+const ICON_DRAPE_LIFT_PER_UNIT = 0.08;
+// Widest a ground icon may be on 3D terrain, in scene units (NM): under
+// the mesh's vertex spacing (1 to 2 NM) so one quad stays on one slope.
+const ICON_TERRAIN_MAX_FOOTPRINT = 1.0;
+
+function iconMaxViewScale(baseW: number, baseH: number): number {
+  if (!terrainActive()) return Number.POSITIVE_INFINITY;
+  return ICON_TERRAIN_MAX_FOOTPRINT / Math.max(baseW, baseH);
+}
 const tmpDrape = new Vector3();
 
 function refreshColor(entry: RenderEntry, a: Aircraft): void {
@@ -810,7 +857,57 @@ function decimateTrailForXr(points: readonly TrailPoint[]): TrailPoint[] {
 
 /** Zero out the visible trail geometry and reset all append/window state —
  *  shared by "no points at all" and "cap set to 0" (trail hidden). */
+/**
+ * Smooth motion draws the marker a second or two behind the newest fix so it
+ * can interpolate, but the trail is rebuilt to the newest fix the moment it
+ * lands, so zoomed in the line visibly runs ahead and the marker crawls
+ * along it. Each frame this hides the solid segments newer than the
+ * displayed time and pulls the end of the segment the marker is on back to
+ * the marker, so the trail only ever exists behind the aircraft. The true
+ * end vertex is restored before the next clip (or when smoothing stops).
+ * Dashed (gap) segments at the head are left alone: the marker is never
+ * sampled inside a gap. XR trails are decimated, so their segments do not
+ * map onto store points and the clip is skipped there.
+ */
+function clipTrailHead(entry: RenderEntry, points: readonly TrailPoint[] | null, displayMs: number): void {
+  const solid = entry.solid;
+  const fullCount = entry.lastSolidIdx / 2;
+  if (entry.clipSegIdx >= 0) {
+    const o = entry.clipSegIdx * 6 + 3;
+    solid.posArr[o] = entry.clipEndX;
+    solid.posArr[o + 1] = entry.clipEndY;
+    solid.posArr[o + 2] = entry.clipEndZ;
+    solid.posBuf.needsUpdate = true;
+    entry.trailSolid.geometry.instanceCount = fullCount;
+    entry.clipSegIdx = -1;
+  }
+  if (!points || !Number.isFinite(displayMs) || fullCount < 1) return;
+  const n = points.length;
+  if (n !== entry.lastTrailLength) return;
+  // Points newer than the display time; the marker sits on the segment
+  // that ends at the first of them.
+  let future = 0;
+  while (future < n - 1 && points[n - 1 - future]!.ms > displayMs) future++;
+  if (future === 0 || future > fullCount) return;
+  for (let i = n - future; i < n; i++) {
+    if (points[i]!.ms - points[i - 1]!.ms >= TRAIL_GAP_THRESHOLD_MS) return;
+  }
+  const seg = fullCount - future;
+  const o = seg * 6 + 3;
+  entry.clipSegIdx = seg;
+  entry.clipEndX = solid.posArr[o]!;
+  entry.clipEndY = solid.posArr[o + 1]!;
+  entry.clipEndZ = solid.posArr[o + 2]!;
+  const c = entry.cone.position;
+  solid.posArr[o] = c.x;
+  solid.posArr[o + 1] = c.y;
+  solid.posArr[o + 2] = c.z;
+  solid.posBuf.needsUpdate = true;
+  entry.trailSolid.geometry.instanceCount = seg + 1;
+}
+
 function clearTrailVisual(entry: RenderEntry): void {
+  entry.clipSegIdx = -1;
   entry.trailSolid.geometry.instanceCount = 0;
   entry.trailDashed.geometry.instanceCount = 0;
   entry.lastTrailLength = 0;
@@ -1128,6 +1225,7 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], sta
   entry.lastTrailLastB = prevB;
   entry.lastTrailLastMs = prevMs;
 
+  entry.clipSegIdx = -1;
   markTrailUpdated(entry, solidIdx, dashedIdx);
   // No computeBoundingSphere here: line.frustumCulled is false so the
   // sphere is never read, and our growable buffer has zeroed tail bytes
@@ -1550,6 +1648,11 @@ export class AircraftReconciler {
     const frustumGate = smoothOn && !this.xrMode;
     this.frustumFresh = false;
     if (frustumGate) this.computeFrustum();
+    // Camera-distance marker scale (aircraft/marker-scale.ts). Desktop
+    // only: in XR the user scales the whole diorama by hand and the main
+    // camera's position says nothing about where the headset is.
+    const viewScaleOn = !this.xrMode;
+    if (viewScaleOn) this.camPos.copy(this.camera.position);
     this.iconPool.begin();
     this.altArena.begin();
 
@@ -1655,6 +1758,9 @@ export class AircraftReconciler {
         refreshTrail(entry, this.store, a, this.xrMode, trailLen, now);
         entry.lastTrailRev = trailRev;
       }
+      if (trailsOn && !this.xrMode && (sampled || entry.clipSegIdx >= 0)) {
+        clipTrailHead(entry, sampled ? (this.store.trails(a.hex) ?? null) : null, sampled ? sampled.ms : Number.NaN);
+      }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY
       // as lastSeenMs grows. The selected aircraft stays at full opacity
       // so the user can keep inspecting it even when the feed is choppy.
@@ -1667,10 +1773,29 @@ export class AircraftReconciler {
         entry.material.opacity = opacity;
         entry.lastStaleness = opacity;
       }
+      // Constant on-screen marker size: body, rings and ground icon all
+      // follow one distance factor. Gated on a 1% change so a parked
+      // camera costs one subtraction per aircraft, not four writes.
+      const v = viewScaleOn ? markerViewScale(entry.cone.position.distanceTo(this.camPos)) : 1;
+      if (Math.abs(v - entry.lastViewScale) > 0.01 * entry.lastViewScale) {
+        entry.lastViewScale = v;
+        entry.cone.scale.setScalar(entry.bodyScale * v);
+        entry.selectionRing.scale.setScalar(v);
+        entry.emergencyRing.scale.setScalar(v);
+        // On 3D terrain the ground icon's world footprint is capped: a
+        // constant-screen-size quad seen from far away would span several
+        // mesh triangles and could only float over or sink into a ridge,
+        // and its height above the drawn ground would change with zoom.
+        // Past the cap it simply reads smaller on screen (it is fading out
+        // at those distances anyway).
+        const iv = Math.min(v, entry.iconMaxViewScale);
+        entry.icon.w = entry.iconBaseW * iv;
+        entry.icon.h = entry.iconBaseH * iv;
+      }
       // Icon alpha rides the per-instance RGBA attribute; the pool rebuild
       // below re-uploads every frame anyway, so no delta gating needed.
-      entry.icon.a = opacity;
-      if (spritesOn) this.iconPool.push(entry.shapeName, a.hex, entry.icon);
+      entry.icon.a = opacity * groundIconFade(entry.lastViewScale);
+      if (spritesOn && entry.icon.a > 0.01) this.iconPool.push(entry.shapeName, a.hex, entry.icon);
       if (altLinesOn) {
         const alt = entry.altArr;
         this.altArena.push(alt[0]!, alt[1]!, alt[2]!, alt[3]!, alt[4]!, alt[5]!);
@@ -1691,7 +1816,7 @@ export class AircraftReconciler {
           const scale = 1 + (PING_MAX_SCALE - 1) * t;
           const pingOpacity = (1 - t) * 0.85;
           entry.pingRing.position.set(entry.cone.position.x, 0.18, entry.cone.position.z);
-          entry.pingRing.scale.setScalar(scale);
+          entry.pingRing.scale.setScalar(scale * entry.lastViewScale);
           entry.pingMaterial.opacity = pingOpacity;
           entry.pingRing.visible = true;
         }

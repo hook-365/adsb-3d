@@ -114,6 +114,13 @@ function buildBucket(shapeName: string, capacity: number): ShapeBucket {
     side: DoubleSide,
     vertexColors: true,
     clippingPlanes: DIORAMA_PLANES,
+    // Ground icons lie on the terrain mesh as one flat quad each. Pull
+    // them toward the camera in depth so a corner that dips a little
+    // under a triangle (the quad can't bend over a crest) still draws,
+    // while a mountain genuinely in front keeps hiding them.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -8,
   });
   const mesh = new InstancedMesh(geometry, material, capacity);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);

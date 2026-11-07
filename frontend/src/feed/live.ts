@@ -65,6 +65,12 @@ export function applyWsMessage(map: Map<string, RawAircraft>, msg: WsMsg): void 
   }
 }
 
+/** Epoch in seconds or milliseconds (anything past year 5138 in seconds is ms) to ms. */
+export function epochToMs(now: number | undefined): number {
+  if (now === undefined || !Number.isFinite(now)) return Date.now();
+  return Math.round(now > 1e11 ? now : now * 1000);
+}
+
 const WS_CONNECT_TIMEOUT_MS = 3000;
 const WS_RETRY_INTERVAL_MS = 30_000;
 
@@ -78,6 +84,8 @@ export interface LiveFeedConfig {
    * (resolved against the current host) or a full ws[s]:// URL.
    */
   wsUrl: string | null;
+  /** HTTP poll cadence; defaults to POLL_INTERVAL_MS (readsb's ~1 Hz). */
+  pollMs?: number;
 }
 
 function resolveWsUrl(input: string | null): string | null {
@@ -91,6 +99,7 @@ export class LiveFeed {
   private readonly listeners = new Set<FeedListener>();
   private readonly httpUrl: string;
   private readonly wsUrl: string | null;
+  private readonly pollMs: number;
 
   // Transport state
   private ws: WebSocket | null = null;
@@ -112,6 +121,7 @@ export class LiveFeed {
   constructor(config: LiveFeedConfig) {
     this.httpUrl = config.liveUrl;
     this.wsUrl = resolveWsUrl(config.wsUrl);
+    this.pollMs = config.pollMs ?? POLL_INTERVAL_MS;
   }
 
   subscribe(fn: FeedListener): () => void {
@@ -278,8 +288,10 @@ export class LiveFeed {
       const res = await fetch(this.httpUrl, { cache: 'no-store', signal: this.httpAborter.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as AircraftJsonFeed;
-      const nowMs = Math.round((body.now ?? Date.now() / 1000) * 1000);
-      records = (body.aircraft ?? [])
+      // readsb and FlyItalyADSB send `now` in seconds; the ADSBx-style
+      // aggregators (adsb.lol, adsb.fi, airplanes.live) send milliseconds.
+      const nowMs = epochToMs(body.now);
+      records = (body.aircraft ?? body.ac ?? [])
         .map((r) => normalizeRawAircraft(r, nowMs))
         .filter((a): a is Aircraft => a !== null);
       status = { ok: true, count: records.length, source: 'http', lastSyncMs: Date.now() };
@@ -302,7 +314,7 @@ export class LiveFeed {
     }
 
     const elapsed = performance.now() - start;
-    const wait = Math.max(0, POLL_INTERVAL_MS - elapsed);
+    const wait = Math.max(0, this.pollMs - elapsed);
     this.httpTimer = setTimeout(() => void this.httpTick(), wait);
   }
 }

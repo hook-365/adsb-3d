@@ -62,4 +62,7 @@ export const detailStrings = {
   'detail.compass_sw': 'SW',
   'detail.compass_w': 'W',
   'detail.compass_nw': 'NW',
+  'detail.storm_top': 'Storm top',
+  'detail.storm_top_value': '{alt} nearby',
+  'detail.lightning': 'Lightning',
 } as const;

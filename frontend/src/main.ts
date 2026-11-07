@@ -35,6 +35,10 @@ import type { XrRuntime } from './app/xr-runtime';
 import { getActiveFeed, getFeeds, getFeedMode } from './feed/feeds';
 import { createWorld } from './world/scene';
 import { attachControls } from './world/controls';
+import { FreeCamera } from './world/free-camera';
+import { mountSpinControl } from './ui/spin-control';
+import { mountCameraModeSwitch } from './ui/camera-mode';
+import { mountIdleChrome } from './ui/idle-chrome';
 import { createLabelRenderer } from './world/labels';
 import { createAircraftList } from './ui/aircraft-list';
 import { createAircraftDetail } from './ui/aircraft-detail';
@@ -44,6 +48,11 @@ import { mountSettingsPanel } from './ui/settings-panel';
 import { startUpdateCheck } from './core/update-check';
 import { mountViewOffset } from './world/view-offset';
 import { mountWeatherRadar } from './world/radar';
+import { mountStorms } from './world/storms';
+import { mountFreezingLevel } from './world/freezing-level';
+import { mountPrecipLayer } from './world/precip-layer';
+import { mountSevereCells } from './world/severe-cells';
+import { mountLightning } from './world/lightning';
 import { mountEmergencyToasts } from './ui/emergency-toast';
 import { mountWhatsNew } from './ui/whats-new';
 import { mountShapeChip } from './ui/shape-chip';
@@ -107,6 +116,9 @@ if (!isBasemapAvailable(getSettings().basemap)) {
 
 const world = createWorld(canvas);
 const controls = attachControls(world.camera, world.renderer);
+// Free-fly alternative to orbit (Settings → cameraMode, footer "fly").
+// Exactly one of the two drives the camera each frame; see setCameraMode.
+const freeCam = new FreeCamera(world.camera, world.renderer.domElement);
 const labelRenderer = createLabelRenderer();
 
 // Auto-orbit (issue #6), desktop half: OrbitControls already has
@@ -127,7 +139,7 @@ const labelRenderer = createLabelRenderer();
 function syncDesktopAutoOrbit(): void {
   const degPerS = getSettings().autoOrbit;
   controls.autoRotate = degPerS > 0 && !world.renderer.xr.isPresenting;
-  controls.autoRotateSpeed = degPerS / 6;
+  controls.autoRotateSpeed = (degPerS / 6) * (getSettings().autoOrbitDirection === 'left' ? -1 : 1);
 }
 subscribeSettings(syncDesktopAutoOrbit);
 subscribeXr(syncDesktopAutoOrbit);
@@ -597,11 +609,30 @@ const aircraftDetail = createAircraftDetail(store, {
 
 // Camera follow: when an aircraft is selected, the orbit pivot eases toward
 // its live position every frame (continuous damped pursuit, not a one-shot
-// slide). When deselected, the pivot eases back to scene origin and stops.
+// slide). When deselected, the pivot and the eye ease back to where they
+// were before the selection (a view the user had framed by hand should
+// survive a look at one aircraft), or to scene origin when there is no
+// remembered view (boot, feed switch, recenter).
 const FOLLOW_LERP = 0.12;
 const HOME_TARGET = new Vector3(0, 0, 0);
 let followHex: string | null = null;
 let returningHome = false;
+// Pose captured on the first selection from an unselected state; cleared
+// once the return lands or something else moves the camera on purpose.
+let returnTarget: Vector3 | null = null;
+let returnEye: Vector3 | null = null;
+
+function rememberReturnPose(): void {
+  returnTarget = controls.target.clone();
+  returnEye = world.camera.position.clone();
+}
+
+/** Abandon any pending return: the caller is placing the camera itself. */
+function cancelReturn(): void {
+  returningHome = false;
+  returnTarget = null;
+  returnEye = null;
+}
 
 // Pan breaks follow: a deliberate pan is the user asking to look somewhere
 // else, so the pivot stops chasing the aircraft while the selection (and
@@ -671,6 +702,11 @@ function applySelection(hex: string | null): void {
   if (hex === null && getSettings().followRandomAircraft) {
     updateSettings({ followRandomAircraft: false });
   }
+  // Entering a selection from nothing: remember the view to come back to.
+  // Switching between aircraft keeps the earlier capture, as does a
+  // re-select during the return animation, so the view restored is always
+  // the one the user framed before they started looking at planes.
+  if (hex !== null && xrSelectedHex === null && !returningHome && !freeMode) rememberReturnPose();
   xrSelectedHex = hex;
   // New target: drop the XR follow anchor so it re-captures at the new
   // aircraft's current spot instead of yanking the world across the room.
@@ -745,9 +781,15 @@ function recenterView(): void {
   }
   applySelection(null);
   aircraftList.setSelected(null);
+  cancelReturn();
   world.camera.position.set(0, 220, 280);
   controls.target.set(0, 0, 0);
-  controls.update();
+  if (freeMode) {
+    world.camera.lookAt(0, 0, 0);
+    freeCam.syncFromCamera();
+  } else {
+    controls.update();
+  }
 }
 
 // Pan the orbit centre across the ground plane — bound to the arrow keys so
@@ -782,18 +824,46 @@ document.getElementById('recenter-btn')!.addEventListener('click', recenterView)
 // deselect and left the camera "stuck orbiting" with no control in
 // sight. Off → the last non-zero speed seen this session (3°/s before
 // any); the settings slider still picks the speed.
-const orbitBtn = document.getElementById('orbit-btn') as HTMLButtonElement;
-let lastOrbitSpeed = getSettings().autoOrbit || 3;
-orbitBtn.addEventListener('click', () => {
-  updateSettings({ autoOrbit: getSettings().autoOrbit > 0 ? 0 : lastOrbitSpeed });
-});
-subscribeSettings((s) => {
-  // Capture on every change, not just button toggles, so speed picked in
-  // settings (or from the wrist menu) is what an off/on cycle restores.
-  if (s.autoOrbit > 0) lastOrbitSpeed = s.autoOrbit;
-  orbitBtn.classList.toggle('active', s.autoOrbit > 0);
-});
-orbitBtn.classList.toggle('active', getSettings().autoOrbit > 0);
+// The button, its popover (direction + speed) and the settings plumbing
+// live in ui/spin-control.ts; ui/idle-chrome.ts fades the rest of the
+// chrome once the spin runs and the hand is still.
+mountSpinControl();
+mountIdleChrome();
+
+// Camera mode. Orbit is OrbitControls around a pivot; free hands the
+// camera to world/free-camera.ts and disables OrbitControls so the two
+// never fight over the same transform. Switching back seats the orbit
+// pivot where the camera is looking (ground hit along the line of sight,
+// else a fixed distance ahead) so the view doesn't jump.
+let freeMode = false;
+function setCameraMode(mode: 'orbit' | 'free'): void {
+  const wantFree = mode === 'free' && !world.renderer.xr.isPresenting;
+  if (wantFree === freeMode) return;
+  freeMode = wantFree;
+  if (freeMode) {
+    cancelReturn();
+    controls.enabled = false;
+    freeCam.enable();
+  } else {
+    freeCam.disable();
+    const dir = world.camera.getWorldDirection(new Vector3());
+    const eye = world.camera.position;
+    let dist = 100;
+    if (dir.y < -0.01) {
+      const ground = groundSceneY(eye.x, -eye.z);
+      dist = Math.max(8, Math.min(1200, (eye.y - ground) / -dir.y));
+    }
+    controls.target.copy(eye).addScaledVector(dir, dist);
+    controls.target.y = Math.max(controls.target.y, groundSceneY(controls.target.x, -controls.target.z));
+    controls.enabled = true;
+    controls.update();
+  }
+}
+// The footer switch (two icon segments) lives in ui/camera-mode.ts and
+// only writes Settings.cameraMode; this subscription does the hand-over.
+mountCameraModeSwitch();
+subscribeSettings((s) => setCameraMode(s.cameraMode));
+setCameraMode(getSettings().cameraMode);
 
 // Share button — copies the current URL (feed param + selected-hex hash)
 // to the clipboard. Pairs with the click-to-copy callsign in the detail
@@ -826,13 +896,17 @@ document.addEventListener('keydown', (e) => {
   if (e.altKey || e.ctrlKey || e.metaKey) return;
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (e.key === 'r' || e.key === 'R') {
+  if ((e.key === 'r' || e.key === 'R') && !freeMode) {
+    // In free mode R is "straight up" (world/free-camera.ts); the footer
+    // recenter button still works there.
     recenterView();
     e.preventDefault();
   } else if (e.key === '/') {
     const search = document.getElementById('panel-search') as HTMLInputElement | null;
     search?.focus();
     e.preventDefault();
+  } else if (freeMode && e.key.startsWith('Arrow')) {
+    // world/free-camera.ts flies on the arrows in free mode.
   } else if (e.key === 'ArrowUp') {
     panView(0, 1);
     e.preventDefault();
@@ -876,7 +950,12 @@ subscribeXr((s) => {
 // (world/view-offset.ts). Registered after the resize handler above so
 // its offset is applied on top of the fresh aspect.
 mountViewOffset(world.camera);
+mountPrecipLayer(world.xrRoot);
 mountWeatherRadar(world.xrRoot);
+mountStorms(world.xrRoot);
+mountFreezingLevel(world.xrRoot);
+mountSevereCells(world.xrRoot);
+mountLightning(world.xrRoot);
 mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
 mountWhatsNew();
 
@@ -902,6 +981,7 @@ const session = initSession({
       // new feed shows its tower from a predictable angle.
       setHome(next.home);
       world.recenter();
+      cancelReturn();
       world.camera.position.set(0, 220, 280);
       controls.target.set(0, 0, 0);
       controls.update();
@@ -988,29 +1068,50 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // acos. On a ground-level target this lands at (just under) the classic
   // horizon clamp, so map browsing is unchanged. The hard camera-height
   // clamp below stays as the backstop for damping overshoot.
-  if (!world.renderer.xr.isPresenting) {
+  if (freeMode && !world.renderer.xr.isPresenting) {
+    // Free camera: fly for held keys; with a selection, turn to keep the
+    // aircraft in view (a drag pauses that, like a pan breaks orbit follow).
+    freeCam.update(dt);
+    if (followHex && !freeCam.interacting) {
+      const pos = reconciler.positionOf(followHex);
+      if (pos) freeCam.lookToward(pos, FOLLOW_LERP);
+    }
+  } else if (!world.renderer.xr.isPresenting) {
     const t = controls.target;
     const dist = Math.max(world.camera.position.distanceTo(t), 0.001);
     const headroom = t.y - (groundSceneY(t.x, -t.z) + 1.2);
     const cosMax = Math.max(-1, Math.min(1, -headroom / dist));
     controls.maxPolarAngle = Math.min(Math.PI - 0.15, Math.acos(cosMax) - 0.02);
-    // Inspection zoom: while following an aircraft the minimum distance
-    // drops so the marker (5.5-unit footprint) can fill the view; free
-    // map browsing keeps the original floor.
-    controls.minDistance = followHex ? 8 : 30;
+    // Inspection zoom: markers shrink with camera distance
+    // (aircraft/marker-scale.ts), so the floor can sit low enough for
+    // true vertical scale to read: a few miles up, a jet at FL350 has
+    // visible air under it. Following an aircraft goes closer still.
+    controls.minDistance = followHex ? 3 : 8;
   }
 
-  if (followHex && !controlsInteracting) {
+  if (freeMode) {
+    // handled above; OrbitControls is disabled
+  } else if (followHex && !controlsInteracting) {
     const pos = reconciler.positionOf(followHex);
     if (pos) controls.target.lerp(pos, FOLLOW_LERP);
-  } else if (returningHome) {
-    controls.target.lerp(HOME_TARGET, FOLLOW_LERP);
-    if (controls.target.lengthSq() < 0.01) {
-      controls.target.set(0, 0, 0);
-      returningHome = false;
+  } else if (returningHome && !controlsInteracting) {
+    const dest = returnTarget ?? HOME_TARGET;
+    controls.target.lerp(dest, FOLLOW_LERP);
+    if (returnEye) world.camera.position.lerp(returnEye, FOLLOW_LERP);
+    const landed =
+      controls.target.distanceToSquared(dest) < 0.01 &&
+      (!returnEye || world.camera.position.distanceToSquared(returnEye) < 0.01);
+    if (landed) {
+      controls.target.copy(dest);
+      if (returnEye) world.camera.position.copy(returnEye);
+      cancelReturn();
     }
+  } else if (returningHome) {
+    // The user grabbed the camera mid-return: where they drag it is the
+    // new view, not the remembered one.
+    cancelReturn();
   }
-  controls.update();
+  if (!freeMode) controls.update();
   // Terrain collision: OrbitControls' polar clamp keeps the camera above
   // the y=0 plane, but 3D terrain rises above it — zooming toward a hill
   // could put the eye underground. Hold a small clearance above the

@@ -16,7 +16,7 @@ import { toScene } from '../core/coords';
 import { getSettings, subscribeSettings, type Basemap } from '../core/settings';
 import { ELEVATION_ZOOM, elevationFtAt, ensureElevationTile } from './elevation';
 import { DIORAMA_PLANES } from './diorama-clip';
-import { CHUNK_TILES, edgeBracket, rectDistanceToOrigin, terrainSegmentsFor } from './tile-grid';
+import { CHUNK_TILES, edgeBracket, quadSurfaceY, rectDistanceToOrigin, terrainSegmentsFor } from './tile-grid';
 
 // Web Mercator basemap. Most providers go through nginx at
 // /tiles/{provider}/{z}/{y}/{x} with a local on-disk cache pre-warmed by
@@ -189,6 +189,44 @@ function terrainSegments(z: number, x: number, y: number): number {
   const base = Math.max(12, TERRAIN_SEGMENTS >> Math.max(0, z - DEFAULT_ZOOM));
   toScene(tileYToLat(y + 0.5, z), tileXToLon(x + 0.5, z), 0, tmpV);
   return terrainSegmentsFor(base, Math.hypot(tmpV.x, tmpV.z), TERRAIN_LOD_FAR_NM);
+}
+
+// Basemap layer drop below y=0 (createTileLayer's default dropY): the
+// terrain mesh sits this far under the elevation samples it is built from.
+const BASEMAP_DROP_Y = -0.4;
+const tmpSurf = [new Vector3(), new Vector3(), new Vector3(), new Vector3()] as const;
+
+/**
+ * Scene position of the DRAWN ground at (lat, lon): the terrain mesh's own
+ * surface, not the raw elevation sample. The mesh has a vertex every
+ * 1-2 NM and is flat between them, so on a sharp ridge the point sample
+ * can sit hundreds of feet above the triangles actually rendered (Oahu's
+ * Koʻolau range made ground icons float). Anchors that must touch the map
+ * (ground icons, altitude-line feet) go through here; AGL maths keeps
+ * using elevationFtAt(). With terrain off this is the flat plane at y=0,
+ * matching what toScene(lat, lon, 0) gave before.
+ */
+export function terrainSurface(lat: number, lon: number, out: Vector3): Vector3 {
+  if (!terrainActive()) return toScene(lat, lon, 0, out);
+  const z = currentTileZoom();
+  const fx = lonToTileX(lon, z);
+  const fy = latToTileY(lat, z);
+  const tx = Math.floor(fx);
+  const ty = Math.floor(fy);
+  const s = terrainSegments(z, tx, ty);
+  const gu = (fx - tx) * s;
+  const gv = (fy - ty) * s;
+  const i0 = Math.min(Math.floor(gu), s - 1);
+  const j0 = Math.min(Math.floor(gv), s - 1);
+  const [nw, ne, sw, se] = tmpSurf;
+  sampleTerrain(z, tx, ty, s, i0, j0, nw);
+  sampleTerrain(z, tx, ty, s, i0 + 1, j0, ne);
+  sampleTerrain(z, tx, ty, s, i0, j0 + 1, sw);
+  sampleTerrain(z, tx, ty, s, i0 + 1, j0 + 1, se);
+  const y = quadSurfaceY(nw.y, ne.y, sw.y, se.y, gu - i0, gv - j0);
+  toScene(lat, lon, 0, out);
+  out.y = y + BASEMAP_DROP_Y;
+  return out;
 }
 
 /** One tile's geometry, in chunk-atlas UV space, waiting to be merged. */
@@ -394,7 +432,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   const provider = options.provider ?? 'dark';
   const zoom = options.zoom ?? DEFAULT_ZOOM;
   const basePath = options.basePath ?? '';
-  const dropY = options.dropY ?? -0.4;
+  const dropY = options.dropY ?? BASEMAP_DROP_Y;
   const overlay = options.overlay ?? false;
   const frame = options.frame;
   const terrain = terrainActive();

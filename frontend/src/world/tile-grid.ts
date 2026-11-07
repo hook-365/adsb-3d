@@ -21,6 +21,17 @@ export function rectDistanceToOrigin(minX: number, maxX: number, minZ: number, m
  * count for the tile's zoom; tiles whose centre lies beyond `farNm` get
  * half. Always a power-of-two ratio so neighbouring edges nest exactly.
  */
+/**
+ * Height of the rendered terrain quad at fractional (u east, v south) in
+ * [0,1]², given its four vertex heights. Matches buildTerrainPiece's split
+ * (NW-NE-SW + NE-SE-SW, diagonal NE to SW): the first triangle covers
+ * u + v <= 1, the second the rest.
+ */
+export function quadSurfaceY(yNW: number, yNE: number, ySW: number, ySE: number, u: number, v: number): number {
+  if (u + v <= 1) return yNW + (yNE - yNW) * u + (ySW - yNW) * v;
+  return ySE + (ySW - ySE) * (1 - u) + (yNE - ySE) * (1 - v);
+}
+
 export function terrainSegmentsFor(base: number, centerDistNm: number, farNm: number): number {
   return centerDistNm > farNm ? Math.max(2, base / 2) : base;
 }

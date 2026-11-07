@@ -1,4 +1,14 @@
 import type { HomeLocation } from '../core/types';
+import {
+  buildExploreFeed,
+  exploreEnabled,
+  initialPlace,
+  isExploreFeedId,
+  placeIdFromFeedId,
+  rememberPlace,
+  writePlaceParam,
+} from './explore';
+import { findPlace } from './explore-places';
 
 // Multi-feed bootstrap.
 //
@@ -56,6 +66,18 @@ export interface Feed {
    * Unlimited cap → 24h.
    */
   backfillWindowMs: number;
+  /**
+   * HTTP poll cadence in ms. readsb publishes at ~1 Hz so feeds default to
+   * that; the Explore feed takes the deploy's EXPLORE_POLL_S so a keyed
+   * API plan with a per-minute budget isn't overrun.
+   */
+  pollMs: number;
+  /**
+   * Warm the route cache for every callsign in view (receivers: small,
+   * slow-churning, instant routes on click). Off for Explore cities,
+   * where routes are fetched only for the selected aircraft.
+   */
+  prefetchRoutes: boolean;
 }
 
 interface RawFeedConfig {
@@ -101,6 +123,7 @@ function hasTrackService(apiBase: string): boolean {
 // every other feed stays at the safe 600 because Europe-scale fleets
 // would blow up GPU memory with multi-MB per-aircraft buffers.
 const DEFAULT_BACKFILL_FLOOR_MS = 30 * 60 * 1000;
+const DEFAULT_POLL_MS = 1000;
 // 4 hours covers the longest realistic loiter on the local feed (tankers,
 // survey patterns) without dragging in stale all-day history. At 15s
 // resolution × ~50 aircraft, the bulk cold-load response is a few MB
@@ -144,6 +167,8 @@ function fallbackFeed(): Feed {
     acarsApiBase: acarsEnabled ? '/acars-api' : null,
     trailMaxPoints,
     backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),
+    pollMs: DEFAULT_POLL_MS,
+    prefetchRoutes: true,
   };
 }
 
@@ -181,10 +206,12 @@ export function normalizeFeed(raw: RawFeedConfig): Feed | null {
     acarsApiBase,
     trailMaxPoints,
     backfillWindowMs: defaultBackfillWindowMs(trailMaxPoints),
+    pollMs: DEFAULT_POLL_MS,
+    prefetchRoutes: true,
   };
 }
 
-function loadAllFeeds(): Feed[] {
+function loadConfiguredFeeds(): Feed[] {
   const raw = window.FEEDS_CONFIG;
   if (!Array.isArray(raw) || raw.length === 0) return [fallbackFeed()];
   const out: Feed[] = [];
@@ -193,6 +220,15 @@ function loadAllFeeds(): Feed[] {
     if (f) out.push(f);
   }
   return out.length > 0 ? out : [fallbackFeed()];
+}
+
+// The Explore feed (feed/explore.ts) is appended after the configured
+// receivers when the deploy has an API key. It is one slot whose identity
+// changes with the chosen place; see selectExplorePlace.
+function loadAllFeeds(): Feed[] {
+  const feeds = loadConfiguredFeeds();
+  if (exploreEnabled()) feeds.push(buildExploreFeed(initialPlace()));
+  return feeds;
 }
 
 // Remember a pick for this tab and as the seed for new tabs. Storage can be
@@ -210,7 +246,9 @@ function storedFeed(feeds: Feed[], storage: Storage): Feed | null {
   try {
     const stored = storage.getItem(STORAGE_KEY);
     if (!stored) return null;
-    const hit = feeds.find((f) => f.id === stored);
+    const hit =
+      feeds.find((f) => f.id === stored) ??
+      (isExploreFeedId(stored) ? feeds.find((f) => isExploreFeedId(f.id)) : undefined);
     // Stored id no longer matches any configured feed — clear it.
     if (!hit) storage.removeItem(STORAGE_KEY);
     return hit ?? null;
@@ -226,6 +264,9 @@ export function pickInitial(feeds: Feed[]): Feed {
   const fromUrl = url.searchParams.get(URL_PARAM);
   const hit =
     (fromUrl ? feeds.find((f) => f.id === fromUrl) : undefined) ??
+    // A bare `?feed=explore` (or a remembered explore id for a place
+    // that is no longer the boot place) still lands on the explore slot.
+    (fromUrl && isExploreFeedId(fromUrl) ? feeds.find((f) => isExploreFeedId(f.id)) : undefined) ??
     storedFeed(feeds, window.sessionStorage) ??
     storedFeed(feeds, window.localStorage);
   if (!hit) return feeds[0]!;
@@ -235,7 +276,10 @@ export function pickInitial(feeds: Feed[]): Feed {
 
 const allFeeds: Feed[] = loadAllFeeds();
 let activeFeed: Feed = pickInitial(allFeeds);
-const mode: FeedMode = window.FEED_MODE_CONFIG?.mode === 'multi' ? 'multi' : 'single';
+// Explore adds a second entry to a single-receiver install, which is
+// enough to want the picker, so the mode follows the feed count too.
+const mode: FeedMode =
+  window.FEED_MODE_CONFIG?.mode === 'multi' || allFeeds.length > 1 ? 'multi' : 'single';
 
 // Phase 2b: main.ts registers an in-place switch handler here. selectFeed
 // invokes it instead of reloading the page when present, so cone meshes,
@@ -252,8 +296,10 @@ export function onFeedSwitch(handler: SwitchHandler): void {
 // links carry the selection. Use replaceState — no history entry.
 if (mode === 'multi') {
   const url = new URL(window.location.href);
-  if (url.searchParams.get(URL_PARAM) !== activeFeed.id) {
-    url.searchParams.set(URL_PARAM, activeFeed.id);
+  const before = url.toString();
+  url.searchParams.set(URL_PARAM, activeFeed.id);
+  writePlaceParam(url, activeFeed.id);
+  if (url.toString() !== before) {
     window.history.replaceState(null, '', url.toString());
   }
 }
@@ -281,8 +327,11 @@ export function selectFeed(id: string): void {
   const next = allFeeds.find((f) => f.id === id);
   if (!next) return;
   rememberFeed(id);
+  const placeId = placeIdFromFeedId(id);
+  if (placeId) rememberPlace(placeId);
   const url = new URL(window.location.href);
   url.searchParams.set(URL_PARAM, id);
+  writePlaceParam(url, id);
   // Clear the per-aircraft hash — the selected hex won't exist on the new
   // feed and following it across feeds isn't meaningful.
   url.hash = '';
@@ -293,4 +342,25 @@ export function selectFeed(id: string): void {
   } else {
     throw new Error('No feed switch handler registered');
   }
+}
+
+/** The Explore slot, or null when the deploy has no API key. */
+export function getExploreFeed(): Feed | null {
+  return allFeeds.find((f) => isExploreFeedId(f.id)) ?? null;
+}
+
+/**
+ * Re-point the Explore slot at another preset place and switch to it.
+ * The slot is replaced (not mutated: it may be the active feed, and
+ * selectFeed compares ids against it) so the feed list keeps one explore
+ * entry while the new id makes the session treat the pick as a feed
+ * switch: stores clear, HOME recenters, camera resets.
+ */
+export function selectExplorePlace(placeId: string): void {
+  const index = allFeeds.findIndex((f) => isExploreFeedId(f.id));
+  const place = findPlace(placeId);
+  if (index < 0 || !place) return;
+  const next = buildExploreFeed(place);
+  allFeeds[index] = next;
+  selectFeed(next.id);
 }

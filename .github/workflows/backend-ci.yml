@@ -6,11 +6,13 @@ on:
     paths:
       - "track-service/**"
       - "acars-service/**"
+      - "weather-service/**"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "track-service/**"
       - "acars-service/**"
+      - "weather-service/**"
       - ".github/workflows/backend-ci.yml"
 
 permissions:
@@ -25,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [track-service, acars-service]
+        service: [track-service, acars-service, weather-service]
     defaults:
       run:
         working-directory: ${{ matrix.service }}
@@ -57,4 +59,4 @@ jobs:
         run: pip install ruff
 
       - name: ruff check
-        run: ruff check track-service acars-service
+        run: ruff check track-service acars-service weather-service

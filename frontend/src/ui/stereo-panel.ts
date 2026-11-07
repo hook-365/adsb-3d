@@ -11,7 +11,7 @@ import type { AcarsMessage } from '../feed/acars';
 import { distanceFromHomeNm } from '../core/coords';
 import { fmtAltitude, fmtDistanceCompact, fmtSpeedCompact, fmtVerticalRate } from '../core/units';
 import { getTheme, subscribeTheme } from '../core/theme';
-import { getRoute, type RouteInfo } from '../feed/routes';
+import { ensureRoute, getRoute, type RouteInfo } from '../feed/routes';
 import { t as tr } from '../core/i18n';
 import { getAcarsMessages } from '../aircraft/acars-store';
 import { getSettings } from '../core/settings';
@@ -102,6 +102,11 @@ export class StereoPanel {
     this.mesh.visible = true;
     this.photo.track(a.hex, a.registration);
     const route = a.callsign ? getRoute(a.callsign) : null;
+    // On Explore nothing is prefetched; ask for the selected aircraft and
+    // let the next refresh pick the answer up from the cache.
+    if (route === undefined && a.callsign) {
+      void ensureRoute({ callsign: a.callsign, lat: a.lat, lon: a.lon });
+    }
     const acars = getSettings().acarsMessages ? getAcarsMessages(a.hex) : [];
     const acarsKey = acars.length ? `${acars.length}@${acars[0]!.time}` : '';
     const key = [

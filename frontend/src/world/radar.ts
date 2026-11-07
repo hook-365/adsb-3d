@@ -2,6 +2,8 @@ import type { Group } from 'three';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { subscribeHome } from '../core/config';
 import { createTileLayer, currentTileZoom, disposeTileLayer } from './tiles';
+import { stormsActive } from './storms';
+import { precipLayerActive, subscribePrecipLayer } from './precip-layer';
 
 // Weather radar overlay (RainViewer). A second, translucent tile layer a
 // hair above the basemap, rebuilt whenever RainViewer publishes a newer
@@ -40,6 +42,13 @@ export function latestRadarFrame(json: unknown): RadarFrame | null {
   return best;
 }
 
+/** The flat overlay yields to the 3D storm volume while that is drawing. */
+function flatRadarOn(): boolean {
+  // RainViewer is the fallback: the 3D volume or the MRMS surface layer
+  // (precip-layer.ts, inside its coverage) each take over when they draw.
+  return getSettings().weatherRadar && !stormsActive() && !precipLayerActive();
+}
+
 export function mountWeatherRadar(parent: Group): void {
   let layer: Group | null = null;
   let frame: RadarFrame | null = null;
@@ -52,13 +61,13 @@ export function mountWeatherRadar(parent: Group): void {
       disposeTileLayer(layer);
       layer = null;
     }
-    if (!getSettings().weatherRadar || frame === null) return;
+    if (!flatRadarOn() || frame === null) return;
     layer = createTileLayer({ provider: 'radar', zoom, frame: frame.id, overlay: true, dropY: -0.3 });
     parent.add(layer);
   };
 
   const poll = async (): Promise<void> => {
-    if (!getSettings().weatherRadar) return;
+    if (!flatRadarOn()) return;
     try {
       const res = await fetch(FRAMES_URL, { cache: 'no-store' });
       if (!res.ok) return;
@@ -73,7 +82,7 @@ export function mountWeatherRadar(parent: Group): void {
   };
 
   const sync = (): void => {
-    const on = getSettings().weatherRadar;
+    const on = flatRadarOn();
     const z = Math.min(currentTileZoom(), RADAR_MAX_ZOOM);
     if (on && timer === null) {
       timer = window.setInterval(() => void poll(), POLL_MS);
@@ -85,12 +94,18 @@ export function mountWeatherRadar(parent: Group): void {
     if (z !== zoom) {
       zoom = z;
       rebuild();
-    } else if (!on && layer) {
+    } else if (on !== (layer !== null)) {
       rebuild();
     }
   };
 
   subscribeSettings(sync);
-  subscribeHome(rebuild);
+  subscribePrecipLayer(sync);
+  // A feed switch moves HOME and can hand the view to or from the 3D
+  // storms (local feed only), so re-evaluate rather than just redraw.
+  subscribeHome(() => {
+    sync();
+    if (layer) rebuild();
+  });
   sync();
 }

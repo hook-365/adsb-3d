@@ -1607,6 +1607,233 @@ body.xr-on .acars-toggle {
   color: var(--fg);
 }
 
+/* Severe-cell labels (world/severe-cells.ts) ride the aircraft label style. */
+.severe-label.severe-hail {
+  color: #ffb08a;
+  border-color: color-mix(in srgb, #ff6b3d 60%, transparent);
+}
+
+.severe-label.severe-rotation {
+  color: #ff9fe0;
+  border-color: color-mix(in srgb, #ff3fb0 60%, transparent);
+}
+
+/* Idle chrome while the spin runs (ui/idle-chrome.ts): HUD, status bar
+   and the floating toggles fade so the orbit is all that is left. The
+   map attribution stays: a licence condition. pointer-events off so a
+   faded control can't catch the tap that wakes everything. */
+#hud,
+#status,
+#panel-toggle,
+#acars-toggle,
+.settings-button {
+  transition: opacity 0.7s ease;
+}
+
+body.chrome-idle #hud,
+body.chrome-idle #status,
+body.chrome-idle #panel-toggle,
+body.chrome-idle #acars-toggle,
+body.chrome-idle .settings-button {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Footer camera-mode switch (ui/camera-mode.ts): two icon segments joined
+   into one pill; the active mode is lit. */
+#status .camera-mode {
+  display: inline-flex;
+}
+
+#status .camera-mode .cam-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 0;
+}
+
+#status .camera-mode .cam-seg:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+#status .camera-mode .cam-seg:last-child {
+  border-radius: 0 4px 4px 0;
+  margin-left: -1px;
+}
+
+#status .camera-mode .cam-seg svg {
+  flex-shrink: 0;
+}
+
+#status .camera-mode .cam-seg:not(.active) {
+  color: var(--muted);
+}
+
+/* Footer spin control (ui/spin-control.ts): direction pair + speed slider
+   in a popover above the button. Targets are thumb-sized for phones. */
+#status .spin-control {
+  position: relative;
+  display: inline-flex;
+}
+
+#status .spin-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--panel-base) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+#status .spin-pop {
+  transition: opacity 0.6s ease;
+}
+
+/* Hand still for a few seconds while spinning: step aside. Pointer
+   events stay off so a fade-out can't swallow a tap on the map; the
+   first movement fades it back (ui/spin-control.ts). */
+#status .spin-pop.idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#status .spin-dir {
+  width: 36px;
+  height: 36px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#status .spin-dir.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+#status .spin-speed {
+  width: 120px;
+  accent-color: var(--accent);
+  touch-action: pan-x;
+}
+
+#status .spin-speed-value {
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+/* Explore city picker (ui/place-picker.ts): trigger styled like the feed
+   <select>, popover above it with a search box and region-grouped list. */
+#status .place-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+#status .place-picker .place-trigger {
+  text-align: left;
+  min-width: 96px;
+}
+
+#status .place-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 40;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--panel-base) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+#status .place-search {
+  margin: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  outline: none;
+}
+
+#status .place-search:focus {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+#status .place-list {
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  padding: 0 4px 6px;
+}
+
+#status .place-group-title {
+  padding: 8px 8px 3px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#status .place-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+#status .place-item .place-country {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#status .place-item:hover,
+#status .place-item.highlight {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+#status .place-item.active {
+  color: var(--accent);
+}
+
+#status .place-empty {
+  padding: 10px 12px 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .axis-label {
   font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   letter-spacing: 0.08em;

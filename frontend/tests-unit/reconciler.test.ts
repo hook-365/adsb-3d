@@ -397,9 +397,24 @@ describe('smooth motion', () => {
     expect(cone.position.z).toBeCloseTo(northAt(45.08), 4);
   });
 
-  it('leaves the trail whole — the one-update lag hides inside the marker', () => {
-    const { trail } = glide();
+  it('clips the trail at the marker so no line runs ahead of it', () => {
+    // Fixes at 45.0, 45.1, 45.2; the display sits at 45.08, on the first
+    // segment. The second segment is the future and must not draw, and the
+    // first must end exactly at the marker.
+    const { trail, cone } = glide();
+    expect(trail.geometry.instanceCount).toBe(1);
+    const end = trail.geometry.getAttribute('instanceEnd');
+    expect(end.getX(0)).toBeCloseTo(cone.position.x, 6);
+    expect(end.getZ(0)).toBeCloseTo(cone.position.z, 6);
+  });
+
+  it('restores the whole trail when smoothing stops', () => {
+    const { reconciler, trail } = glide();
+    updateSettings({ smoothMotion: false });
+    reconciler.syncFrame();
     expect(trail.geometry.instanceCount).toBe(2);
+    const end = trail.geometry.getAttribute('instanceEnd');
+    expect(end.getZ(0)).toBeCloseTo(northAt(45.1), 4);
   });
 
   it('smoothing off lands the cone on the raw record', () => {

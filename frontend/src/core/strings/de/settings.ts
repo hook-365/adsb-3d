@@ -134,6 +134,10 @@ export const settingsStrings = {
     'Langsam um das gefolgte Flugzeug (oder die Radarmitte) kreisen. ' +
     'Jede Bewegungseingabe pausiert dies.',
   'settings.auto_orbit_off': 'Aus',
+  'settings.camera_mode': 'Kamera',
+  'settings.camera_mode_desc': 'Umkreisen dreht um einen Drehpunkt (Ziehen dreht, Rad zoomt, Rechtsziehen verschiebt). Frei bewegt das Auge selbst: Ziehen zum Umsehen, WASD oder Pfeile zum Fliegen, R/F hoch und runter, Umschalt für Tempo, Rad schiebt vorwärts.',
+  'settings.camera_mode_orbit': 'Umkreisen',
+  'settings.camera_mode_free': 'Frei',
   'settings.terrain_3d': '3D-Gelände',
   'settings.terrain_3d_desc':
     'Hebt die Karte auf echte Geländehöhe. Ringe und Marker folgen dem ' +
@@ -158,5 +162,17 @@ export const settingsStrings = {
   'settings.altitude_curve_fmt_low': 'niedrig {n}%',
   'settings.altitude_curve_fmt_high': 'hoch {n}%',
   'settings.weather_radar': 'Wetterradar',
-  'settings.weather_radar_desc': 'Niederschlagsradar von RainViewer über der Karte, alle paar Minuten aktualisiert. Abdeckung je nach nationalem Radarnetz.',
+  'settings.weather_radar_desc': 'Niederschlag auf der Karte: Rate und Art (Regen, Schnee, konvektiv, Hagel) aus NOAA MRMS, wo der weather-service abdeckt, sonst RainViewer. Alle paar Minuten aktualisiert.',
+  'settings.weather_storms_3d': '3D-Gewitter',
+  'settings.weather_storms_3d_desc': 'Gewitterzellen als Volumen in ihrer tatsächlichen Höhe, aus NOAA-MRMS-Radardaten. Nur für die USA. Ersetzt das flache Wetterradar, solange aktiv.',
+  'settings.auto_orbit_direction': 'Drehrichtung',
+  'settings.auto_orbit_direction_desc': 'In welche Richtung die automatische Umkreisung läuft.',
+  'settings.auto_orbit_right': 'Rechts',
+  'settings.auto_orbit_left': 'Links',
+  'settings.weather_freezing': 'Nullgradgrenze',
+  'settings.weather_freezing_desc': 'Eine durchscheinende Fläche auf der 0 °C-Höhe aus NOAA MRMS, wo Vereisung entsteht. Nur USA.',
+  'settings.weather_severe': 'Unwetterzellen',
+  'settings.weather_severe_desc': 'Ringe und Beschriftungen an Zellen mit großem Hagel oder Rotation, aus NOAA MRMS MESH und RotationTrack. Nur USA.',
+  'settings.weather_lightning': 'Blitze',
+  'settings.weather_lightning_desc': 'Erdblitze aus der NOAA-MRMS-Blitzdichte (NLDN). Nur USA.',
 } as const;

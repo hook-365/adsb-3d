@@ -8,6 +8,10 @@ set -e
 # from their CDN with `?key=`. Empty = the Dark/Voyager basemaps are hidden
 # from the pickers and the app falls back to OpenStreetMap. Restricted to
 # URL-safe token characters since it lands in a JS string literal and a URL.
+if [ -n "${EXPLORE_API_KEY:-}" ] && [ -n "$(printf '%s' "$EXPLORE_API_KEY" | tr -d 'A-Za-z0-9_.~-')" ]; then
+    echo "[ERROR] EXPLORE_API_KEY may only contain letters, digits, '_', '.', '~' and '-'"
+    exit 1
+fi
 if [ -n "$CARTO_API_KEY" ] && [ -n "$(printf '%s' "$CARTO_API_KEY" | tr -d 'A-Za-z0-9_.~-')" ]; then
     echo "[ERROR] CARTO_API_KEY may only contain letters, digits, '_', '.', '~' and '-'"
     exit 1
@@ -360,11 +364,74 @@ LOCATION_NAME_JS=$(_js_escape "${LOCATION_NAME:-}")
 BASE_PATH_JS=$(_js_escape "${BASE_PATH:-}")
 ENABLE_HISTORICAL_JS=$(_bool "${ENABLE_HISTORICAL:-false}")
 ENABLE_ACARS_JS=$(_bool "${ENABLE_ACARS:-false}")
+ENABLE_WEATHER3D_JS=$(_bool "${ENABLE_WEATHER3D:-false}")
 ENABLE_VOICE_JS=$(_bool "${ENABLE_VOICE:-false}")
 ENABLE_TERRAIN_JS=$(_bool "${ENABLE_TERRAIN:-true}")
 HIDE_TOWER_JS=$(_bool "${HIDE_TOWER:-false}")
 ENABLE_UPDATE_CHECK_JS=$(_bool "${ENABLE_UPDATE_CHECK:-true}")
 CARTO_API_KEY_JS=$(_js_escape "${CARTO_API_KEY:-}")
+
+# Explore feed (pick any city): a worldwide aggregator's "aircraft within
+# a radius" API behind the /data/explore/ proxy. EXPLORE_PROVIDER picks the
+# aggregator; it defaults to flyitalyadsb when EXPLORE_API_KEY is set (the
+# only one that needs a key) and stays off otherwise. Any key stays in
+# nginx; only the enabled flag, provider id and poll cadence reach
+# config.js. EXPLORE_POLL_S (default 10) is also the nginx cache window for
+# each city, so upstream traffic is bounded at 60/EXPLORE_POLL_S requests a
+# minute per city whatever the viewer count. All four providers answer in
+# readsb's aircraft.json record format under an `ac` key; the frontend
+# keeps a 250 NM scope, so the radius asked for is 250 NM (463 km).
+EXPLORE_ENABLED_JS=false
+EXPLORE_DISABLED_DIRECTIVE="return 404;"
+EXPLORE_UPSTREAM_HOST="127.0.0.1"
+EXPLORE_UPSTREAM_PATH="/"
+EXPLORE_AUTH_DIRECTIVE=""
+EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
+EXPLORE_PROVIDER="${EXPLORE_PROVIDER:-}"
+if [ -z "${EXPLORE_PROVIDER}" ] && [ -n "${EXPLORE_API_KEY}" ]; then
+    EXPLORE_PROVIDER=flyitalyadsb
+fi
+case "${EXPLORE_PROVIDER}" in
+    "")
+        ;;
+    flyitalyadsb)
+        if [ -z "${EXPLORE_API_KEY}" ]; then
+            echo "[ERROR] EXPLORE_PROVIDER=flyitalyadsb needs EXPLORE_API_KEY (free at https://flyitalyadsb.com/en/data/api/)"
+            exit 1
+        fi
+        EXPLORE_UPSTREAM_HOST="api.flyitalyadsb.com"
+        EXPLORE_UPSTREAM_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/463'
+        EXPLORE_AUTH_DIRECTIVE='proxy_set_header X-Api-Key "'"${EXPLORE_API_KEY}"'";'
+        ;;
+    adsb.lol)
+        EXPLORE_UPSTREAM_HOST="api.adsb.lol"
+        EXPLORE_UPSTREAM_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/250'
+        ;;
+    adsb.fi)
+        EXPLORE_UPSTREAM_HOST="opendata.adsb.fi"
+        EXPLORE_UPSTREAM_PATH='/api/v3/lat/$arg_lat/lon/$arg_lon/dist/250'
+        ;;
+    airplanes.live)
+        EXPLORE_UPSTREAM_HOST="api.airplanes.live"
+        EXPLORE_UPSTREAM_PATH='/v2/point/$arg_lat/$arg_lon/250'
+        ;;
+    *)
+        echo "[ERROR] EXPLORE_PROVIDER must be one of: flyitalyadsb, adsb.lol, adsb.fi, airplanes.live (got '${EXPLORE_PROVIDER}')"
+        exit 1
+        ;;
+esac
+if [ -n "${EXPLORE_PROVIDER}" ]; then
+    EXPLORE_ENABLED_JS=true
+    EXPLORE_DISABLED_DIRECTIVE=""
+fi
+EXPLORE_PROVIDER_JS=$(_js_escape "${EXPLORE_PROVIDER}")
+EXPLORE_POLL_S="${EXPLORE_POLL_S:-10}"
+if ! echo "${EXPLORE_POLL_S}" | grep -qE '^[0-9]+(\.[0-9]+)?$' || ! awk -v v="${EXPLORE_POLL_S}" 'BEGIN { exit !(v > 0) }'; then
+    echo "[WARNING] EXPLORE_POLL_S must be a positive number ('${EXPLORE_POLL_S}'); using 10"
+    EXPLORE_POLL_S=10
+fi
+EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
+export EXPLORE_API_KEY EXPLORE_DISABLED_DIRECTIVE EXPLORE_POLL_S EXPLORE_UPSTREAM_HOST EXPLORE_UPSTREAM_PATH EXPLORE_AUTH_DIRECTIVE
 
 # Generate config.js from environment variables
 cat > /usr/share/nginx/html/config.js <<EOF
@@ -421,6 +488,13 @@ window.ACARS_CONFIG = {
     enabled: ${ENABLE_ACARS_JS}
 };
 
+// 3D storms (NOAA MRMS volume via weather-service, US coverage only).
+// When enabled, the settings panel shows the "3D storms" toggle and the
+// frontend polls /weather-api/volume.
+window.WEATHER3D_CONFIG = {
+    enabled: ${ENABLE_WEATHER3D_JS}
+};
+
 // Voice scanner configuration (VHF AM aviation voice).
 // When enabled, expects the voice-events sidecar (VOICE_EVENTS_HOST):
 //   - /voice/calls            -> JSON index of recorded transmissions
@@ -457,6 +531,15 @@ window.MAP_CONFIG = {
     cartoApiKey: '${CARTO_API_KEY_JS}'
 };
 
+// Explore feed: watch any preset city through a global aggregator's
+// radius API (EXPLORE_PROVIDER). Any key never leaves nginx; the id picks
+// the attribution line in the frontend.
+window.EXPLORE_CONFIG = {
+    enabled: ${EXPLORE_ENABLED_JS},
+    pollS: ${EXPLORE_POLL_S},
+    provider: '${EXPLORE_PROVIDER_JS}'
+};
+
 // Multi-feed configuration
 // single = local feed only (no dropdown)
 // multi = feed selector dropdown with all configured feeds
@@ -491,6 +574,19 @@ if [ "${ENABLE_ACARS}" = "true" ]; then
     echo "ACARS mode enabled - ACARS Service will be auto-detected at /acars-api/health"
 else
     echo "ACARS mode disabled"
+fi
+
+# 3D storms configuration
+if [ "${ENABLE_WEATHER3D}" = "true" ]; then
+    echo "3D storms enabled - weather-service will be auto-detected at /weather-api/health"
+else
+    echo "3D storms disabled"
+fi
+
+if [ "${EXPLORE_ENABLED_JS}" = "true" ]; then
+    echo "Explore feed enabled - /data/explore/ proxied to ${EXPLORE_UPSTREAM_HOST} (${EXPLORE_PROVIDER}, poll every ${EXPLORE_POLL_S}s)"
+else
+    echo "Explore feed disabled (set EXPLORE_PROVIDER, or EXPLORE_API_KEY for FlyItalyADSB, to pick any city)"
 fi
 
 # Voice scanner configuration
@@ -551,6 +647,10 @@ echo "Track Service host for proxy: ${TRACK_API_HOST}"
 export ACARS_API_HOST=${ACARS_API_HOST:-acars-service:8000}
 echo "ACARS Service host for proxy: ${ACARS_API_HOST}"
 
+# Set default WEATHER_API_HOST if not provided (for nginx proxy)
+export WEATHER_API_HOST=${WEATHER_API_HOST:-weather-service:8000}
+echo "Weather Service host for proxy: ${WEATHER_API_HOST}"
+
 # Voice host wiring.
 if [ "${ENABLE_VOICE:-false}" = "true" ]; then
     # Voice enabled — both upstream hosts are required. Without them envsubst
@@ -588,6 +688,7 @@ _validate_host() {
 _validate_host "FEEDER_HOST" "${FEEDER_HOST}"
 _validate_host "TRACK_API_HOST" "${TRACK_API_HOST}"
 _validate_host "ACARS_API_HOST" "${ACARS_API_HOST}"
+_validate_host "WEATHER_API_HOST" "${WEATHER_API_HOST}"
 
 # =============================================================================
 # Env-driven CORS (CORS_ALLOW_ORIGIN)
@@ -833,7 +934,7 @@ export DNS_RESOLVER
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${ADSB3D_USER_AGENT} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${ADSB3D_USER_AGENT} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then

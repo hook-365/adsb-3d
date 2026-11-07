@@ -14,6 +14,7 @@ Use this checklist before publishing a new release of ADS-B 3D.
   ghcr.io/hook-365/adsb-3d:latest
   ghcr.io/hook-365/adsb-track-service:latest
   ghcr.io/hook-365/adsb-acars-service:latest
+  ghcr.io/hook-365/adsb-weather-service:latest
   ```
 - [ ] `docker-compose.example.yml` references the published image tags (not `build:`)
 - [ ] `docker pull ghcr.io/hook-365/adsb-3d:latest` succeeds on a clean machine
@@ -82,6 +83,11 @@ Check each:
   - Decoded summary line appears above the raw text (position reports, arrivals, CPDLC/ADS-C/AFN) in the detail card and panel
   - Positioned messages drop a fading ping on the map (`ACARS position pings` setting, default on)
   - OOOI flight-phase (taxi-out / airborne / taxi-in / at gate) resolves
+- [ ] 3D storms: `ENABLE_WEATHER3D=true` + weather-service (US only; `LATITUDE` / `LONGITUDE` optional, pre-warms the local feed)
+  - `/weather-api/health` returns `status: healthy`, a recent `lastDownload` and a `locations` entry per feed asked about
+  - Switch to each US feed once and confirm storms appear (first load of a new location may wait a few seconds)
+  - `3D storms` toggle appears in settings; volumes render over the map when there is weather in range
+  - NOAA MRMS credit shows in the attribution while on
 - [ ] Voice scanner: `ENABLE_VOICE=true` + voice-services stack
   - Voice panel renders top-right; call list populates with recent clips
   - Scanner ▶ arms and auto-plays the next incoming transmission

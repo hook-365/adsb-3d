@@ -6,6 +6,7 @@ on:
     paths:
       - "track-service/**"
       - "acars-service/**"
+      - "weather-service/**"
       - "nginx/**"
       - "frontend/**"
       - "Dockerfile"
@@ -17,6 +18,7 @@ on:
     paths:
       - "track-service/**"
       - "acars-service/**"
+      - "weather-service/**"
       - "nginx/**"
       - "frontend/**"
       - "Dockerfile"

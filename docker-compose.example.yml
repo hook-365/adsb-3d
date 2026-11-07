@@ -41,7 +41,17 @@ services:
       # ── Optional features ────────────────────────────────────────────
       - ENABLE_HISTORICAL=false       # true to enable historical playback
       - ENABLE_ACARS=false            # true to enable ACARS (needs acars-service)
+      - ENABLE_WEATHER3D=false        # true for 3D storms (needs weather-service, US only)
       - HIDE_TOWER=false              # true to hide home tower (privacy)
+      # ── Global Explore (pick any city via a community aggregator) ─────
+      # One provider per deployment; all four answer in readsb format. Feed
+      # them from your receiver if you can: they run on hobbyist data.
+      # - EXPLORE_PROVIDER=flyitalyadsb   # needs EXPLORE_API_KEY (free, instant);
+      # - EXPLORE_API_KEY=fia_xxx         # feeders get Pro limits; data CC BY-SA 4.0
+      # - EXPLORE_PROVIDER=adsb.lol       # no key; data ODbL 1.0
+      # - EXPLORE_PROVIDER=adsb.fi        # no key; personal, non-commercial; 1 req/s
+      # - EXPLORE_PROVIDER=airplanes.live # no key; non-commercial terms
+      # - EXPLORE_POLL_S=10               # poll cadence = per-city cache window
       # - CARTO_API_KEY=your-key      # free key from carto.com/basemaps/apikey unlocks
       #                               # the Carto Dark/Voyager basemaps (browser-direct,
       #                               # one key per deployment, never share it)
@@ -112,6 +122,7 @@ services:
   #     # Shown to adsb.im in the User-Agent of shared route lookups (they ask for a contact)
   #     - ROUTE_API_CONTACT=you@example.com
   #     # - ROUTE_CACHE_TTL_SECONDS=86400   # shared route cache lifetime (default 24 h)
+  #     # - ROUTE_MIN_INTERVAL_SECONDS=180  # floor between adsb.im requests (default 3 min)
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
   #     - DB_USER=adsb
@@ -154,6 +165,24 @@ services:
   #     - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in your .env file}
   #   depends_on:
   #     - timescaledb-adsb
+
+  # ── Weather service (uncomment to enable 3D storms) ─────────────────────
+  # Downloads NOAA MRMS 3D reflectivity (keyless, public domain, US coverage
+  # only) every 5 minutes and serves a small volume cropped around whichever
+  # feed the viewer has active; one service covers every feed. No database.
+  # Also set ENABLE_WEATHER3D=true on adsb-3d above.
+  # weather-service:
+  #   image: ghcr.io/hook-365/adsb-weather-service:latest
+  #   container_name: weather-service
+  #   restart: unless-stopped
+  #   environment:
+  #     - LATITUDE=45.0000          # optional: pre-warm the local feed's volume
+  #     - LONGITUDE=-90.0000        # (same values as the adsb-3d service)
+  #     - ROUTE_API_CONTACT=you@example.com
+  #     # - WEATHER3D_RADIUS_NM=250   # half-width of each crop box (nautical miles)
+  #     # - WEATHER3D_LOCATION_TTL_S=1800  # drop idle feed locations after this
+  #     # - WEATHER_FIELDS=echotop18,echotop30,freezing,preciprate,preciptype,mesh,rotation,lightning
+  #     #                                  # 2-D products (echo tops, precip, 0 °C, hail/rotation, lightning)
 
 # Uncomment whichever of these you enabled above (historical mode's DB
 # volume, and/or the adsb-3d tiles cache volume) — both live under one

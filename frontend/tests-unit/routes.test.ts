@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { currentLegIndex, isAirlineCallsign, normalizeRoute, type RawRouteEntry } from '../src/feed/routes';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  attachRouteBatchPrefetcher,
+  clearRouteCache,
+  currentLegIndex,
+  ensureRoute,
+  isAirlineCallsign,
+  isRoutePrefetchActive,
+  normalizeRoute,
+  type RawRouteEntry,
+} from '../src/feed/routes';
+import { AircraftStore } from '../src/aircraft/store';
 
 const DAL = { iata: 'DAL', icao: 'KDAL', name: 'Dallas Love Field', lat: 32.85, lon: -96.85 };
 const PHX = { iata: 'PHX', icao: 'KPHX', name: 'Phoenix Sky Harbor', lat: 33.43, lon: -112.01 };
@@ -67,5 +77,55 @@ describe('normalizeRoute', () => {
   it('falls back to ICAO when an airport has no IATA code', () => {
     const route = normalizeRoute({ _airports: [{ icao: 'KXYZ' }, PHX], plausible: true }, 33, -110);
     expect(route?.origin).toBe('KXYZ');
+  });
+});
+
+
+describe('on-demand lookups (no prefetcher)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearRouteCache();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function postMock(entries: RawRouteEntry[] = []) {
+    return vi.fn().mockResolvedValue({ ok: true, json: async () => entries });
+  }
+
+  it('batches selections into one priority POST after the short window', async () => {
+    const fetchMock = postMock([
+      { callsign: 'DAL451', _airports: [DAL, PHX], plausible: true },
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(isRoutePrefetchActive()).toBe(false);
+    const a = ensureRoute({ callsign: 'DAL451', lat: 33, lon: -100 });
+    const b = ensureRoute({ callsign: 'SWA123', lat: 33, lon: -100 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.priority).toBe(true);
+    expect(body.planes.map((p: { callsign: string }) => p.callsign)).toEqual(['DAL451', 'SWA123']);
+    expect((await a)?.origin).toBe('DAL');
+    expect(await b).toBeNull();
+    // Cached now: no second request.
+    await ensureRoute({ callsign: 'DAL451', lat: 33, lon: -100 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('with a prefetcher attached, selection sends nothing of its own', async () => {
+    const fetchMock = postMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const store = new AircraftStore();
+    const detach = attachRouteBatchPrefetcher(store);
+    expect(isRoutePrefetchActive()).toBe(true);
+    void ensureRoute({ callsign: 'DAL451', lat: 33, lon: -100 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    detach();
+    expect(isRoutePrefetchActive()).toBe(false);
   });
 });

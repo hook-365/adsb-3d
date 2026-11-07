@@ -39,3 +39,21 @@ describe('edgeBracket', () => {
     expect(edgeBracket(5, 48, 12)).toEqual({ i0: 4, i1: 8, t: 0.25 });
   });
 });
+
+describe('quadSurfaceY', () => {
+  it('matches the NE-SW diagonal split of buildTerrainPiece', async () => {
+    const { quadSurfaceY } = await import('../src/world/tile-grid');
+    // Corners reproduce exactly.
+    expect(quadSurfaceY(1, 2, 3, 4, 0, 0)).toBe(1);
+    expect(quadSurfaceY(1, 2, 3, 4, 1, 0)).toBe(2);
+    expect(quadSurfaceY(1, 2, 3, 4, 0, 1)).toBe(3);
+    expect(quadSurfaceY(1, 2, 3, 4, 1, 1)).toBe(4);
+    // On the shared diagonal both triangles agree.
+    expect(quadSurfaceY(1, 2, 3, 4, 0.5, 0.5)).toBeCloseTo(2.5);
+    // A peak sampled only at the centre is NOT seen: the surface is planar
+    // within each triangle, so the mid-quad height is the diagonal's.
+    expect(quadSurfaceY(0, 0, 0, 0, 0.25, 0.25)).toBe(0);
+    // Second triangle interpolates from SE.
+    expect(quadSurfaceY(0, 0, 0, 8, 0.75, 0.75)).toBeCloseTo(4);
+  });
+});
