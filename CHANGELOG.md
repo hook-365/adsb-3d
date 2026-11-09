@@ -10,7 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- **weather-service image** is built for `amd64` and `arm64` only. numpy has no 32-bit ARM wheel, so the `arm/v7` build could never succeed; the viewer, track-service and acars-service images still cover all three.
+- Severe cells show hail only. Rotation markers are gone.
+- Weather refresh has a 2 minute floor.
+- weather-service image is `amd64` and `arm64` only.
+
+### Fixed
+
+- Map credit no longer overlaps the altitude legend.
 
 ---
 
@@ -18,11 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- **Published images**: the 0.13.0 images were never built because a unit test failed in CI (the test environment has no `scrollIntoView`). 0.13.1 is 0.13.0 with that test fixed, so `:latest` and `:0.13.1` now carry 3D weather, Explore and the free camera.
-
-### Changed
-
-- README: new 3D weather screenshot.
+- First published images with 3D weather, Explore and the free camera.
 
 ---
 
@@ -30,31 +32,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **Panel style** (Settings → Appearance): *Docked* (default) attaches solid panels to the edges; *Glass* floats cards over the map, the previous look.
-- **Weather radar** (Settings → Map): RainViewer precipitation overlay, proxied and cached by nginx.
-- **3D storms** (Settings → Map, `ENABLE_WEATHER3D`): NOAA MRMS radar as volumes at real altitude, via the new `weather-service`. US only. Cells stop at their measured echo tops and the detail panel shows the storm top near a selected aircraft.
-- **More weather from the same sidecar** (`WEATHER_FIELDS`): surface precipitation by rate and type replaces RainViewer inside US coverage; a freezing-level sheet where it rains; rings and labels on severe hail and rotation; lightning flashes from NLDN density with a strike rate in the detail panel. Each is a Settings → Map toggle.
-- **Emergency alerts**: toast, red label with the squawk, pulsing ring on 7500 / 7600 / 7700. Live only, no sound.
-- **What's new**: this note, once per version after an upgrade.
-- **Reduced motion**: smooth motion and auto-orbit start off when the OS asks for it.
-- **Global Explore** (`EXPLORE_PROVIDER`): pick any of ~85 cities from a searchable, region-grouped picker and watch its traffic, with terrain, from a community aggregator: [FlyItalyADSB](https://flyitalyadsb.com) (free key), [adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi) or [airplanes.live](https://airplanes.live) (no key). These networks exist because hobbyists feed them their receivers; if you run one, feed them too. Any key stays in nginx; each city is cached for the poll interval so every viewer shares one upstream request, and nothing from the aggregator is stored.
-- **Free camera**: a *fly* button in the footer (and a Camera setting) swaps the orbit for a free-flying eye: drag to look, WASD or arrows to move, R/F up and down, Shift for speed, wheel to push forward.
-- Deselecting an aircraft returns the camera to the view you had before selecting it, instead of the home view.
+- **3D storms** from NOAA radar. US only.
+- **More weather layers**: precipitation, freezing level, hail, lightning.
+- **Weather radar** overlay from RainViewer.
+- **Explore**: watch traffic over about 85 cities.
+- **Free camera**: fly anywhere.
+- **Docked panels** by default. Glass is still there.
+- **Emergency alerts** on 7500 / 7600 / 7700.
+- **What's new**: this note, once per version.
+- Reduced motion follows the OS setting.
+- Deselecting returns to your previous view.
 
 ### Changed
 
-- Vertical exaggeration defaults to 4x instead of 12x. Existing browsers keep whatever they had.
-- Ground icons and altitude-line feet sit on the drawn terrain surface instead of the raw elevation sample, so they no longer float above sharp ridges (Oahu).
-
-- Shared route cache keeps answers for 24 h (`ROUTE_CACHE_TTL_SECONDS`), and route requests to adsb.im are at least 3 minutes apart (`ROUTE_MIN_INTERVAL_SECONDS`) so busy areas send one request instead of one a minute. Explore cities don't prefetch routes at all: a route is asked for when an aircraft is selected, through a short server-side window shared by all viewers.
-- Aircraft markers keep a constant on-screen size instead of a constant world size, and the camera can come down to 8 NM (3 NM while following). True vertical scale now shows air under the aircraft.
-- With smooth motion on, the trail ends at the marker instead of running ahead to the newest fix.
+- Vertical scale defaults to 4x.
+- Aircraft markers keep a constant on-screen size.
+- Ground icons sit on the drawn terrain.
+- Route cache keeps answers for 24 h.
+- Trails end at the marker with smooth motion on.
 
 ### Fixed
 
-- Footer is solid and no longer covers the map credit.
-- CI's Playwright job runs on the latest Ubuntu again.
-- 3D storms on phones drew as flat curtains: the shader's height lookups were float textures with linear filtering, which many mobile GPUs can't sample. They are nearest-filtered now.
+- Footer no longer covers the map credit.
+- 3D storms drew as flat curtains on phones.
 
 ---
 
