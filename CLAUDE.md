@@ -173,7 +173,7 @@ types, unit abbreviations) is deliberately not translated.
   outside CONUS gets `coverage: false` and the toggle draws nothing for it.
   `/health` lists `locations` and is 503 only after two refresh periods
   without a download. 2-D products (`WEATHER_FIELDS`, `mrms.PRODUCTS`:
-  echo tops, freezing level, precip rate/type, MESH, rotation, NLDN
+  echo tops, freezing level, precip rate/type, MESH, NLDN
   lightning; bright band opt-in) are fetched on their own cadence, cropped
   the same way and packed to uint8 (`pack_field`): `GET /fields?lat=&lon=`
   is the per-location manifest, `/field.bin?loc=&f=<id>` a grid.

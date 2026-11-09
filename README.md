@@ -37,7 +37,7 @@ and translations count just as much as code.
 
 <img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
 
-- **v0.13.0** (2026-11-06): **3D weather** from NOAA MRMS through one optional sidecar: storm volumes that end at their measured echo tops, surface precipitation on the radar colour ramp, a freezing-level sheet where it rains, severe hail and rotation marked on the ground, lightning flashes, and storm top and strike rate next to a selected aircraft. **Global Explore**: pick any of ~85 cities and watch its traffic through a community aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live). **Free camera** and a spin control with direction and speed; deselecting returns to the view you had. Docked panel style by default, Glass still there; RainViewer radar outside US coverage; emergency toasts with the squawk on the label; a what's-new note once per version; reduced-motion defaults; 24 h shared route cache; vertical scale defaults to 4x.
+- **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.
 - **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
 - **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
 - **v0.10**: AR diorama matured: placeable, resizable clip box, auto-orbit, follow-random-aircraft, high-res basemap option.
@@ -66,7 +66,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 ![RainViewer precipitation radar overlaid on the live 3D view: a storm cell with yellow and red cores over Door County and Lake Michigan, aircraft and trails above it](Radar.jpg)
 
 - **3D storms** (weather-service, US only): NOAA MRMS merged reflectivity, 33 altitude slices cropped around whichever feed is active and raymarched as translucent storm volumes so you can see aircraft route around cells. One sidecar serves every feed; refreshes every 5 minutes; browsers get a few hundred KB at most. Cells end at their real **echo tops**, and the detail panel shows the storm top next to a nearby aircraft's altitude.
-- **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size and low-level rotation; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
+- **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
 - **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
@@ -208,7 +208,7 @@ condition for some of them.
 | `ENABLE_HISTORICAL` | `false` | Historical playback UI (needs track-service) |
 | `ENABLE_ACARS` | `false` | ACARS panel (needs acars-service) |
 | `ENABLE_WEATHER3D` | `false` | 3D storm volumes and the other MRMS layers, US only (needs weather-service) |
-| `WEATHER_FIELDS` (weather-service) | `echotop18,echotop30,freezing,preciprate,preciptype,mesh,rotation,lightning` | Which MRMS 2-D products the sidecar fetches; add `bbtop,bbbottom` for the melting layer (15 MB each per fetch), or trim the list |
+| `WEATHER_FIELDS` (weather-service) | `echotop18,echotop30,freezing,preciprate,preciptype,mesh,lightning` | Which MRMS 2-D products the sidecar fetches; add `bbtop,bbbottom` for the melting layer (15 MB each per fetch), or trim the list |
 | `ENABLE_VOICE` | `false` | VHF voice scanner panel (see [docs/VOICE.md](docs/VOICE.md)) |
 | `EXPLORE_PROVIDER` | — | `flyitalyadsb`, `adsb.lol`, `adsb.fi` or `airplanes.live`; adds the *Explore* feed (pick any city). See [Explore](#explore-any-city) |
 | `EXPLORE_API_KEY` | — | API key for `flyitalyadsb` (setting it alone selects that provider) |
@@ -246,7 +246,7 @@ containers, not the main image — see the compose example):
 | `ACARS_HOST` / `ACARS_PORT` | `acarshub` / `15550` | acarshub / acars_router JSON-over-TCP feed (acars-service); `15550` is the ACARS lane, `15555` VDL Mode 2 |
 | `LATITUDE` / `LONGITUDE` (weather-service) | — | optional; pre-warms a pinned storm volume for the local feed at startup. Other feeds are cropped on demand from the viewer's `lat`/`lon` |
 | `WEATHER3D_RADIUS_NM` | `250` | half-width of each feed's crop box in nautical miles (weather-service) |
-| `WEATHER3D_REFRESH_S` | `300` | seconds between NOAA MRMS downloads (weather-service) |
+| `WEATHER3D_REFRESH_S` | `300` | seconds between NOAA MRMS downloads (weather-service); floor `120`, lower values are raised to it |
 | `WEATHER3D_LOCATION_TTL_S` | `1800` | drop a feed location nobody asked about for this long; pinned pre-warm never expires (weather-service) |
 | `ROUTE_API_CONTACT` (weather-service) | — | contact sent to NOAA in the User-Agent, same as the other services |
 

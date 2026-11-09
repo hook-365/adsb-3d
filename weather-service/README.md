@@ -52,7 +52,7 @@ of how many feeds ask. Browsers receive the cropped volume only, tens of KB to a
 | `LATITUDE` | (none) | Optional. With `LONGITUDE`, pre-warms a pinned location at startup (the local feed's position, same value as the adsb-3d service) |
 | `LONGITUDE` | (none) | Optional, decimal degrees |
 | `WEATHER3D_RADIUS_NM` | `250` | Half-width of each location's crop box in nautical miles |
-| `WEATHER3D_REFRESH_S` | `300` | Seconds between NOAA downloads |
+| `WEATHER3D_REFRESH_S` | `300` | Seconds between NOAA downloads; floor 120, lower values are raised to it |
 | `WEATHER3D_LOCATION_TTL_S` | `1800` | Drop a location nobody asked about for this long; the pinned pre-warm never expires |
 | `ROUTE_API_CONTACT` | (none) | Contact (email or site) sent in the outbound User-Agent, same as the other services |
 

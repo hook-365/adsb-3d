@@ -7,6 +7,7 @@
 // Nothing here mutates health — strictly a consumer.
 
 import { subscribeHealth, type AcarsHealth, type FeedHealth, type FeedIdentity } from '../core/health';
+import { rowContentWidth, shouldStackAttribution } from './footer-layout';
 import { HOME } from '../core/config';
 import { t } from '../core/i18n';
 import { createScope } from '../core/scope';
@@ -178,14 +179,33 @@ export function mountHud(): void {
   // gets significantly taller in historical mode (time-controls expand
   // to a full row) and even taller on mobile when its flex-wrap kicks
   // in, so a static CSS bottom would either over- or under-shoot.
+  //
+  // The same pass publishes the map attribution's width as
+  // `--attribution-w` (the footer reserves that much of its right end)
+  // and flags `data-attribution-stacked` on <html> when the legend row
+  // and the credit can't share the bottom line (ui/footer-layout.ts).
   const statusEl = document.getElementById('status') as HTMLElement;
-  const publishFooterHeight = (): void => {
+  const attributionEl = document.getElementById('map-attribution');
+  const legendEl = document.getElementById('altitude-legend');
+  const root = document.documentElement;
+  const publishFooterLayout = (): void => {
     // Round up so we never undershoot by a fractional pixel.
     const h = Math.ceil(statusEl.getBoundingClientRect().height);
-    document.documentElement.style.setProperty('--footer-h', `${h}px`);
+    root.style.setProperty('--footer-h', `${h}px`);
+    if (!attributionEl) return;
+    const aw = Math.ceil(attributionEl.getBoundingClientRect().width);
+    root.style.setProperty('--attribution-w', `${aw}px`);
+    const lw = legendEl ? rowContentWidth(legendEl.children, 8) : 0;
+    root.toggleAttribute('data-attribution-stacked', shouldStackAttribution(lw, aw, window.innerWidth));
   };
-  publishFooterHeight();
-  const ro = new ResizeObserver(publishFooterHeight);
+  publishFooterLayout();
+  const ro = new ResizeObserver(publishFooterLayout);
   ro.observe(statusEl);
-  scope.own(() => ro.disconnect());
+  if (attributionEl) ro.observe(attributionEl);
+  if (legendEl) ro.observe(legendEl);
+  window.addEventListener('resize', publishFooterLayout);
+  scope.own(() => {
+    ro.disconnect();
+    window.removeEventListener('resize', publishFooterLayout);
+  });
 }

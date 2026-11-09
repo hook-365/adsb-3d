@@ -235,7 +235,7 @@ export interface Settings {
   weatherStorms3d: boolean;
   /** Translucent sheet at the 0 °C height from MRMS (weather-service only). */
   weatherFreezingLevel: boolean;
-  /** Hail and rotation markers from MRMS MESH / RotationTrack (weather-service only). */
+  /** Hail markers from MRMS MESH (weather-service only). */
   weatherSevere: boolean;
   /** Cloud-to-ground lightning flashes from MRMS NLDN density (weather-service only). */
   weatherLightning: boolean;

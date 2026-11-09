@@ -1005,9 +1005,27 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   box-shadow: 0 4px 18px color-mix(in srgb, var(--bg) 35%, transparent);
   font-size: 11px;
   color: var(--muted);
-  /* Leave the bottom-right corner to .map-attribution: on a wide laptop
-     the bar used to reach the corner and cover the OSM credit. */
-  max-width: calc(100vw - 32px - 210px);
+  max-width: calc(100vw - 32px);
+}
+
+/* The bottom-right corner belongs to .map-attribution. Only the legend
+   row shares that line, so only it reserves the credit's width (measured
+   in ui/hud.ts: the credit grows with the weather layers and the Explore
+   provider). The rows above keep the full width, so the status line and
+   the action buttons wrap as late as possible. */
+.altitude-legend {
+  padding-right: calc(var(--attribution-w, 0px) + 12px);
+}
+
+/* No room for the legend row and the credit on one line: the credit
+   rides above the footer, right-aligned, and the legend takes the width.
+   The phone media query below is the same layout, unconditionally. */
+html[data-attribution-stacked] .altitude-legend {
+  padding-right: 0;
+}
+
+html[data-attribution-stacked] .map-attribution {
+  bottom: calc(var(--footer-h, 48px) + 16px + 8px);
 }
 
 @media (max-width: 600px) {
@@ -1029,6 +1047,9 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   /* The bar spans the width here, so the attribution rides above it. */
   .map-attribution {
     bottom: calc(var(--footer-h, 48px) + 10px);
+  }
+  .altitude-legend {
+    padding-right: 0;
   }
 }
 
@@ -1158,6 +1179,7 @@ body.xr-on .acars-toggle {
   flex-direction: column;
   gap: 2px;
   width: 280px;
+  flex-shrink: 0; /* the ticks are calibrated to the bar: never squeeze it */
 }
 
 .altitude-legend .al-bar {
@@ -1477,6 +1499,22 @@ body.xr-on .acars-toggle {
   }
 }
 
+/* Footer actions: share, recenter, spin and the camera-mode switch are
+   one cluster. When the footer wraps they move to the next line together
+   rather than splitting mid-group. */
+.footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 600px) {
+  .footer-actions {
+    gap: 10px;
+  }
+}
+
 /* Footer links: github + buy-me-a-coffee. Pushed to the right edge of
    the status row so they read as "meta" rather than primary content. */
 .footer-links {
@@ -1611,11 +1649,6 @@ body.xr-on .acars-toggle {
 .severe-label.severe-hail {
   color: #ffb08a;
   border-color: color-mix(in srgb, #ff6b3d 60%, transparent);
-}
-
-.severe-label.severe-rotation {
-  color: #ff9fe0;
-  border-color: color-mix(in srgb, #ff3fb0 60%, transparent);
 }
 
 /* Idle chrome while the spin runs (ui/idle-chrome.ts): HUD, status bar
@@ -3379,7 +3412,7 @@ html[data-panel-style="docked"] #status {
   right: 0;
   bottom: 0;
   max-width: none;
-  padding: 8px 220px 8px 16px;
+  padding: 8px 16px;
   border-radius: 0;
   border-width: 1px 0 0 0;
   background: var(--panel-base);
@@ -3436,6 +3469,24 @@ html[data-panel-style="docked"] .map-attribution {
   background: transparent;
 }
 
+/* Stacked (measured in ui/hud.ts) or a phone: the credit rides above the
+   full-width footer. */
+html[data-panel-style="docked"][data-attribution-stacked] .map-attribution {
+  bottom: calc(var(--footer-h, 48px) + 6px);
+  right: 8px;
+  z-index: 13; /* above the docked detail card, which spans the width here */
+  background: color-mix(in srgb, var(--panel-base) 78%, transparent);
+}
+
+/* With the sidebar open the lifted credit would sit on the aircraft
+   list, so it tucks against the sidebar's left edge instead. Phones keep
+   the corner: the sidebar spans the width there. */
+@media (min-width: 601px) {
+  html[data-panel-style="docked"][data-attribution-stacked] body:has(#aircraft-panel:not(.collapsed)) .map-attribution {
+    right: calc(min(320px, 100vw) + 8px);
+  }
+}
+
 @media (max-width: 600px) {
   html[data-panel-style="docked"] #status {
     padding: 6px 10px;
@@ -3443,7 +3494,7 @@ html[data-panel-style="docked"] .map-attribution {
   html[data-panel-style="docked"] .map-attribution {
     bottom: calc(var(--footer-h, 48px) + 6px);
     right: 8px;
-    z-index: 13; /* above the docked detail card, which spans the width here */
+    z-index: 13;
     background: color-mix(in srgb, var(--panel-base) 78%, transparent);
   }
 }

@@ -138,3 +138,11 @@ async def test_fields_endpoints(monkeypatch):
     monkeypatch.setattr(main, "FIELDS", [])
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="http://t") as c:
         assert (await c.get(f"/fields?{q}")).json()["coverage"] is False
+
+
+@pytest.mark.parametrize("raw, want", [(None, 300.0), (0.0, 300.0), (30.0, 120.0), (119.9, 120.0), (120.0, 120.0), (150.0, 150.0), (900.0, 900.0)])
+def test_refresh_floor_is_120s(raw, want):
+    """WEATHER3D_REFRESH_S never goes below 120 s: MRMS is published every
+    two minutes, so a lower cadence would only re-download identical files."""
+    assert main.clamp_refresh_s(raw) == want
+    assert main.MIN_REFRESH_S == 120.0

@@ -77,6 +77,5 @@ export const miscStrings = {
   'misc.whats_new_full': 'Vollständiges Changelog',
   'misc.whats_new_close': 'Schließen',
   'misc.severe_hail': 'Hagel {mm} mm',
-  'misc.severe_rotation': 'Rotation',
   'misc.lightning_nearby': '{rate}/km²/min in der Nähe',
 } as const;

@@ -27,8 +27,8 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
-# RotationTrack is a 14000 x 7000 grid (0.005 deg): 98 MP, past Pillow's
-# default decompression-bomb guard. The data is trusted (NOAA) and bounded.
+# Some MRMS products ship on a 0.005 deg grid (14000 x 7000, 98 MP), past
+# Pillow's default decompression-bomb guard. The data is trusted (NOAA).
 Image.MAX_IMAGE_PIXELS = None
 
 # Every MRMS level, km MSL, as spelled in the URL.
@@ -251,7 +251,7 @@ def window_bounds_after_block(win: Window, block: int, cell: float) -> dict:
 
 
 # ============================================================================
-# 2-D PRODUCTS (echo tops, freezing level, precipitation, hail, rotation,
+# 2-D PRODUCTS (echo tops, freezing level, precipitation, hail,
 # lightning): one GRIB2 grid each from https://mrms.ncep.noaa.gov/2D/<name>/,
 # same PNG packing as the reflectivity levels. Each is cropped like a level
 # and packed to uint8 for the browser; `scale`/`offset`/`log` in the
@@ -291,12 +291,11 @@ PRODUCTS: dict[str, Product] = {
     "preciprate": Product("preciprate", "PrecipRate", "mm/h", scale=32.0, pool="max", refresh_s=0, log=True),
     "preciptype": Product("preciptype", "PrecipFlag", "rank", scale=1.0, pool="rank", refresh_s=0),
     "mesh": Product("mesh", "MESH", "mm", scale=2.0, pool="max", refresh_s=0),
-    "rotation": Product("rotation", "RotationTrack30min", "0.001/s", scale=4.0, pool="max", refresh_s=0),
     "lightning": Product("lightning", "NLDN_CG_001min_AvgDensity", "flashes/km2/min", scale=40.0, pool="max", refresh_s=0),
 }
 # Fetched unless WEATHER_FIELDS says otherwise. The bright-band pair is
 # ~15 MB each per fetch, so it is opt-in.
-DEFAULT_FIELDS = ["echotop18", "echotop30", "freezing", "preciprate", "preciptype", "mesh", "rotation", "lightning"]
+DEFAULT_FIELDS = ["echotop18", "echotop30", "freezing", "preciprate", "preciptype", "mesh", "lightning"]
 
 
 def decode_field(msg: Grib2Msg, win: "Window | None" = None) -> np.ndarray:

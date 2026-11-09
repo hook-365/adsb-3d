@@ -176,7 +176,7 @@ export const settingsStrings = {
   'settings.weather_freezing': 'Freezing level',
   'settings.weather_freezing_desc': 'A translucent sheet at the 0 °C height from NOAA MRMS, where icing lives. US coverage only.',
   'settings.weather_severe': 'Severe cells',
-  'settings.weather_severe_desc': 'Rings and labels on cells with large hail or rotation, from NOAA MRMS MESH and RotationTrack. US coverage only.',
+  'settings.weather_severe_desc': 'Rings and labels on cells with large hail, from NOAA MRMS MESH. US coverage only.',
   'settings.weather_lightning': 'Lightning',
   'settings.weather_lightning_desc': 'Cloud-to-ground flashes from NOAA MRMS lightning density (NLDN). US coverage only.',
 } as const;

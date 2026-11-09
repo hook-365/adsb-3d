@@ -14,29 +14,26 @@ import { DIORAMA_PLANES } from './diorama-clip';
 import { terrainSurface } from './tiles';
 import { subscribeField, type FieldGrid } from './weather-fields';
 
-// Severe cells: MRMS MESH (maximum estimated hail size, mm) and
-// RotationTrack30min (low-level azimuthal shear swath, 0.001/s) scanned for
+// Severe cells: MRMS MESH (maximum estimated hail size, mm) scanned for
 // connected regions above a threshold. Each region gets a ground ring
-// sized to its extent and a label ("hail 38 mm", "rotation"), so a
-// deviation around a cell is self-explanatory. The ring and label reuse
-// the aircraft styling; depth-tested, so they hide behind terrain.
+// sized to its extent and a label ("hail 38 mm"), so a deviation around a
+// cell is self-explanatory. The ring and label reuse the aircraft styling;
+// depth-tested, so they hide behind terrain.
+//
+// Rotation (RotationTrack30min) was tried and dropped: raw azimuthal shear
+// fires over clear sky near radar sites, so unmasked it marked clutter.
 
-/** Severe thresholds. 25 mm hail is "severe" by NWS definition. For
- * rotation the 30-minute swath product lights up along any sheared front
- * at the 0.005/s screening value, so the marker uses 0.010/s, roughly a
- * weak mesocyclone, and asks for a few contiguous cells. */
+/** 25 mm hail is "severe" by NWS definition. */
 export const HAIL_MIN_MM = 25;
-export const ROTATION_MIN = 10; // 0.001/s units
 export const HAIL_MIN_CELLS = 1;
-export const ROTATION_MIN_CELLS = 3;
 export const MAX_REGIONS = 12;
 export const MAX_LABELS = 8;
 
 export interface Region {
-  kind: 'hail' | 'rotation';
+  kind: 'hail';
   lat: number;
   lon: number;
-  /** Peak value in the product's unit (mm, or 0.001/s). */
+  /** Peak value in the product's unit (mm). */
   max: number;
   /** Rough radius in NM from the region's cell extent. */
   radiusNm: number;
@@ -112,21 +109,16 @@ export function severeActive(): boolean {
 }
 
 export function regionLabel(region: Region): string {
-  return region.kind === 'hail'
-    ? t('misc.severe_hail', { mm: Math.round(region.max) })
-    : t('misc.severe_rotation');
+  return t('misc.severe_hail', { mm: Math.round(region.max) });
 }
 
 export function mountSevereCells(parent: Group): void {
   const group = new Group();
   group.name = 'severe-cells';
   let unsubHail: (() => void) | null = null;
-  let unsubRot: (() => void) | null = null;
   let hail: FieldGrid | null = null;
-  let rot: FieldGrid | null = null;
   const tmp = new Vector3();
   const hailMat = new MeshBasicMaterial({ color: 0xff6b3d, transparent: true, opacity: 0.55, side: DoubleSide, depthWrite: false, clippingPlanes: DIORAMA_PLANES });
-  const rotMat = new MeshBasicMaterial({ color: 0xff3fb0, transparent: true, opacity: 0.55, side: DoubleSide, depthWrite: false, clippingPlanes: DIORAMA_PLANES });
   const ringGeo = new RingGeometry(0.82, 1, 48);
   ringGeo.rotateX(-Math.PI / 2);
 
@@ -142,13 +134,10 @@ export function mountSevereCells(parent: Group): void {
   const place = (): void => {
     clear();
     if (!severeActive()) return;
-    const regions = [
-      ...(hail ? findRegions(hail, HAIL_MIN_MM, 'hail', MAX_REGIONS, HAIL_MIN_CELLS) : []),
-      ...(rot ? findRegions(rot, ROTATION_MIN, 'rotation', MAX_REGIONS, ROTATION_MIN_CELLS) : []),
-    ].sort((a, b) => b.max / (b.kind === 'hail' ? HAIL_MIN_MM : ROTATION_MIN) - a.max / (a.kind === 'hail' ? HAIL_MIN_MM : ROTATION_MIN));
+    const regions = hail ? findRegions(hail, HAIL_MIN_MM, 'hail', MAX_REGIONS, HAIL_MIN_CELLS) : [];
     regions.forEach((region, rank) => {
       terrainSurface(region.lat, region.lon, tmp);
-      const ring = new Mesh(ringGeo, region.kind === 'hail' ? hailMat : rotMat);
+      const ring = new Mesh(ringGeo, hailMat);
       ring.position.set(tmp.x, tmp.y + 0.3, tmp.z);
       ring.scale.setScalar(region.radiusNm);
       ring.renderOrder = 3;
@@ -171,13 +160,11 @@ export function mountSevereCells(parent: Group): void {
     const on = severeActive();
     if (on && !unsubHail) {
       unsubHail = subscribeField('mesh', (g) => { hail = g; place(); });
-      unsubRot = subscribeField('rotation', (g) => { rot = g; place(); });
       parent.add(group);
     } else if (!on && unsubHail) {
       unsubHail();
-      unsubRot?.();
-      unsubHail = unsubRot = null;
-      hail = rot = null;
+      unsubHail = null;
+      hail = null;
       clear();
       parent.remove(group);
     }
@@ -185,7 +172,7 @@ export function mountSevereCells(parent: Group): void {
 
   subscribeSettings(sync);
   subscribeHome(() => {
-    hail = rot = null;
+    hail = null;
     clear();
   });
   sync();

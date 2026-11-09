@@ -172,7 +172,7 @@ export const settingsStrings = {
   'settings.weather_freezing': 'Nullgradgrenze',
   'settings.weather_freezing_desc': 'Eine durchscheinende Fläche auf der 0 °C-Höhe aus NOAA MRMS, wo Vereisung entsteht. Nur USA.',
   'settings.weather_severe': 'Unwetterzellen',
-  'settings.weather_severe_desc': 'Ringe und Beschriftungen an Zellen mit großem Hagel oder Rotation, aus NOAA MRMS MESH und RotationTrack. Nur USA.',
+  'settings.weather_severe_desc': 'Ringe und Beschriftungen an Zellen mit großem Hagel, aus NOAA MRMS MESH. Nur USA.',
   'settings.weather_lightning': 'Blitze',
   'settings.weather_lightning_desc': 'Erdblitze aus der NOAA-MRMS-Blitzdichte (NLDN). Nur USA.',
 } as const;

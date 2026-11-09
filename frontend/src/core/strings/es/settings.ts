@@ -172,7 +172,7 @@ export const settingsStrings = {
   'settings.weather_freezing': 'Nivel de congelación',
   'settings.weather_freezing_desc': 'Una lámina translúcida a la altura de 0 °C según NOAA MRMS, donde se forma hielo. Solo EE. UU.',
   'settings.weather_severe': 'Células severas',
-  'settings.weather_severe_desc': 'Anillos y etiquetas en células con granizo grande o rotación, de NOAA MRMS MESH y RotationTrack. Solo EE. UU.',
+  'settings.weather_severe_desc': 'Anillos y etiquetas en células con granizo grande, de NOAA MRMS MESH. Solo EE. UU.',
   'settings.weather_lightning': 'Rayos',
   'settings.weather_lightning_desc': 'Descargas nube-tierra según la densidad de rayos de NOAA MRMS (NLDN). Solo EE. UU.',
 } as const;

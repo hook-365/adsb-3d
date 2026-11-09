@@ -1,7 +1,7 @@
 import { HOME, WEATHER3D_ENABLED, subscribeHome } from '../core/config';
 
 // 2-D MRMS fields from weather-service (echo tops, freezing level,
-// precipitation rate and type, hail, rotation, lightning): one manifest
+// precipitation rate and type, hail, lightning): one manifest
 // per home location listing every enabled product on a shared grid, and
 // one uint8 grid per product. This module is the single poller; features
 // subscribe to the field ids they draw and get a decoded grid with a

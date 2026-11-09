@@ -15,7 +15,7 @@ Turns NOAA MRMS 3-D reflectivity into small storm volumes for adsb-3d.
   location at startup so the local feed never waits.
 
 - 2-D fields (WEATHER_FIELDS): echo tops, freezing level, precipitation
-  rate/type, hail size, rotation and lightning, each one MRMS grid cropped the
+  rate/type, hail size and lightning, each one MRMS grid cropped the
   same way and packed to uint8: /fields?lat=&lon= (manifest per field) and
   /field.bin?loc=&f=<id>. Big hourly model fields are re-fetched on their own
   slower cadence.
@@ -97,7 +97,17 @@ def _float_env(name: str, default: float | None) -> float | None:
 PREWARM_LAT = _float_env("LATITUDE", None)
 PREWARM_LON = _float_env("LONGITUDE", None)
 RADIUS_NM = max(25.0, min(_float_env("WEATHER3D_RADIUS_NM", 250.0) or 250.0, 600.0))
-REFRESH_S = max(120.0, _float_env("WEATHER3D_REFRESH_S", 300.0) or 300.0)
+MIN_REFRESH_S = 120.0
+
+
+def clamp_refresh_s(raw: float | None) -> float:
+    """WEATHER3D_REFRESH_S with its floor applied: NOAA publishes MRMS every
+    two minutes, so anything below MIN_REFRESH_S only hammers their server
+    for identical files. Unset/garbage falls back to 300."""
+    return max(MIN_REFRESH_S, raw or 300.0)
+
+
+REFRESH_S = clamp_refresh_s(_float_env("WEATHER3D_REFRESH_S", 300.0))
 LOCATION_TTL_S = max(REFRESH_S, _float_env("WEATHER3D_LOCATION_TTL_S", 1800.0) or 1800.0)
 MAX_LOCATIONS = 16
 DOWNLOADS_AT_ONCE = 4
@@ -326,8 +336,8 @@ async def download_fields(fetch=None, now: float | None = None) -> int:
 
 def build_fields(fields: dict[str, RawField], locs: list[Location], radius_nm: float) -> dict[str, FieldSet]:
     """CPU: decode each product once, crop + pack it for every location.
-    Products on a finer grid than the reflectivity levels (RotationTrack at
-    0.005 deg) get a proportionally larger block so every field of a
+    Products on a finer grid than the reflectivity levels (0.005 deg
+    products) get a proportionally larger block so every field of a
     location shares one nx x ny grid and one set of bounds."""
     per_loc: dict[str, dict[str, np.ndarray]] = {x.key: {} for x in locs}
     times: dict[str, dict[str, int]] = {x.key: {} for x in locs}
