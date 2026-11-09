@@ -14,6 +14,8 @@ describe('place picker', () => {
   let picker: ReturnType<typeof createPlacePicker>;
 
   beforeEach(() => {
+    // jsdom has no layout, so it does not implement scrollIntoView.
+    Element.prototype.scrollIntoView = vi.fn();
     document.body.innerHTML = '';
     onPick = vi.fn();
     picker = createPlacePicker(onPick);
