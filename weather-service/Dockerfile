@@ -2,7 +2,8 @@ FROM python:3.11.13-slim
 
 WORKDIR /app
 
-# numpy and Pillow ship wheels, so no compiler is needed in the image.
+# numpy and Pillow ship amd64 and arm64 wheels, so no compiler is needed in
+# the image. There is no 32-bit ARM wheel, hence no linux/arm/v7 build.
 COPY weather-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **weather-service image** is built for `amd64` and `arm64` only. numpy has no 32-bit ARM wheel, so the `arm/v7` build could never succeed; the viewer, track-service and acars-service images still cover all three.
+
 ---
 
 ## [0.13.1] - 2026-11-09

@@ -9,7 +9,8 @@ Use this checklist before publishing a new release of ADS-B 3D.
   ruff), and the Docker integration suite. `docker-publish` is gated on
   the frontend and integration checks and will not push otherwise.
 - [ ] Multi-arch image built and pushed (`linux/amd64`, `linux/arm64`,
-  `linux/arm/v7`)
+  `linux/arm/v7`); weather-service is `amd64` / `arm64` only (numpy has
+  no 32-bit ARM wheel)
   ```
   ghcr.io/hook-365/adsb-3d:latest
   ghcr.io/hook-365/adsb-track-service:latest

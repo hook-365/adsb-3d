@@ -241,7 +241,9 @@ jobs:
           file: ./weather-service/Dockerfile
           build-args: |
             ADSB3D_BUILD=${{ needs.version-check.outputs.build }}
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # No linux/arm/v7: numpy publishes no 32-bit ARM wheel and the
+          # image carries no compiler.
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
