@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.2] - 2026-11-09
+
 ### Changed
 
 - Severe cells show hail only. Rotation markers are gone.
