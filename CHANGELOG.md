@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Published images**: the 0.13.0 images were never built because a unit test failed in CI (the test environment has no `scrollIntoView`). 0.13.1 is 0.13.0 with that test fixed, so `:latest` and `:0.13.1` now carry 3D weather, Explore and the free camera.
+
+### Changed
+
+- README: new 3D weather screenshot.
+
 ---
 
 ## [0.13.0] - 2026-11-06
