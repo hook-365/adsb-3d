@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **ACARS history**: browse and search 30 days of messages in the ACARS panel.
+- **Chatter filter**: show only messages typed by crew or dispatch.
+
+### Fixed
+
+- Clicking an ACARS message from an aircraft out of range no longer opens another aircraft.
+- The ACARS panel's minimize button is easier to hit on phones.
+
 ---
 
 ## [0.13.2] - 2026-11-09
