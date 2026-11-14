@@ -746,12 +746,17 @@ aircraftList.onSelect(applySelection);
 // plane's ACARS); deselecting restores the user's open/closed choice.
 const acarsPanel = mountAcarsPanel({
   onSelectAircraft: (hex) => {
-    if (!hex) return;
+    // Rows outlive the aircraft they point at: one that has since left
+    // scope must not be selected, or the detail card opens on a hex the
+    // store doesn't have and shows whatever aircraft it rendered last.
+    if (!hex || !store.snapshot.has(hex)) return;
     aircraftList.setSelected(hex);
     applySelection(hex);
   },
   resolveHex: (msg) => {
-    if (msg.icao) return msg.icao;
+    // Only aircraft on scope are selectable; a message from one we can't
+    // see (ACARS reaches well past ADS-B range) stays a plain row.
+    if (msg.icao) return store.snapshot.has(msg.icao) ? msg.icao : null;
     if (!msg.flight && !msg.reg) return null;
     for (const a of store.snapshot.values()) {
       if (msg.flight && a.callsign === msg.flight) return a.hex;
