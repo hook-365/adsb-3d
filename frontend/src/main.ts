@@ -753,6 +753,7 @@ const acarsPanel = mountAcarsPanel({
     aircraftList.setSelected(hex);
     applySelection(hex);
   },
+  getApiBase: () => getActiveFeed().acarsApiBase,
   resolveHex: (msg) => {
     // Only aircraft on scope are selectable; a message from one we can't
     // see (ACARS reaches well past ADS-B range) stays a plain row.

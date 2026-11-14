@@ -19,6 +19,7 @@ COPY VERSION .
 RUN if [ -n "$ADSB3D_BUILD" ]; then printf '%s+%s\n' "$(tr -d '[:space:]' < VERSION)" "$ADSB3D_BUILD" > VERSION; fi
 COPY acars-service/main.py .
 COPY acars-service/decoder.py .
+COPY acars-service/chatter.py .
 
 # Non-root user for container security
 RUN useradd -r -u 10001 appuser && chown -R appuser /app

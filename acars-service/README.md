@@ -179,6 +179,18 @@ GET /messages/recent?minutes=30&limit=100&flight=UAL&label=Q0
 ```
 Get recent ACARS messages with optional filters.
 
+### Search the archive
+```
+GET /messages/search?start=2026-01-01T00:00:00Z&end=2026-01-02T00:00:00Z&q=gate&label=30&chatter=true&limit=200
+```
+Browse stored messages in a time window, newest first. `start` defaults to
+24 hours before `end`, `end` to now; the window is clamped to the 30 day
+retention. `q` is a substring matched against text, flight, registration,
+ICAO hex and label. `chatter=true` keeps only messages that look typed by a
+person (crew and dispatch free text, see `chatter.py`). Page with the
+response's `next_before` passed back as `before`; `has_more` says whether
+another page exists.
+
 ### Messages by Flight
 ```
 GET /messages/flight/{flight}?hours=24&limit=50

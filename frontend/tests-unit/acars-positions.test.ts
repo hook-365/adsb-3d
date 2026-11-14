@@ -30,6 +30,7 @@ function msg(over: Partial<AcarsMessage> = {}): AcarsMessage {
     gtin: null,
     position: null,
     decoded: null,
+    chatter: false,
     ...over,
   };
 }

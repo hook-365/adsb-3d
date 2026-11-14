@@ -3,7 +3,7 @@ import {
   subscribeRecentAcars,
 } from '../aircraft/acars-store';
 import { subscribeHealth } from '../core/health';
-import type { AcarsMessage } from '../feed/acars';
+import { fetchAcarsHistory, type AcarsMessage } from '../feed/acars';
 import { t } from '../core/i18n';
 import { escapeHtml } from './html';
 
@@ -15,6 +15,11 @@ import { escapeHtml } from './html';
 // Renders the most-recent N messages from the global store with search +
 // label filter. Click a row to select that aircraft (when we can resolve the
 // row to a hex).
+//
+// History mode swaps the live store for the acars-service archive (30 days):
+// a time range, the same search box and label filter (applied server-side
+// there), and paged "load older" results. Archive rows stay local to this
+// panel, so old messages never badge aircraft or fire map pings.
 //
 // Two independent bits decide visibility:
 //   - wantOpen  — the user's choice, persisted in localStorage;
@@ -46,6 +51,51 @@ export interface AcarsPanelOptions {
    * no `icao` of its own. Returns null when no match.
    */
   resolveHex: (msg: AcarsMessage) => string | null;
+  /** ACARS API base of the active feed, or null when it has none. */
+  getApiBase: () => string | null;
+}
+
+const HISTORY_PAGE = 200;
+const HISTORY_DEBOUNCE_MS = 300;
+const HOUR_MS = 3_600_000;
+
+/**
+ * The window a history range selection covers, epoch ms, or null when a
+ * custom range is incomplete or inverted. `range` is a number of hours
+ * back from now, or 'custom' with two datetime-local values (local time).
+ */
+export function historyWindow(
+  range: string,
+  nowMs: number,
+  customFrom = '',
+  customTo = ''
+): { startMs: number; endMs: number } | null {
+  if (range !== 'custom') {
+    const hours = Number(range);
+    if (!Number.isFinite(hours) || hours <= 0) return null;
+    return { startMs: nowMs - hours * HOUR_MS, endMs: nowMs };
+  }
+  const startMs = Date.parse(customFrom);
+  if (Number.isNaN(startMs)) return null;
+  // An empty "to" means "up to now".
+  const endMs = customTo ? Date.parse(customTo) : nowMs;
+  if (Number.isNaN(endMs) || startMs >= endMs) return null;
+  return { startMs, endMs };
+}
+
+/** `Date` as a datetime-local input value (local time, minute precision). */
+export function toLocalInputValue(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Absolute local stamp for an archive row: time, plus the date when it isn't today. */
+export function fmtStamp(timeIso: string, now: Date = new Date()): string {
+  const d = new Date(timeIso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  if (d.toDateString() === now.toDateString()) return time;
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
 }
 
 const ROW_LIMIT = 200;
@@ -91,6 +141,14 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
   const searchInput = document.getElementById('acars-panel-search') as HTMLInputElement;
   const labelSelect = document.getElementById('acars-panel-label') as HTMLSelectElement;
   const rowsEl = document.getElementById('acars-panel-rows') as HTMLElement;
+  const liveBtn = document.getElementById('acars-mode-live') as HTMLButtonElement;
+  const historyBtn = document.getElementById('acars-mode-history') as HTMLButtonElement;
+  const historyEl = document.getElementById('acars-history') as HTMLElement;
+  const rangeSelect = document.getElementById('acars-history-range') as HTMLSelectElement;
+  const customEl = document.getElementById('acars-history-custom') as HTMLElement;
+  const fromInput = document.getElementById('acars-history-from') as HTMLInputElement;
+  const toInput = document.getElementById('acars-history-to') as HTMLInputElement;
+  const chatterBtn = document.getElementById('acars-chatter') as HTMLButtonElement;
 
   let wantOpen = false;
   let available = false;
@@ -98,8 +156,24 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
   let isOpen = false;
   let query = '';
   let labelFilter = '';
+  // Only crew/dispatch free text (the service's chatter flag). Applies to
+  // both modes: a local filter live, a query parameter in history.
+  let chatterOnly = false;
   // Cached label set so the dropdown only repopulates when new labels show up.
   const seenLabels = new Set<string>();
+
+  // History mode state. `historySeq` invalidates in-flight requests whenever
+  // the query changes, so a slow page can't land on top of a newer search.
+  let historyMode = false;
+  let historyRows: AcarsMessage[] = [];
+  let historyNextBefore: string | null = null;
+  let historyState: 'idle' | 'loading' | 'error' | 'invalid' = 'idle';
+  let historyWindowMs: { startMs: number; endMs: number } | null = null;
+  let historySeq = 0;
+  /** API base the shown archive rows came from. */
+  let historyApiBase: string | null = null;
+  let historyAborter: AbortController | null = null;
+  let historyDebounce: ReturnType<typeof setTimeout> | null = null;
 
   // ── Placement ─────────────────────────────────────────────────────────
   // Docked under the HUD card, whose height varies with feed name, locale,
@@ -117,6 +191,7 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
 
   // ── Filtering ─────────────────────────────────────────────────────────
   function passes(m: AcarsMessage): boolean {
+    if (chatterOnly && !m.chatter) return false;
     if (labelFilter && (m.label ?? '') !== labelFilter) return false;
     if (!query) return true;
     const q = query.toLowerCase();
@@ -155,7 +230,7 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
     const ident = m.flight || m.reg || (m.icao ? m.icao.toUpperCase() : '—');
     const subIdent = m.flight && m.reg ? ` <span class="acars-row-sub">${escapeHtml(m.reg)}</span>` : '';
     const label = m.label ? `<span class="acars-row-label">${escapeHtml(m.label)}</span>` : '';
-    const age = `<span class="acars-row-age">${fmtAge(m.time)}</span>`;
+    const age = `<span class="acars-row-age">${escapeHtml(historyMode ? fmtStamp(m.time) : fmtAge(m.time))}</span>`;
     const text = m.text
       ? escapeHtml(m.text).replace(/\n/g, ' ↵ ')
       : `<span class="acars-row-empty">${escapeHtml(t('acars.no_text'))}</span>`;
@@ -164,15 +239,117 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
       : '';
     const hex = options.resolveHex(m);
     const dataHex = hex ? ` data-hex="${escapeHtml(hex)}"` : '';
-    const cls = hex ? 'acars-row clickable' : 'acars-row';
+    const cls = `acars-row${hex ? ' clickable' : ''}${m.chatter ? ' chatter' : ''}`;
     return `<li class="${cls}"${dataHex}>` +
       `<div class="acars-row-head">${label}<span class="acars-row-ident">${escapeHtml(ident)}${subIdent}</span>${age}</div>` +
       `${decoded}<div class="acars-row-text">${text}</div>` +
       `</li>`;
   }
 
+  function emptyRow(message: string): string {
+    return `<li class="acars-row acars-empty">${escapeHtml(message)}</li>`;
+  }
+
+  function renderHistory(): void {
+    refreshLabelOptions(historyRows);
+    countsEl.textContent = `${historyRows.length}${historyNextBefore ? '+' : ''}`;
+    const loading = historyState === 'loading';
+    let html = historyRows.map(renderRow).join('');
+    if (historyState === 'invalid') {
+      html = emptyRow(t('acars.range_invalid'));
+    } else if (historyState === 'error') {
+      html += `<li class="acars-row acars-more"><button type="button" data-history="retry">` +
+        `${escapeHtml(t('acars.load_failed'))} ${escapeHtml(t('acars.retry'))}</button></li>`;
+    } else if (historyRows.length === 0) {
+      html = emptyRow(loading ? t('acars.loading') : t('acars.history_empty'));
+    } else if (historyNextBefore || loading) {
+      html += `<li class="acars-row acars-more"><button type="button" data-history="more"${loading ? ' disabled' : ''}>` +
+        `${escapeHtml(loading ? t('acars.loading') : t('acars.load_more'))}</button></li>`;
+    }
+    rowsEl.innerHTML = html;
+  }
+
+  // Fetch one archive page. `reset` starts the query over (new range, search
+  // or label); otherwise it appends the next older page to what's shown.
+  async function loadHistory(reset: boolean): Promise<void> {
+    const apiBase = options.getApiBase();
+    if (!apiBase) return;
+    historyApiBase = apiBase;
+    if (reset) {
+      historyWindowMs = historyWindow(rangeSelect.value, Date.now(), fromInput.value, toInput.value);
+      historyRows = [];
+      historyNextBefore = null;
+      rowsEl.scrollTop = 0;
+    }
+    historyAborter?.abort();
+    const seq = ++historySeq;
+    if (!historyWindowMs) {
+      historyState = 'invalid';
+      renderHistory();
+      return;
+    }
+    const aborter = new AbortController();
+    historyAborter = aborter;
+    historyState = 'loading';
+    renderHistory();
+    try {
+      const page = await fetchAcarsHistory(
+        apiBase,
+        {
+          ...historyWindowMs,
+          q: query,
+          label: labelFilter,
+          chatter: chatterOnly,
+          before: reset ? null : historyNextBefore,
+          limit: HISTORY_PAGE,
+        },
+        aborter.signal
+      );
+      if (seq !== historySeq) return;
+      historyRows = historyRows.concat(page.messages);
+      historyNextBefore = page.nextBefore;
+      historyState = 'idle';
+    } catch (err) {
+      if (seq !== historySeq) return;
+      console.warn('[acars] history load failed', err);
+      historyState = 'error';
+    }
+    if (historyMode && isOpen) renderHistory();
+  }
+
+  function queueHistoryReload(): void {
+    if (historyDebounce) clearTimeout(historyDebounce);
+    historyDebounce = setTimeout(() => {
+      historyDebounce = null;
+      void loadHistory(true);
+    }, HISTORY_DEBOUNCE_MS);
+  }
+
+  function setHistoryMode(on: boolean): void {
+    if (on === historyMode) return;
+    historyMode = on;
+    liveBtn.classList.toggle('active', !on);
+    historyBtn.classList.toggle('active', on);
+    liveBtn.setAttribute('aria-pressed', on ? 'false' : 'true');
+    historyBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    historyEl.hidden = !on;
+    if (on) {
+      void loadHistory(true);
+    } else {
+      historyAborter?.abort();
+      historySeq++;
+      historyRows = [];
+      historyNextBefore = null;
+      render();
+    }
+  }
+
   function render(): void {
     if (!isOpen) return;
+    if (historyMode) {
+      renderHistory();
+      return;
+    }
     const all = getRecentAcars();
     refreshLabelOptions(all);
     const visible: AcarsMessage[] = [];
@@ -195,6 +372,12 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
   }
 
   rowsEl.addEventListener('click', (e) => {
+    const action = (e.target as HTMLElement).closest<HTMLElement>('[data-history]')?.dataset.history;
+    if (action) {
+      // Retry repeats the failed request: the first page if nothing loaded.
+      void loadHistory(action === 'retry' && historyRows.length === 0);
+      return;
+    }
     const rowEl = (e.target as HTMLElement).closest<HTMLElement>('.acars-row.clickable');
     if (!rowEl) return;
     const hex = rowEl.dataset.hex;
@@ -204,13 +387,41 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
 
   searchInput.addEventListener('input', () => {
     query = searchInput.value.trim();
-    render();
+    if (historyMode) queueHistoryReload();
+    else render();
   });
 
   labelSelect.addEventListener('change', () => {
     labelFilter = labelSelect.value;
-    render();
+    if (historyMode) void loadHistory(true);
+    else render();
   });
+
+  chatterBtn.addEventListener('click', () => {
+    chatterOnly = !chatterOnly;
+    chatterBtn.classList.toggle('active', chatterOnly);
+    chatterBtn.setAttribute('aria-pressed', chatterOnly ? 'true' : 'false');
+    if (historyMode) void loadHistory(true);
+    else render();
+  });
+
+  liveBtn.addEventListener('click', () => setHistoryMode(false));
+  historyBtn.addEventListener('click', () => setHistoryMode(true));
+
+  rangeSelect.addEventListener('change', () => {
+    const custom = rangeSelect.value === 'custom';
+    customEl.hidden = !custom;
+    // Seed an empty custom range with the last 24 h so the pickers open
+    // near "now" instead of on a blank date.
+    if (custom && !fromInput.value) {
+      const now = new Date();
+      fromInput.value = toLocalInputValue(new Date(now.getTime() - 24 * HOUR_MS));
+      toInput.value = toLocalInputValue(now);
+    }
+    void loadHistory(true);
+  });
+  fromInput.addEventListener('change', () => void loadHistory(true));
+  toInput.addEventListener('change', () => void loadHistory(true));
 
   // ── Open / close ──────────────────────────────────────────────────────
   function apply(): void {
@@ -271,19 +482,27 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
 
   // Availability follows the same signal that shows/hides the HUD chip.
   const unsubHealth = subscribeHealth((h) => {
-    available = h.acars !== null;
+    const next = h.acars !== null;
+    // ACARS went away (feed switch, historical playback): the archive rows
+    // belong to the feed that just left, so fall back to live.
+    // Same for an in-place switch between two feeds that both have ACARS.
+    if ((available && !next) || (historyMode && options.getApiBase() !== historyApiBase)) {
+      setHistoryMode(false);
+    }
+    available = next;
     apply();
   });
 
   // Live-update while open; keep the badge current even when closed.
   const unsubRecent = subscribeRecentAcars(() => {
-    if (isOpen) render();
+    if (isOpen && !historyMode) render();
     refreshBadge();
   });
 
   // Tick every second so age strings stay current while the panel is open.
+  // Archive rows carry absolute stamps and must keep their scroll position.
   const ageTimer = setInterval(() => {
-    if (isOpen) render();
+    if (isOpen && !historyMode) render();
   }, 1000);
 
   // Restore the persisted state (desktop only — see MOBILE_MAX_PX).
@@ -294,6 +513,8 @@ export function mountAcarsPanel(options: AcarsPanelOptions): AcarsPanelHandle {
 
   function destroy(): void {
     clearInterval(ageTimer);
+    if (historyDebounce) clearTimeout(historyDebounce);
+    historyAborter?.abort();
     unsubRecent();
     unsubHealth();
     hudObserver?.disconnect();

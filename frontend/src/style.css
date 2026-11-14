@@ -3157,6 +3157,138 @@ body.chrome-idle .settings-button {
   outline: none;
 }
 
+/* Live / History switch and the history range controls (acars-panel.ts). */
+.acars-panel .acars-modes {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+
+.acars-panel .acars-modes button {
+  flex: 1;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 20%, transparent);
+  border-radius: 4px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.acars-panel .acars-modes button:hover,
+.acars-panel .acars-modes button:focus-visible {
+  color: var(--fg);
+  outline: none;
+  border-color: color-mix(in srgb, var(--acars) 50%, transparent);
+}
+
+.acars-panel .acars-modes button.active {
+  color: var(--fg-bright);
+  background: color-mix(in srgb, var(--acars) 22%, transparent);
+  border-color: color-mix(in srgb, var(--acars) 60%, transparent);
+}
+
+/* Chatter is a filter, not a third mode: set it apart from the pair. */
+.acars-panel .acars-modes .acars-chatter-toggle {
+  flex: 0 0 auto;
+  margin-left: 6px;
+}
+
+.acars-panel .acars-modes .acars-chatter-toggle.active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* Human-typed rows stand out from the machine traffic around them. */
+.acars-panel .acars-row.chatter {
+  border-left: 2px solid var(--accent);
+}
+
+.acars-panel .acars-row.chatter .acars-row-text {
+  color: var(--fg-bright);
+}
+
+.acars-panel .acars-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+
+.acars-panel .acars-history[hidden],
+.acars-panel .acars-history-custom[hidden] {
+  display: none;
+}
+
+.acars-panel .acars-history-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.acars-panel .acars-history-custom label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.acars-panel .acars-history-custom label span {
+  flex: 0 0 38px;
+}
+
+.acars-panel input[type="datetime-local"] {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 4px;
+  color: var(--fg);
+  color-scheme: dark;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+}
+
+.acars-panel input[type="datetime-local"]:focus {
+  border-color: var(--accent);
+}
+
+.acars-panel .acars-row.acars-more {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.acars-panel .acars-more button {
+  width: 100%;
+  background: color-mix(in srgb, var(--acars) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acars) 30%, transparent);
+  border-radius: 5px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.acars-panel .acars-more button:hover:not(:disabled),
+.acars-panel .acars-more button:focus-visible {
+  background: color-mix(in srgb, var(--acars) 22%, transparent);
+  outline: none;
+}
+
+.acars-panel .acars-more button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .acars-panel .acars-toolbar {
   display: flex;
   gap: 6px;

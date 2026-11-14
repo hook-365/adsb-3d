@@ -159,7 +159,10 @@ types, unit abbreviations) is deliberately not translated.
   normalizes ICAO addresses to hex, decodes message content into
   human-readable summaries (`decoder.py`: position reports, arrivals,
   weather, and CPDLC/ADS-C/AFN datalink) stored in a `decoded` JSONB
-  column, persists to TimescaleDB, and exposes REST + a `/ws` push socket.
+  column, flags human-typed messages (`chatter.py`, a word-scoring
+  heuristic stored in a `chatter` column), persists to TimescaleDB, and
+  exposes REST + a `/ws` push socket. `/messages/search` is the paged
+  archive query behind the ACARS panel's History mode.
 - `weather-service` — every `WEATHER3D_REFRESH_S` (300) downloads the 33
   constant-altitude NOAA MRMS merged-reflectivity slices (keyless, public
   domain, CONUS only) once, whatever the feed count. The frontend sends the

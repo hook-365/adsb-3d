@@ -309,6 +309,7 @@ describe('ACARS label badge', () => {
       gtin: null,
       position: null,
       decoded: null,
+    chatter: false,
       });
     expect(aircraftLabelClass(a)).toBe('aircraft-label acars');
     expect(aircraftLabelClass({ ...a, onGround: true })).toBe('aircraft-label ground acars');
@@ -346,6 +347,7 @@ describe('ACARS label badge', () => {
       gtin: null,
       position: null,
       decoded: null,
+    chatter: false,
       });
     // No store change → the rev gate skips the label; still the base class.
     reconciler.syncFrame();

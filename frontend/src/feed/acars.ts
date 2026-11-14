@@ -5,6 +5,7 @@
 //
 // Backend: acars-service. Endpoints (proxied at /acars-api/* by nginx):
 //   GET  /messages/recent?minutes=30&limit=100  → bootstrap + HTTP fallback
+//   GET  /messages/search?start=&end=&q=&label=  → archive browser (fetchAcarsHistory)
 //   WS   /ws                                    → live stream
 //
 // WS frame types:
@@ -44,6 +45,8 @@ export interface AcarsMessage {
   position: { lat: number; lon: number; alt: number | null } | null;
   /** Human-readable decode from acars-service, or null when nothing was recognized. */
   decoded: AcarsDecoded | null;
+  /** acars-service judged the body typed by a person (crew/dispatch free text). */
+  chatter: boolean;
 }
 
 /**
@@ -104,6 +107,7 @@ interface RawMessage {
   gtin?: string | null;
   position?: { lat?: number; lon?: number; alt?: number | null } | null;
   decoded?: AcarsDecoded | null;
+  chatter?: boolean;
 }
 
 interface NewMessageFrame {
@@ -158,7 +162,72 @@ function normalize(raw: RawMessage): AcarsMessage | null {
         ? { lat: raw.position.lat, lon: raw.position.lon, alt: raw.position.alt ?? null }
         : null,
     decoded: raw.decoded ?? null,
+    chatter: raw.chatter === true,
   };
+}
+
+/** One page of stored messages from acars-service `/messages/search`. */
+export interface AcarsHistoryPage {
+  /** Newest first. */
+  messages: AcarsMessage[];
+  /** Cursor for the next (older) page, or null when this is the last one. */
+  nextBefore: string | null;
+}
+
+export interface AcarsHistoryQuery {
+  /** Window bounds, epoch ms. */
+  startMs: number;
+  endMs: number;
+  /** Substring matched server-side against text, flight, reg, icao, label. */
+  q?: string;
+  /** Exact label code. */
+  label?: string;
+  /** Only messages that look typed by a person. */
+  chatter?: boolean;
+  /** `nextBefore` from the previous page. */
+  before?: string | null;
+  limit?: number;
+}
+
+interface SearchBody {
+  messages?: RawMessage[];
+  has_more?: boolean;
+  next_before?: string | null;
+}
+
+export function acarsHistoryUrl(apiBase: string, query: AcarsHistoryQuery): string {
+  const params = new URLSearchParams({
+    start: new Date(query.startMs).toISOString(),
+    end: new Date(query.endMs).toISOString(),
+    limit: String(query.limit ?? 200),
+  });
+  const q = query.q?.trim();
+  if (q) params.set('q', q);
+  if (query.label) params.set('label', query.label);
+  if (query.chatter) params.set('chatter', 'true');
+  if (query.before) params.set('before', query.before);
+  return `${apiBase}/messages/search?${params.toString()}`;
+}
+
+/**
+ * Browse the acars-service archive (30 days). Independent of the live
+ * AcarsFeed: results go to the caller, never into the live store, so old
+ * messages don't badge aircraft or fire map pings.
+ */
+export async function fetchAcarsHistory(
+  apiBase: string,
+  query: AcarsHistoryQuery,
+  signal?: AbortSignal
+): Promise<AcarsHistoryPage> {
+  const res = await fetch(acarsHistoryUrl(apiBase, query), { cache: 'no-store', signal: signal ?? null });
+  if (!res.ok) throw new Error(`acars history: HTTP ${res.status}`);
+  const body = (await res.json()) as SearchBody;
+  const messages: AcarsMessage[] = [];
+  for (const raw of body.messages ?? []) {
+    const m = normalize(raw);
+    if (m) messages.push(m);
+  }
+  return { messages, nextBefore: body.has_more ? (body.next_before ?? null) : null };
 }
 
 function resolveWsUrl(apiBase: string): string {

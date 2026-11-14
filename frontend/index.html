@@ -196,6 +196,26 @@
         </div>
         <button class="panel-minimize" id="acars-panel-minimize" type="button" aria-label="Minimize ACARS panel" data-i18n-aria-label="static.acars_minimize_aria" title="Minimize" data-i18n-title="static.list_minimize_title">–</button>
       </header>
+      <div class="acars-modes" role="group" aria-label="Message source" data-i18n-aria-label="acars.mode_aria">
+        <button type="button" id="acars-mode-live" class="active" aria-pressed="true" data-i18n="acars.mode_live">Live</button>
+        <button type="button" id="acars-mode-history" aria-pressed="false" data-i18n="acars.mode_history">History</button>
+        <button type="button" id="acars-chatter" class="acars-chatter-toggle" aria-pressed="false" title="Only messages typed by crew or dispatch" data-i18n="acars.chatter" data-i18n-title="acars.chatter_title">Chatter</button>
+      </div>
+      <div class="acars-history" id="acars-history" hidden>
+        <select id="acars-history-range" aria-label="Time range" data-i18n-aria-label="acars.range_aria">
+          <option value="1" data-i18n="acars.range_1h">Last hour</option>
+          <option value="6" data-i18n="acars.range_6h">Last 6 hours</option>
+          <option value="24" selected data-i18n="acars.range_24h">Last 24 hours</option>
+          <option value="72" data-i18n="acars.range_3d">Last 3 days</option>
+          <option value="168" data-i18n="acars.range_7d">Last 7 days</option>
+          <option value="720" data-i18n="acars.range_30d">Last 30 days</option>
+          <option value="custom" data-i18n="acars.range_custom">Custom range</option>
+        </select>
+        <div class="acars-history-custom" id="acars-history-custom" hidden>
+          <label><span data-i18n="acars.from">From</span><input type="datetime-local" id="acars-history-from" /></label>
+          <label><span data-i18n="acars.to">To</span><input type="datetime-local" id="acars-history-to" /></label>
+        </div>
+      </div>
       <div class="acars-toolbar">
         <input type="search" id="acars-panel-search" placeholder="filter text · flight · reg · label" data-i18n-placeholder="static.acars_search_placeholder" autocomplete="off" />
         <select id="acars-panel-label" aria-label="Filter by label" data-i18n-aria-label="static.filter_by_label_aria">

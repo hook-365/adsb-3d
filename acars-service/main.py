@@ -19,6 +19,7 @@ import random
 import sys
 import json
 from decoder import decode_message
+from chatter import MACHINE_LABELS, is_chatter
 import re
 import logging
 import time
@@ -183,6 +184,41 @@ async def backfill_decoded(conn) -> None:
         logger.warning(f"decode backfill skipped: {e}")
 
 
+CHATTER_SCHEMA_SQL = """
+    ALTER TABLE acars_messages ADD COLUMN IF NOT EXISTS chatter BOOLEAN;
+    CREATE INDEX IF NOT EXISTS idx_acars_chatter ON acars_messages (time DESC) WHERE chatter;
+"""
+
+
+async def backfill_chatter(conn) -> None:
+    """Flag human-typed messages stored before chatter.py existed. Only the
+    hits are written (a few hundred rows a month), so compressed chunks are
+    barely touched; unflagged old rows stay NULL, which reads as "no".
+    Rows are matched by time + text rather than ctid, which is only unique
+    within one chunk of the hypertable."""
+    try:
+        rows = await conn.fetch(
+            "SELECT time, label, text FROM acars_messages "
+            "WHERE chatter IS NULL AND text IS NOT NULL AND text <> '' "
+            "AND (label IS NULL OR label <> ALL($1::text[]))",
+            sorted(MACHINE_LABELS),
+        )
+        flagged = 0
+        for r in rows:
+            if not is_chatter(r["label"], r["text"]):
+                continue
+            await conn.execute(
+                "UPDATE acars_messages SET chatter = TRUE "
+                "WHERE time = $1 AND text = $2 AND chatter IS NULL",
+                r["time"], r["text"],
+            )
+            flagged += 1
+        if flagged:
+            logger.info(f"Flagged {flagged} stored ACARS message(s) as crew chatter")
+    except Exception as e:
+        logger.warning(f"chatter backfill skipped: {e}")
+
+
 async def initialize_database_schema(db_pool):
     """Initialize ACARS database schema if tables don't exist."""
     logger.info("=" * 60)
@@ -205,8 +241,10 @@ async def initialize_database_schema(db_pool):
                 await conn.execute(
                     "ALTER TABLE acars_messages ADD COLUMN IF NOT EXISTS decoded JSONB"
                 )
+                await conn.execute(CHATTER_SCHEMA_SQL)
                 await migrate_decimal_icao(conn)
                 await backfill_decoded(conn)
+                await backfill_chatter(conn)
                 return
 
             logger.info("Creating ACARS tables...")
@@ -244,7 +282,9 @@ async def initialize_database_schema(db_pool):
                     -- position reports, arrivals, weather requests, and any
                     -- libacars-decoded CPDLC/ADS-C/AFN. Null when nothing
                     -- decodable was recognized.
-                    decoded JSONB
+                    decoded JSONB,
+                    -- Body looks typed by a person (chatter.is_chatter).
+                    chatter BOOLEAN
                 )
             """)
             logger.info("Created acars_messages table")
@@ -264,6 +304,7 @@ async def initialize_database_schema(db_pool):
                 CREATE INDEX IF NOT EXISTS idx_acars_icao ON acars_messages (icao, time DESC);
                 CREATE INDEX IF NOT EXISTS idx_acars_label ON acars_messages (label, time DESC);
                 CREATE INDEX IF NOT EXISTS idx_acars_time ON acars_messages (time DESC);
+                CREATE INDEX IF NOT EXISTS idx_acars_chatter ON acars_messages (time DESC) WHERE chatter;
             """)
             logger.info("Created indexes")
 
@@ -472,6 +513,10 @@ class ACARSCollector:
                     self._to_text(data.get('text') or data.get('message')),
                     raw=data,
                 ),
+                'chatter': is_chatter(
+                    self._to_text(data.get('label')),
+                    self._to_text(data.get('text') or data.get('message')),
+                ),
             }
         except Exception as e:
             logger.error(f"Error parsing ACARS message: {e}")
@@ -481,9 +526,9 @@ class ACARSCollector:
         INSERT INTO acars_messages
         (time, flight, reg, icao, label, block_id, msg_num, text,
          freq, level, error, mode, station_id,
-         dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded)
+         dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded, chatter)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
     '''
 
     @staticmethod
@@ -494,7 +539,7 @@ class ACARSCollector:
             m['block_id'], m['msg_num'], m['text'], m['freq'], m['level'],
             m['error'], m['mode'], m['station_id'],
             m['dsta'], m['eta'], m['gtout'], m['gtin'], m['wloff'], m['wlin'],
-            m['lat'], m['lon'], m['alt'], m['decoded']
+            m['lat'], m['lon'], m['alt'], m['decoded'], m['chatter']
         )
 
     async def store_messages(self, messages: List[dict]):
@@ -603,6 +648,7 @@ class ACARSCollector:
                                                 "alt": parsed.get('alt')
                                             } if parsed.get('lat') and parsed.get('lon') else None,
                                             "decoded": parsed.get('decoded'),
+                                            "chatter": bool(parsed.get('chatter')),
                                         }
                                     })
 
@@ -841,6 +887,103 @@ async def health_check():
     return _acars_health_cache["payload"]
 
 
+MESSAGE_COLUMNS = (
+    "time, flight, reg, icao, label, block_id, msg_num, text, "
+    "freq, level, error, mode, station_id, "
+    "dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded, chatter"
+)
+
+# How far back /messages/search will look: the hypertable's retention.
+SEARCH_MAX_AGE = timedelta(days=30)
+# Columns a free-text search term is matched against.
+SEARCH_COLUMNS = ("text", "flight", "reg", "icao", "label")
+
+
+def serialize_message(row) -> dict:
+    """One acars_messages row (MESSAGE_COLUMNS) in the wire shape the
+    frontend's feed/acars.ts normalizes."""
+    return {
+        "time": row['time'].isoformat(),
+        "flight": row['flight'],
+        "reg": row['reg'],
+        "icao": normalize_icao(row['icao']),
+        "label": row['label'],
+        "block_id": row['block_id'],
+        "msg_num": row['msg_num'],
+        "text": row['text'],
+        "freq": row['freq'],
+        "level": row['level'],
+        "error": row['error'],
+        "mode": row['mode'],
+        "station_id": row['station_id'],
+        "destination": row['dsta'],
+        "eta": row['eta'],
+        "gtout": row['gtout'],
+        "wloff": row['wloff'],
+        "wlin": row['wlin'],
+        "gtin": row['gtin'],
+        "position": {
+            "lat": row['lat'],
+            "lon": row['lon'],
+            "alt": row['alt']
+        } if row['lat'] and row['lon'] else None,
+        "decoded": row['decoded'],
+        "chatter": bool(row['chatter']),
+    }
+
+
+def like_pattern(term: str) -> str:
+    """A user-typed term as a literal ILIKE substring pattern: %, _ and the
+    escape character itself must not act as wildcards."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def as_utc(value: datetime) -> datetime:
+    """Query datetimes may arrive without an offset; treat those as UTC."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def build_search_query(
+    start: datetime,
+    end: datetime,
+    q: Optional[str] = None,
+    label: Optional[str] = None,
+    before: Optional[datetime] = None,
+    limit: int = 200,
+    chatter: bool = False,
+) -> tuple[str, list]:
+    """SQL + params for /messages/search: newest first inside [start, end),
+    paged by a `before` time cursor. Fetches limit + 1 rows so the caller
+    can tell whether another page exists without a COUNT."""
+    upper = min(end, before) if before else end
+    filters = ["time >= $1", "time < $2"]
+    params: list = [start, upper]
+
+    term = (q or "").strip()
+    if term:
+        params.append(like_pattern(term))
+        idx = len(params)
+        filters.append("(" + " OR ".join(f"{col} ILIKE ${idx}" for col in SEARCH_COLUMNS) + ")")
+
+    if label:
+        params.append(label)
+        filters.append(f"label = ${len(params)}")
+
+    if chatter:
+        filters.append("chatter")
+
+    params.append(limit + 1)
+    sql = f"""
+        SELECT {MESSAGE_COLUMNS}
+        FROM acars_messages
+        WHERE {' AND '.join(filters)}
+        ORDER BY time DESC
+        LIMIT ${len(params)}
+    """
+    return sql, params
+
+
 @app.get("/messages/recent")
 async def get_recent_messages(
     minutes: int = Query(30, ge=1, le=1440, description="Time window in minutes"),
@@ -866,9 +1009,7 @@ async def get_recent_messages(
         params.append(label)
 
     query = f"""
-        SELECT time, flight, reg, icao, label, block_id, msg_num, text,
-               freq, level, error, mode, station_id,
-               dsta, eta, gtout, gtin, wloff, wlin, lat, lon, alt, decoded
+        SELECT {MESSAGE_COLUMNS}
         FROM acars_messages
         WHERE {' AND '.join(filters)}
         ORDER BY time DESC
@@ -886,36 +1027,7 @@ async def get_recent_messages(
                 "start": start.isoformat(),
                 "end": datetime.now(timezone.utc).isoformat()
             },
-            "messages": [
-                {
-                    "time": row['time'].isoformat(),
-                    "flight": row['flight'],
-                    "reg": row['reg'],
-                    "icao": normalize_icao(row['icao']),
-                    "label": row['label'],
-                    "block_id": row['block_id'],
-                    "msg_num": row['msg_num'],
-                    "text": row['text'],
-                    "freq": row['freq'],
-                    "level": row['level'],
-                    "error": row['error'],
-                    "mode": row['mode'],
-                    "station_id": row['station_id'],
-                    "destination": row['dsta'],
-                    "eta": row['eta'],
-                    "gtout": row['gtout'],
-                    "wloff": row['wloff'],
-                    "wlin": row['wlin'],
-                    "gtin": row['gtin'],
-                    "position": {
-                        "lat": row['lat'],
-                        "lon": row['lon'],
-                        "alt": row['alt']
-                    } if row['lat'] and row['lon'] else None,
-                    "decoded": row['decoded'],
-                }
-                for row in rows
-            ]
+            "messages": [serialize_message(row) for row in rows]
         }
 
     except asyncio.TimeoutError:
@@ -923,6 +1035,52 @@ async def get_recent_messages(
     except Exception as e:
         logger.error(f"Error fetching recent messages: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/messages/search")
+async def search_messages(
+    start: Optional[datetime] = Query(None, description="Window start, ISO 8601 (default: 24 h before end)"),
+    end: Optional[datetime] = Query(None, description="Window end, ISO 8601, exclusive (default: now)"),
+    q: Optional[str] = Query(None, max_length=100, description="Substring matched against text, flight, reg, icao and label"),
+    label: Optional[str] = Query(None, max_length=8, description="Exact message label"),
+    before: Optional[datetime] = Query(None, description="Paging cursor: next_before from the previous page"),
+    limit: int = Query(200, ge=1, le=500, description="Page size"),
+    chatter: bool = Query(False, description="Only messages that look typed by a person"),
+):
+    """Browse stored ACARS messages in a time window, newest first.
+
+    Pass the response's `next_before` back as `before` for the next page.
+    """
+    now = datetime.now(timezone.utc)
+    end_utc = min(as_utc(end), now) if end else now
+    start_utc = as_utc(start) if start else end_utc - timedelta(hours=24)
+    start_utc = max(start_utc, now - SEARCH_MAX_AGE)
+    if start_utc >= end_utc:
+        raise HTTPException(status_code=400, detail="start must be before end")
+
+    query, params = build_search_query(
+        start_utc, end_utc, q=q, label=label,
+        before=as_utc(before) if before else None, limit=limit, chatter=chatter,
+    )
+
+    try:
+        async with db_pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
+            rows = await conn.fetch(query, *params)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail="Database pool acquisition timeout")
+    except Exception as e:
+        logger.error(f"Error searching messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return {
+        "count": len(rows),
+        "time_range": {"start": start_utc.isoformat(), "end": end_utc.isoformat()},
+        "has_more": has_more,
+        "next_before": rows[-1]['time'].isoformat() if has_more else None,
+        "messages": [serialize_message(row) for row in rows],
+    }
 
 
 @app.get("/messages/flight/{flight}")
