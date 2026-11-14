@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.4] - 2026-11-14
+
 ### Added
 
 - **VR/AR reset**: hold A/X for a second, or use Reset view in the wrist menu, to bring a lost map back in front of you at default size.
