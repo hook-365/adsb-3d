@@ -4,6 +4,7 @@ import { getDefaultSettings } from '../src/core/settings';
 import {
   PANEL_EXCLUDED_KEYS,
   SETTINGS_SCHEMA,
+  groupRows,
 } from '../src/ui/settings-panel';
 
 // Drift guard for the settings panel, mirroring the wrist menu's parity
@@ -54,5 +55,23 @@ describe('settings panel schema parity', () => {
     const keys = aircraft.rows.flatMap((r) => ('key' in r ? [r.key] : []));
     expect(keys).toContain('historyTrails');
     expect(keys).toContain('trailLength');
+  });
+
+  it('the tab layout draws every row exactly once', () => {
+    for (const section of SETTINGS_SCHEMA) {
+      const drawn = groupRows(section).flatMap((g) => g.rows);
+      expect(drawn).toHaveLength(section.rows.length);
+      expect(new Set(drawn)).toEqual(new Set(section.rows));
+    }
+  });
+
+  it('every multi-group tab has headed groups only', () => {
+    // An unheaded group in a headed tab means a row nobody placed in
+    // SECTION_LAYOUT: it still renders, but at the bottom with no heading.
+    for (const section of SETTINGS_SCHEMA) {
+      const groups = groupRows(section);
+      if (groups.length < 2) continue;
+      expect(groups.filter((g) => !g.heading).map((g) => g.rows.length)).toEqual([]);
+    }
   });
 });

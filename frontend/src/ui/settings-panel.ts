@@ -577,25 +577,109 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
   },
 ];
 
-// Collapsed/expanded state per section, persisted so the panel reopens the
-// way the user left it. Deliberately NOT part of Settings: it's panel
-// chrome, not a preference the wrist menu or URL state should ever see.
-const SECTIONS_KEY = 'adsb3d_settings_sections_v1';
-const DEFAULT_OPEN_SECTIONS = ['aircraft'];
-function loadOpenSections(): Set<string> {
+// ── Layout ─────────────────────────────────────────────────────────────
+// Sections are tabs; inside a tab, rows sit under short group headings so
+// the organisation reads at a glance. Layout is kept apart from
+// SETTINGS_SCHEMA on purpose: the schema says what exists (and feeds the
+// drift-guard tests), this says where it is drawn.
+
+function rowId(row: SettingsRow): string {
+  return row.kind === 'button' ? row.id : row.key;
+}
+
+interface RowGroupSpec {
+  heading?: string;
+  ids: readonly string[];
+}
+
+const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
+  aircraft: [
+    { heading: t('settings.group_marker'), ids: ['aircraftShape', 'smoothMotion', 'groundSprites', 'altitudeLines'] },
+    { heading: t('settings.group_trails'), ids: ['historyTrails', 'trailLength'] },
+    { heading: t('settings.group_labels'), ids: ['aircraftLabels', 'labelDensity', 'acarsMessages'] },
+  ],
+  map: [
+    { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles'] },
+    {
+      heading: t('settings.group_weather'),
+      ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],
+    },
+    { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings'] },
+    { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
+  ],
+  xr: [
+    { heading: t('settings.group_camera'), ids: ['cameraMode', 'autoOrbit', 'autoOrbitDirection'] },
+    { heading: t('settings.group_headset'), ids: ['enter-vr', 'enter-ar', 'vrQuality', 'xrMoveMode', 'xrTurnStyle'] },
+    {
+      heading: t('settings.group_diorama'),
+      ids: ['dioramaClip', 'dioramaSize', 'xrFollow', 'followRandomAircraft'],
+    },
+    { heading: t('settings.group_stereo'), ids: ['stereo', 'stereoStrength'] },
+  ],
+};
+
+/** Short tab captions; a section without one falls back to its heading. */
+const TAB_LABELS: Record<string, string> = {
+  appearance: t('settings.tab_look'),
+  aircraft: t('settings.tab_aircraft'),
+  map: t('settings.tab_map'),
+  xr: t('settings.tab_view'),
+  units: t('settings.tab_units'),
+};
+
+export interface RowGroup {
+  heading?: string;
+  rows: SettingsRow[];
+}
+
+/**
+ * A section's rows in drawing order. Rows the layout doesn't mention
+ * (a new setting nobody placed yet) land in a trailing unheaded group,
+ * so nothing in the schema can go missing from the panel.
+ */
+export function groupRows(section: SettingsSection): RowGroup[] {
+  const byId = new Map(section.rows.map((r) => [rowId(r), r]));
+  const groups: RowGroup[] = [];
+  for (const spec of SECTION_LAYOUT[section.id] ?? []) {
+    const rows: SettingsRow[] = [];
+    for (const id of spec.ids) {
+      const row = byId.get(id);
+      if (!row) continue;
+      rows.push(row);
+      byId.delete(id);
+    }
+    if (rows.length === 0) continue;
+    const group: RowGroup = { rows };
+    if (spec.heading) group.heading = spec.heading;
+    groups.push(group);
+  }
+  if (byId.size > 0) groups.push({ rows: [...byId.values()] });
+  return groups;
+}
+
+/** A choice short enough to show every option as a button side by side. */
+export function isSegmented(row: ChoiceRow): boolean {
+  if (row.options.length > 3) return false;
+  return row.options.reduce((n, o) => n + o.label.length, 0) <= 18;
+}
+
+// Panel chrome state, persisted so the panel reopens the way the user left
+// it. Deliberately NOT part of Settings: the wrist menu and URL state
+// should never see which tab was open.
+const TAB_KEY = 'adsb3d_settings_tab_v1';
+const HELP_KEY = 'adsb3d_settings_help_v1';
+function loadChrome(key: string): string | null {
   try {
-    const raw = window.localStorage.getItem(SECTIONS_KEY);
-    if (!raw) return new Set(DEFAULT_OPEN_SECTIONS);
-    return new Set(JSON.parse(raw) as string[]);
+    return window.localStorage.getItem(key);
   } catch {
-    return new Set(DEFAULT_OPEN_SECTIONS);
+    return null;
   }
 }
-function saveOpenSections(open: ReadonlySet<string>): void {
+function saveChrome(key: string, value: string): void {
   try {
-    window.localStorage.setItem(SECTIONS_KEY, JSON.stringify([...open]));
+    window.localStorage.setItem(key, value);
   } catch {
-    // Private-mode storage failures just lose the collapse memory.
+    // Private-mode storage failures just lose the memory.
   }
 }
 
@@ -666,8 +750,37 @@ export function mountSettingsPanel(): void {
   closeBtn.setAttribute('aria-label', t('settings.close'));
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', () => setOpen(false));
-  header.append(title, closeBtn);
-  panel.appendChild(header);
+  // Descriptions are tucked away by default so the panel reads as a list
+  // of controls; this brings the explanations back for whoever wants them.
+  const helpBtn = document.createElement('button');
+  helpBtn.type = 'button';
+  helpBtn.className = 'settings-help';
+  helpBtn.textContent = '?';
+  helpBtn.title = t('settings.help_toggle');
+  helpBtn.setAttribute('aria-label', t('settings.help_toggle'));
+  const setHelp = (on: boolean): void => {
+    panel.classList.toggle('show-help', on);
+    helpBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  };
+  setHelp(loadChrome(HELP_KEY) === '1');
+  helpBtn.addEventListener('click', () => {
+    const on = !panel.classList.contains('show-help');
+    setHelp(on);
+    saveChrome(HELP_KEY, on ? '1' : '0');
+  });
+  const headerButtons = document.createElement('div');
+  headerButtons.className = 'settings-header-buttons';
+  headerButtons.append(helpBtn, closeBtn);
+  header.append(title, headerButtons);
+
+  // Header + tab strip stay put while a tab's rows scroll beneath.
+  const top = document.createElement('div');
+  top.className = 'settings-top';
+  const tabs = document.createElement('div');
+  tabs.className = 'settings-tabs';
+  tabs.setAttribute('role', 'tablist');
+  top.append(header, tabs);
+  panel.appendChild(top);
 
   // Build sections + rows once. Re-render only the input states on each
   // settings change, not the whole DOM.
@@ -678,212 +791,254 @@ export function mountSettingsPanel(): void {
   // shows stale values. Programmatic .value/.checked writes don't fire
   // change/input events, so this can't loop back into updateSettings.
   const inputSyncs: ((s: Readonly<Settings>) => void)[] = [];
-  const openSections = loadOpenSections();
+  const tabEntries: { id: string; tab: HTMLButtonElement; body: HTMLElement }[] = [];
+  const selectTab = (id: string): void => {
+    for (const e of tabEntries) {
+      const on = e.id === id;
+      e.tab.classList.toggle('active', on);
+      e.tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      e.tab.tabIndex = on ? 0 : -1;
+      e.body.hidden = !on;
+    }
+    panel.scrollTop = 0;
+  };
   for (const section of SETTINGS_SCHEMA) {
     const sectionEl = document.createElement('section');
     sectionEl.className = 'settings-section';
+    sectionEl.setAttribute('role', 'tabpanel');
+    sectionEl.setAttribute('aria-label', section.heading);
 
-    // Collapsible header (voice-panel's aria-expanded convention). The
-    // whole heading row is the toggle; body rows live in a wrapper whose
-    // `hidden` mirrors the persisted open set.
-    const sectionToggle = document.createElement('button');
-    sectionToggle.type = 'button';
-    sectionToggle.className = 'settings-section-toggle';
-    const chevron = document.createElement('span');
-    chevron.className = 'settings-section-chevron';
-    chevron.textContent = '▸';
-    const headingText = document.createElement('span');
-    headingText.textContent = section.heading;
-    sectionToggle.append(chevron, headingText);
-
-    const body = document.createElement('div');
-    body.className = 'settings-section-body';
-    const initiallyOpen = openSections.has(section.id);
-    sectionToggle.setAttribute('aria-expanded', String(initiallyOpen));
-    body.hidden = !initiallyOpen;
-    sectionToggle.addEventListener('click', () => {
-      const nowOpen = body.hidden;
-      body.hidden = !nowOpen;
-      sectionToggle.setAttribute('aria-expanded', String(nowOpen));
-      if (nowOpen) openSections.add(section.id);
-      else openSections.delete(section.id);
-      saveOpenSections(openSections);
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'settings-tab';
+    tab.setAttribute('role', 'tab');
+    tab.textContent = TAB_LABELS[section.id] ?? section.heading;
+    tab.title = section.heading;
+    tab.addEventListener('click', () => {
+      selectTab(section.id);
+      saveChrome(TAB_KEY, section.id);
     });
-    sectionEl.append(sectionToggle, body);
+    tabs.appendChild(tab);
+    tabEntries.push({ id: section.id, tab, body: sectionEl });
 
-    for (const row of section.rows) {
-      const rowEl = document.createElement('label');
-      rowEl.className = 'settings-row';
-
-      const text = document.createElement('div');
-      text.className = 'settings-row-text';
-      const lab = document.createElement('div');
-      lab.className = 'settings-row-label';
-      lab.textContent = row.label;
-      text.appendChild(lab);
-      if (row.description) {
-        const desc = document.createElement('div');
-        desc.className = 'settings-row-desc';
-        desc.textContent = row.description;
-        text.appendChild(desc);
+    for (const group of groupRows(section)) {
+      const body = document.createElement('div');
+      body.className = 'settings-group';
+      if (group.heading) {
+       const heading = document.createElement('h3');
+       heading.className = 'settings-group-heading';
+       heading.textContent = group.heading;
+       body.appendChild(heading);
       }
-      rowEl.appendChild(text);
+      sectionEl.appendChild(body);
+      for (const row of group.rows) {
+        const rowEl = document.createElement('label');
+        rowEl.className = 'settings-row';
 
-      if (row.kind === 'toggle') {
-        const switchWrap = document.createElement('span');
-        switchWrap.className = 'settings-switch';
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = Boolean(getSettings()[row.key]);
-        input.addEventListener('change', () => {
-          updateSettings({ [row.key]: input.checked } as Partial<Settings>);
-        });
-        const slider = document.createElement('span');
-        slider.className = 'settings-switch-slider';
-        switchWrap.append(input, slider);
-        rowEl.appendChild(switchWrap);
-        inputSyncs.push((s) => {
-          input.checked = Boolean(s[row.key]);
-        });
-      } else if (row.kind === 'choice') {
-        const select = document.createElement('select');
-        select.className = 'settings-select';
-        const current = String(getSettings()[row.key]);
-        for (const opt of row.options) {
-          const optEl = document.createElement('option');
-          optEl.value = opt.value;
-          optEl.textContent = opt.label;
-          if (opt.value === current) optEl.selected = true;
-          select.appendChild(optEl);
+        const text = document.createElement('div');
+        text.className = 'settings-row-text';
+        const lab = document.createElement('div');
+        lab.className = 'settings-row-label';
+        lab.textContent = row.label;
+        text.appendChild(lab);
+        if (row.description) {
+          const desc = document.createElement('div');
+          desc.className = 'settings-row-desc';
+          desc.textContent = row.description;
+          text.appendChild(desc);
+          // Hover shows the explanation without turning help on. Skipped
+          // where the text changes at runtime (Enter VR, VR quality).
+          if (!('subscribe' in row && row.subscribe)) lab.title = row.description;
         }
-        select.addEventListener('change', () => {
-          updateSettings({ [row.key]: select.value } as Partial<Settings>);
-        });
-        rowEl.appendChild(select);
-        inputSyncs.push((s) => {
-          select.value = String(s[row.key]);
-        });
-        if (row.subscribe) {
-          const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
-          row.subscribe((s) => {
-            if (s.description !== undefined && descEl) descEl.textContent = s.description;
+        rowEl.appendChild(text);
+
+        if (row.kind === 'toggle') {
+          const switchWrap = document.createElement('span');
+          switchWrap.className = 'settings-switch';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = Boolean(getSettings()[row.key]);
+          input.addEventListener('change', () => {
+            updateSettings({ [row.key]: input.checked } as Partial<Settings>);
           });
-        }
-      } else if (row.kind === 'button') {
-        // Action row — a button on the right, sized like the other inputs.
-        // Initial state from the row config; subscribe() (if provided) can
-        // mutate label/description/disabled live in response to outside
-        // state. Used by Enter VR to react to WebXR availability + session
-        // presenting state without re-rendering the panel.
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'settings-action';
-        btn.textContent = row.label;
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          void row.onClick();
-        });
-        if (row.subscribe) {
-          const labelEl = lab;
-          const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
-          row.subscribe((s) => {
-            if (s.label !== undefined) {
-              btn.textContent = s.label;
-              labelEl.textContent = s.label;
-            }
-            if (s.description !== undefined && descEl) descEl.textContent = s.description;
-            if (s.disabled !== undefined) btn.disabled = s.disabled;
+          const slider = document.createElement('span');
+          slider.className = 'settings-switch-slider';
+          switchWrap.append(input, slider);
+          rowEl.appendChild(switchWrap);
+          inputSyncs.push((s) => {
+            input.checked = Boolean(s[row.key]);
           });
-        }
-        rowEl.appendChild(btn);
-      } else {
-        // Range slider with a live-updating numeric label beside it. With
-        // row.values the slider runs in index space over the stop list
-        // (nonlinear scales); otherwise it's the plain min/max/step range.
-        const wrap = document.createElement('span');
-        wrap.className = 'settings-range';
-        const input = document.createElement('input');
-        input.type = 'range';
-        const stops = row.values ?? null;
-        const toSlider = (v: number): number => {
-          if (!stops) return v;
-          const exact = stops.indexOf(v);
-          if (exact >= 0) return exact;
-          // Migrated / out-of-list value: snap to the closest stop,
-          // treating the -1 "full" sentinel as larger than everything.
-          let best = 0;
-          let bestDist = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < stops.length; i++) {
-            const sv = stops[i]!;
-            if (sv < 0 || v < 0) continue;
-            const d = Math.abs(sv - v);
-            if (d < bestDist) {
-              bestDist = d;
-              best = i;
+        } else if (row.kind === 'choice' && isSegmented(row)) {
+          // Few short options: show them all, one press instead of
+          // open-scan-pick.
+          const seg = document.createElement('span');
+          seg.className = 'settings-segmented';
+          seg.setAttribute('role', 'group');
+          seg.setAttribute('aria-label', row.label);
+          const buttons = row.options.map((opt) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = opt.label;
+            b.addEventListener('click', (e) => {
+              e.preventDefault();
+              updateSettings({ [row.key]: opt.value } as Partial<Settings>);
+            });
+            seg.appendChild(b);
+            return { value: opt.value, el: b };
+          });
+          const paint = (s: Readonly<Settings>): void => {
+            const current = String(s[row.key]);
+            for (const b of buttons) {
+              const on = b.value === current;
+              b.el.classList.toggle('active', on);
+              b.el.setAttribute('aria-pressed', on ? 'true' : 'false');
             }
+          };
+          paint(getSettings());
+          rowEl.appendChild(seg);
+          inputSyncs.push(paint);
+        } else if (row.kind === 'choice') {
+          const select = document.createElement('select');
+          select.className = 'settings-select';
+          const current = String(getSettings()[row.key]);
+          for (const opt of row.options) {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            if (opt.value === current) optEl.selected = true;
+            select.appendChild(optEl);
           }
-          return v < 0 ? stops.indexOf(-1) : best;
-        };
-        const fromSlider = (s: number): number => (stops ? (stops[s] ?? stops[0]!) : s);
-        if (stops) {
-          input.min = '0';
-          input.max = String(stops.length - 1);
-          input.step = '1';
+          select.addEventListener('change', () => {
+            updateSettings({ [row.key]: select.value } as Partial<Settings>);
+          });
+          rowEl.appendChild(select);
+          inputSyncs.push((s) => {
+            select.value = String(s[row.key]);
+          });
+          if (row.subscribe) {
+            const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
+            row.subscribe((s) => {
+              if (s.description !== undefined && descEl) descEl.textContent = s.description;
+            });
+          }
+        } else if (row.kind === 'button') {
+          // Action row — a button on the right, sized like the other inputs.
+          // Initial state from the row config; subscribe() (if provided) can
+          // mutate label/description/disabled live in response to outside
+          // state. Used by Enter VR to react to WebXR availability + session
+          // presenting state without re-rendering the panel.
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'settings-action';
+          btn.textContent = row.label;
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            void row.onClick();
+          });
+          if (row.subscribe) {
+            const labelEl = lab;
+            const descEl = text.querySelector('.settings-row-desc') as HTMLElement | null;
+            row.subscribe((s) => {
+              if (s.label !== undefined) {
+                btn.textContent = s.label;
+                labelEl.textContent = s.label;
+              }
+              if (s.description !== undefined && descEl) descEl.textContent = s.description;
+              if (s.disabled !== undefined) btn.disabled = s.disabled;
+            });
+          }
+          rowEl.appendChild(btn);
         } else {
-          input.min = String(row.min);
-          input.max = String(row.max);
-          input.step = String(row.step);
+          // Range slider with a live-updating numeric label beside it. With
+          // row.values the slider runs in index space over the stop list
+          // (nonlinear scales); otherwise it's the plain min/max/step range.
+          const wrap = document.createElement('span');
+          wrap.className = 'settings-range';
+          const input = document.createElement('input');
+          input.type = 'range';
+          const stops = row.values ?? null;
+          const toSlider = (v: number): number => {
+            if (!stops) return v;
+            const exact = stops.indexOf(v);
+            if (exact >= 0) return exact;
+            // Migrated / out-of-list value: snap to the closest stop,
+            // treating the -1 "full" sentinel as larger than everything.
+            let best = 0;
+            let bestDist = Number.POSITIVE_INFINITY;
+            for (let i = 0; i < stops.length; i++) {
+              const sv = stops[i]!;
+              if (sv < 0 || v < 0) continue;
+              const d = Math.abs(sv - v);
+              if (d < bestDist) {
+                bestDist = d;
+                best = i;
+              }
+            }
+            return v < 0 ? stops.indexOf(-1) : best;
+          };
+          const fromSlider = (s: number): number => (stops ? (stops[s] ?? stops[0]!) : s);
+          if (stops) {
+            input.min = '0';
+            input.max = String(stops.length - 1);
+            input.step = '1';
+          } else {
+            input.min = String(row.min);
+            input.max = String(row.max);
+            input.step = String(row.step);
+          }
+          const initial = Number(getSettings()[row.key]);
+          input.value = String(toSlider(initial));
+          const valueEl = document.createElement('span');
+          valueEl.className = 'settings-range-value';
+          const fmt = row.format ?? ((v: number) => String(v));
+          valueEl.textContent = fmt(initial);
+
+          // Reset-to-default button. Disabled (not hidden) while the slider
+          // already sits at its factory value, so the row width never jumps.
+          const defaultVal = Number(getDefaultSettings()[row.key]);
+          const resetBtn = document.createElement('button');
+          resetBtn.type = 'button';
+          resetBtn.className = 'settings-range-reset';
+          resetBtn.textContent = '↺';
+          resetBtn.title = t('settings.reset_to_default', { value: fmt(defaultVal) });
+          resetBtn.setAttribute('aria-label', t('settings.reset_row_to_default', { label: row.label }));
+          const syncReset = (v: number): void => {
+            resetBtn.disabled = v === defaultVal;
+          };
+          syncReset(initial);
+
+          input.addEventListener('input', () => {
+            const v = fromSlider(Number(input.value));
+            valueEl.textContent = fmt(v);
+            syncReset(v);
+            updateSettings({ [row.key]: v } as Partial<Settings>);
+          });
+          // The reset button lives inside the same <label> as the slider, so
+          // stop the click from also retargeting the label to the input.
+          resetBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            input.value = String(toSlider(defaultVal));
+            valueEl.textContent = fmt(defaultVal);
+            syncReset(defaultVal);
+            updateSettings({ [row.key]: defaultVal } as Partial<Settings>);
+          });
+          wrap.append(input, valueEl, resetBtn);
+          rowEl.appendChild(wrap);
+          inputSyncs.push((s) => {
+            const v = Number(s[row.key]);
+            input.value = String(toSlider(v));
+            valueEl.textContent = fmt(v);
+            syncReset(v);
+          });
         }
-        const initial = Number(getSettings()[row.key]);
-        input.value = String(toSlider(initial));
-        const valueEl = document.createElement('span');
-        valueEl.className = 'settings-range-value';
-        const fmt = row.format ?? ((v: number) => String(v));
-        valueEl.textContent = fmt(initial);
 
-        // Reset-to-default button. Disabled (not hidden) while the slider
-        // already sits at its factory value, so the row width never jumps.
-        const defaultVal = Number(getDefaultSettings()[row.key]);
-        const resetBtn = document.createElement('button');
-        resetBtn.type = 'button';
-        resetBtn.className = 'settings-range-reset';
-        resetBtn.textContent = '↺';
-        resetBtn.title = t('settings.reset_to_default', { value: fmt(defaultVal) });
-        resetBtn.setAttribute('aria-label', t('settings.reset_row_to_default', { label: row.label }));
-        const syncReset = (v: number): void => {
-          resetBtn.disabled = v === defaultVal;
-        };
-        syncReset(initial);
-
-        input.addEventListener('input', () => {
-          const v = fromSlider(Number(input.value));
-          valueEl.textContent = fmt(v);
-          syncReset(v);
-          updateSettings({ [row.key]: v } as Partial<Settings>);
-        });
-        // The reset button lives inside the same <label> as the slider, so
-        // stop the click from also retargeting the label to the input.
-        resetBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          input.value = String(toSlider(defaultVal));
-          valueEl.textContent = fmt(defaultVal);
-          syncReset(defaultVal);
-          updateSettings({ [row.key]: defaultVal } as Partial<Settings>);
-        });
-        wrap.append(input, valueEl, resetBtn);
-        rowEl.appendChild(wrap);
-        inputSyncs.push((s) => {
-          const v = Number(s[row.key]);
-          input.value = String(toSlider(v));
-          valueEl.textContent = fmt(v);
-          syncReset(v);
-        });
+        body.appendChild(rowEl);
       }
-
-      body.appendChild(rowEl);
     }
     panel.appendChild(sectionEl);
   }
+  const savedTab = loadChrome(TAB_KEY);
+  selectTab(tabEntries.some((e) => e.id === savedTab) ? savedTab! : 'aircraft');
 
   document.body.appendChild(panel);
 

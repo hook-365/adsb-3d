@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **VR/AR reset**: hold A/X for a second, or use Reset view in the wrist menu, to bring a lost map back in front of you at default size.
 - **Controls page** in the wrist menu: what each stick and button does in the current movement mode.
 
+### Changed
+
+- **Settings panel reworked**: tabs instead of collapsing sections, short group headings, and buttons for either/or choices. Explanations are hidden until you press "?".
+
 ### Fixed
 
 - Recentering in AR no longer leaves the diorama box behind with nothing in it.

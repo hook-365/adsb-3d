@@ -615,18 +615,85 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
 
 /* Sticky dialog header so the close button stays reachable while the
    panel's row list scrolls (notably on phones, where it's a full sheet). */
-.settings-header {
+.settings-top {
   position: sticky;
   top: 0;
   z-index: 1;
+  margin: 0 -16px;
+  padding: 0 16px;
+  background: var(--panel-base);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 0 10px;
-  margin-bottom: 4px;
-  background: color-mix(in srgb, var(--panel-base) 98%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  padding: 12px 0 8px;
+}
+
+.settings-header-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+/* Tabs: the five sections, always visible, one open at a time. */
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.settings-tab {
+  flex: 1 1 auto;
+  padding: 7px 4px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-tab:hover,
+.settings-tab:focus-visible {
+  color: var(--fg);
+  outline: none;
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.settings-help {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-help:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.settings-help[aria-pressed='true'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .settings-title {
@@ -700,64 +767,42 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
-.settings-panel section {
-  margin-top: 6px;
+.settings-panel section[hidden] {
+  display: none;
 }
 
-.settings-panel section:first-of-type {
-  margin-top: 0;
+/* A group is a short heading over a few rows; the heading's rule is the
+   only divider, so rows inside a group read as one block. */
+.settings-group {
+  padding-top: 10px;
 }
 
-/* Collapsible section header: carries the old h3 heading look on a
-   full-width button, with a chevron that rotates when expanded. */
-.settings-section-toggle {
+.settings-group-heading {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 0 6px;
-  margin: 0;
-  border: none;
-  background: none;
-  font: inherit;
+  gap: 8px;
+  margin: 0 0 2px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
   letter-spacing: 0.12em;
-  cursor: pointer;
-  text-align: left;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
-.settings-section-toggle:hover {
-  color: var(--fg);
-}
-
-.settings-section-chevron {
-  display: inline-block;
-  transition: transform 160ms ease;
-  font-size: 9px;
-}
-
-.settings-section-toggle[aria-expanded='true'] .settings-section-chevron {
-  transform: rotate(90deg);
-}
-
-.settings-section-body {
-  padding-left: 2px;
+.settings-group-heading::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .settings-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 0;
-  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+  min-height: 30px;
+  padding: 3px 0;
   cursor: pointer;
-}
-
-.settings-row:first-of-type {
-  border-top: none;
 }
 
 .settings-row-text {
@@ -770,11 +815,56 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   font-weight: 500;
 }
 
+/* Explanations stay out of the way until the "?" in the header asks for
+   them; the label's tooltip carries the same text on hover. */
 .settings-row-desc {
+  display: none;
   margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.settings-panel.show-help .settings-row-desc {
+  display: block;
+}
+
+.settings-panel.show-help .settings-row {
+  align-items: flex-start;
+  padding: 6px 0;
+}
+
+/* Every option visible at once for short either/or choices. */
+.settings-segmented {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.settings-segmented button {
+  padding: 3px 9px;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settings-segmented button:first-child {
+  border-left: none;
+}
+
+.settings-segmented button:hover {
+  color: var(--fg);
+}
+
+.settings-segmented button.active {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--fg-bright);
 }
 
 .settings-switch {
@@ -940,6 +1030,25 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   /* On phones the sidebar covers most of the screen anyway, so just float
      the settings as a full-width sheet over everything regardless of
      sidebar state. Both selectors so we beat the :has() rule above. */
+  /* Thumb-sized targets: taller rows and tabs, roomier segmented buttons. */
+  .settings-row {
+    min-height: 40px;
+  }
+
+  .settings-tab {
+    padding: 11px 4px 12px;
+  }
+
+  .settings-segmented button {
+    padding: 7px 12px;
+  }
+
+  .settings-help,
+  .settings-close {
+    width: 36px;
+    height: 36px;
+  }
+
   .settings-panel,
   body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
     top: 8px;
