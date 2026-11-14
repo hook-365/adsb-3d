@@ -3312,6 +3312,17 @@ body.chrome-idle .settings-button {
 }
 
 @media (max-width: 600px) {
+  /* Phones: the panel covers most of the scope, so its "–" is the only way
+     back. Give it a full 44px touch target (the negative margins keep the
+     header the same height) and full-strength colour. */
+  .acars-panel .panel-minimize {
+    min-width: 44px;
+    min-height: 44px;
+    margin: -8px -8px -8px 0;
+    font-size: 22px;
+    color: var(--fg);
+  }
+
   .acars-panel {
     width: calc(100vw - 32px);
     max-height: calc(100vh - 120px - 170px - env(safe-area-inset-bottom, 0px));
