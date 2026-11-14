@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **VR/AR reset**: hold A/X for a second, or use Reset view in the wrist menu, to bring a lost map back in front of you at default size.
+
+### Fixed
+
+- Recentering in AR no longer leaves the diorama box behind with nothing in it.
+- Place scope gives up on headsets that cannot detect surfaces, so it no longer blocks trigger presses.
+
 ---
 
 ## [0.13.3] - 2026-11-13

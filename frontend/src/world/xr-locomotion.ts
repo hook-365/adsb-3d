@@ -14,8 +14,10 @@
 //     single biggest motion-comfort lever, so it's its own setting
 //     rather than being bundled into the movement model.
 //
-//   Right A/X recenters the world in front of the headset. B/Y cycles
-//   the selection through nearby aircraft (wired via onCycleAircraft).
+//   Right A/X recenters the world in front of the headset; held for a
+//   second it is a full reset (default scale, scope movement, in front
+//   of you) for when the map is lost — issue #18. B/Y cycles the
+//   selection through nearby aircraft (wired via onCycleAircraft).
 //
 // Turning pivots: scope orbits the selected aircraft (or scope center),
 // matching the desktop OrbitControls; free-fly turns about the user,
@@ -25,7 +27,7 @@
 // directly; three.js doesn't surface gamepad axes/buttons.
 
 import { Vector3, type Group, type PerspectiveCamera, type WebGLRenderer } from 'three';
-import { getSettings, updateSettings } from '../core/settings';
+import { getDefaultSettings, getSettings, updateSettings } from '../core/settings';
 import { getXrState } from '../core/xr';
 import { dioramaActive, dioramaCenter } from './diorama-clip';
 
@@ -69,6 +71,40 @@ const SMOOTH_TURN_RAD_PER_S = Math.PI / 2;
 /** Recenter placement relative to the headset (A/X button). */
 const RECENTER_FORWARD_M = 1.5;
 const RECENTER_DOWN_M = 0.5;
+/** How long A/X must stay down for the full reset. Long enough that a
+ *  deliberate recenter tap never trips it. */
+export const RESET_HOLD_MS = 1000;
+
+/**
+ * Tap-vs-hold tracker for one button. `step` returns 'press' on the
+ * rising edge and 'hold' once, when the button has stayed down for
+ * `holdMs`; a release re-arms both.
+ */
+export class HoldButton {
+  private down = false;
+  private heldMs = 0;
+  private fired = false;
+
+  constructor(private readonly holdMs: number) {}
+
+  step(pressed: boolean, dtMs: number): 'press' | 'hold' | null {
+    if (!pressed) {
+      this.down = false;
+      return null;
+    }
+    if (!this.down) {
+      this.down = true;
+      this.heldMs = 0;
+      this.fired = false;
+      return 'press';
+    }
+    if (this.fired) return null;
+    this.heldMs += dtMs;
+    if (this.heldMs < this.holdMs) return null;
+    this.fired = true;
+    return 'hold';
+  }
+}
 
 // Auto-orbit rate comes straight from Settings.autoOrbit (deg/s, 0 = off,
 // stops in core/settings.ts AUTO_ORBIT_SPEEDS) — issue #6 round 4 asked
@@ -82,6 +118,12 @@ const BUTTON_B_OR_Y = 5;
 export interface XrLocomotion {
   /** Per-frame tick. dtMs is the frame delta from main.ts's render loop. */
   tick(dtMs: number): void;
+  /**
+   * Full reset (issue #18): default scale for the session's mode, scope
+   * movement, rotation cleared, map in front of the headset. The way out
+   * when the map has been scaled or moved somewhere it can't be found.
+   */
+  resetView(): void;
 }
 
 export function setupXrLocomotion(opts: {
@@ -113,13 +155,30 @@ export function setupXrLocomotion(opts: {
    * the same next/cur scale ratio applyScale always computes.
    */
   onFollowScale?: (rootOrigin: Vector3, r: number) => void;
+  /**
+   * The world was just repositioned in front of the headset (A/X tap, or
+   * a full reset when `full`). main.ts re-anchors what is pinned to the
+   * old spot: the diorama box and the follow anchor.
+   */
+  onRecenter?: (full: boolean) => void;
 }): XrLocomotion {
-  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft, freeflyAllowed, onFollowScale } = opts;
+  const { renderer, xrRoot, getOrbitPivot, onCycleAircraft, freeflyAllowed, onFollowScale, onRecenter } =
+    opts;
 
-  // Edge-trigger state: snap-turn, A and B fire once per press.
+  // Edge-trigger state: snap-turn and B fire once per press; A fires on
+  // press and again, as a full reset, if it is held.
   let snapTurnArmed = true;
-  let aButtonWasPressed = false;
+  const aButton = new HoldButton(RESET_HOLD_MS);
   let bButtonWasPressed = false;
+
+  function resetView(): void {
+    if (!renderer.xr.getSession()) return;
+    const key = getXrState().presentingMode === 'ar' ? 'arScale' : 'vrScale';
+    // main.ts applies the new xrRoot.scale synchronously inside this call.
+    updateSettings({ [key]: getDefaultSettings()[key], xrMoveMode: 'scope' });
+    recenterWorld(xrRoot, renderer.xr.getCamera());
+    onRecenter?.(true);
+  }
 
   function applyScale(stickY: number, dtS: number, fixedPoint: Vector3 | null): void {
     // VR and AR keep independent scales (an AR diorama shares the room
@@ -303,13 +362,15 @@ export function setupXrLocomotion(opts: {
           xrRoot.position.y += y * VERT_SPEED_M_PER_S * dtS;
         }
 
-        const aPressed = gp.buttons[BUTTON_A_OR_X]?.pressed ?? false;
-        if (aPressed && !aButtonWasPressed) {
+        const aEvent = aButton.step(gp.buttons[BUTTON_A_OR_X]?.pressed ?? false, _dtMs);
+        if (aEvent === 'press') {
           // XR camera, not the desktop reference camera — OrbitControls
           // rewrites the latter every tick (the A-button blackout bug).
           recenterWorld(xrRoot, xrCam);
+          onRecenter?.(false);
+        } else if (aEvent === 'hold') {
+          resetView();
         }
-        aButtonWasPressed = aPressed;
 
         const bPressed = gp.buttons[BUTTON_B_OR_Y]?.pressed ?? false;
         if (bPressed && !bButtonWasPressed) onCycleAircraft?.();
@@ -335,7 +396,7 @@ export function setupXrLocomotion(opts: {
     }
   }
 
-  return { tick };
+  return { tick, resetView };
 }
 
 // ── World-mutation helpers ───────────────────────────────────────────

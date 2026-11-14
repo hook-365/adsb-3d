@@ -31,6 +31,8 @@ export interface XrRuntimeDeps {
   onArPlaced: (origin: Vector3) => void;
   /** Scale tick while following; see the comment at the call site in main.ts. */
   onFollowScale: (rootOrigin: Vector3, r: number) => void;
+  /** The world was repositioned in front of the headset (recenter / reset). */
+  onRecentered: () => void;
 }
 
 export interface XrRuntime {
@@ -54,6 +56,8 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
     xrRoot: world.xrRoot,
   });
   xrArPlace.onPlaced(deps.onArPlaced);
+  // Place mode gave up (no surface on this headset): the row's text changed.
+  xrArPlace.onUnavailable(() => xrWristMenu.refresh());
 
   setWristMenuActions({
     toggleArPlace: () => {
@@ -69,6 +73,8 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
       xrWristMenu.refresh();
     },
     arPlaceActive: () => xrArPlace.isActive(),
+    arPlaceNoSurface: () => xrArPlace.foundNoSurface(),
+    resetView: () => xrLocomotion.resetView(),
   });
 
   // Controllers attach to the scene (meter-space, outside xrRoot — they
@@ -153,6 +159,13 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
       return local ? world.xrRoot.localToWorld(local) : null;
     },
     onFollowScale: deps.onFollowScale,
+    onRecenter: (full) => {
+      // A full reset also abandons a pending placement: the map is now in
+      // front of the user, and an armed place mode would swallow triggers.
+      if (full) xrArPlace.stop();
+      deps.onRecentered();
+      xrWristMenu.refresh();
+    },
   });
 
   return {
@@ -173,7 +186,7 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
       // next 'connected' / onHandednessKnown re-attaches cleanly.
       xrWristMenu.detach();
       // A hit-test source doesn't survive its session; disarm place mode.
-      xrArPlace.stop();
+      xrArPlace.endSession();
     },
   };
 }

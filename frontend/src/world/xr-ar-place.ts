@@ -6,8 +6,11 @@
 // jitter with hand tremor.
 //
 // The hit-test feature is requested as optional at AR session start
-// (core/xr.ts); on runtimes that don't grant it, arming the mode logs
-// under [xr] and the reticle simply never appears — no hard failure.
+// (core/xr.ts). Headsets without surface detection (no depth sensor,
+// issue #18) either don't grant it or grant it and never report a hit;
+// both end the same way: place mode disarms itself, reports "no
+// surface", and isSupported() turns false so the caller leaves manual
+// positioning available.
 //
 // The reticle lives in the scene's meter space (outside xrRoot): hit
 // poses come back in the renderer's reference space, which is metres.
@@ -28,6 +31,9 @@ import { getTheme, subscribeTheme } from '../core/theme';
 const RETICLE_INNER_M = 0.06;
 const RETICLE_OUTER_M = 0.08;
 
+/** Armed this long without one surface under the gaze: give up. */
+export const NO_SURFACE_TIMEOUT_MS = 4000;
+
 const TAG = '[xr]';
 
 export class XrArPlace {
@@ -38,10 +44,23 @@ export class XrArPlace {
   private readonly unsubscribeTheme: () => void;
   private active = false;
   private hitSource: XRHitTestSource | null = null;
+  /** When the current arming started (performance.now), for the timeout. */
+  private armedAtMs = 0;
+  /** The last arming found no surface. Cleared by arming again, so a
+   *  user who was just looking at the sky is never locked out. */
+  private noSurface = false;
+  private readonly now: () => number;
 
-  constructor(opts: { renderer: WebGLRenderer; scene: Object3D; xrRoot: Group }) {
+  constructor(opts: {
+    renderer: WebGLRenderer;
+    scene: Object3D;
+    xrRoot: Group;
+    /** Clock override for tests. */
+    now?: () => number;
+  }) {
     this.renderer = opts.renderer;
     this.xrRoot = opts.xrRoot;
+    this.now = opts.now ?? (() => performance.now());
 
     this.material = new MeshBasicMaterial({
       color: getTheme().tokens.three.selectionRing,
@@ -69,18 +88,24 @@ export class XrArPlace {
   }
 
   /**
-   * True when the current session granted hit-test, i.e. place mode can
-   * actually work. Used to decide whether AR may disable free-fly
-   * translation (placement exists) or must keep it (manual positioning
-   * is the only option).
+   * True when the current session granted hit-test and it has not just
+   * failed to find a surface, i.e. place mode can actually work. Used to
+   * decide whether AR may disable free-fly translation (placement
+   * exists) or must keep it (manual positioning is the only option).
    */
   isSupported(): boolean {
     const session = this.renderer.xr.getSession() as
       | (XRSession & { enabledFeatures?: readonly string[] })
       | null;
     if (!session) return false;
+    if (this.noSurface) return false;
     if (session.enabledFeatures) return session.enabledFeatures.includes('hit-test');
     return typeof session.requestHitTestSource === 'function';
+  }
+
+  /** The last arming gave up without finding a surface (menu row text). */
+  foundNoSurface(): boolean {
+    return this.noSurface;
   }
 
   /** Arm or disarm place mode (wrist-menu row). */
@@ -97,9 +122,12 @@ export class XrArPlace {
     const request = session.requestHitTestSource?.bind(session);
     if (!request) {
       console.warn(TAG, 'place mode unavailable — hit-test not granted by the runtime');
+      this.noSurface = true;
       return;
     }
     this.active = true;
+    this.noSurface = false;
+    this.armedAtMs = this.now();
     console.info(TAG, 'place mode armed — requesting viewer-space hit-test source');
     session
       .requestReferenceSpace('viewer')
@@ -115,7 +143,7 @@ export class XrArPlace {
       })
       .catch((err) => {
         console.warn(TAG, 'hit-test source request failed', err);
-        this.active = false;
+        this.giveUp();
       });
   }
 
@@ -131,17 +159,37 @@ export class XrArPlace {
     this.hitSource = null;
   }
 
+  /** Session over: disarm and forget the no-surface verdict. */
+  endSession(): void {
+    this.stop();
+    this.noSurface = false;
+  }
+
+  /** Disarm because this headset isn't producing surfaces. */
+  private giveUp(): void {
+    console.warn(TAG, 'place mode found no surface; disarming');
+    this.stop();
+    this.noSurface = true;
+    for (const cb of this.unavailableListeners) cb();
+  }
+
   /** Per-XR-frame: track the gaze hit point with the reticle. */
   tick(frame: XRFrame): void {
-    if (!this.active || !this.hitSource) return;
-    const refSpace = this.renderer.xr.getReferenceSpace();
-    if (!refSpace) return;
-    const hit = frame.getHitTestResults(this.hitSource)[0];
-    const pose = hit?.getPose(refSpace);
+    if (!this.active) return;
+    const refSpace = this.hitSource ? this.renderer.xr.getReferenceSpace() : null;
+    const hit = this.hitSource && refSpace ? frame.getHitTestResults(this.hitSource)[0] : undefined;
+    const pose = refSpace ? hit?.getPose(refSpace) : undefined;
     if (!pose) {
       this.reticle.visible = false;
+      // No source yet, or no surface under the gaze. A headset that can
+      // detect surfaces finds one within moments of arming; one that
+      // can't would otherwise sit here swallowing every trigger press.
+      if (this.now() - this.armedAtMs >= NO_SURFACE_TIMEOUT_MS) this.giveUp();
       return;
     }
+    // A surface was seen: this headset can place, so the clock restarts
+    // and looking away for a while never counts as "no surface".
+    this.armedAtMs = this.now();
     const p = pose.transform.position;
     this.reticle.position.set(p.x, p.y, p.z);
     this.reticle.visible = true;
@@ -174,6 +222,13 @@ export class XrArPlace {
   }
 
   private readonly placedListeners = new Set<(origin: Vector3) => void>();
+
+  /** Subscribe to place mode disarming itself for lack of a surface. */
+  onUnavailable(cb: () => void): void {
+    this.unavailableListeners.add(cb);
+  }
+
+  private readonly unavailableListeners = new Set<() => void>();
 
   dispose(): void {
     this.stop();

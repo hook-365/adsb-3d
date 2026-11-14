@@ -213,8 +213,8 @@ let xrRuntime: XrRuntime | null = null;
 
 // ── Diorama clipping (issue #6 "desk ornament") ─────────────────────
 // The clip box anchors in metre space: at the scope origin on session
-// start, re-anchored by AR placement and by toggling the setting on
-// (which also recovers from recenter jumps). Cleared on session end.
+// start, re-anchored by AR placement, by recenter / reset, and by
+// toggling the setting on. Cleared on session end.
 const dioramaOrigin = new Vector3();
 function syncDiorama(): void {
   const s = getSettings();
@@ -240,6 +240,16 @@ function syncDiorama(): void {
 function onArPlaced(origin: Vector3): void {
   dioramaOrigin.copy(origin);
   syncDiorama();
+}
+// Recenter / full reset moved the scope in front of the headset (issue
+// #18). The clip box is anchored in metre space, so left where it was the
+// map jumps out of it and nothing is drawn until the setting is toggled;
+// bring the box along. The follow anchor is stale for the same reason and
+// re-captures on the next frame.
+function onXrRecentered(): void {
+  dioramaOrigin.copy(world.xrRoot.position);
+  syncDiorama();
+  xrFollowAnchor = null;
 }
 let dioramaWasPresenting = false;
 subscribeXr((s) => {
@@ -488,6 +498,7 @@ function loadXrRuntime(): void {
         getSelectedHex: () => xrSelectedHex,
         onArPlaced,
         onFollowScale,
+        onRecentered: onXrRecentered,
       });
     })
     .catch((err: unknown) => {

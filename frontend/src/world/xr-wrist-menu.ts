@@ -95,6 +95,10 @@ export interface WristMenuActions {
   /** Arm/disarm AR place mode (world/xr-ar-place.ts). */
   toggleArPlace: () => void;
   arPlaceActive: () => boolean;
+  /** The last arming found no surface (headset can't detect any). */
+  arPlaceNoSurface: () => boolean;
+  /** Full view reset (world/xr-locomotion.ts resetView). */
+  resetView: () => void;
 }
 let menuActions: WristMenuActions | null = null;
 export function setWristMenuActions(a: WristMenuActions): void {
@@ -250,15 +254,6 @@ const PAGES: MenuRow[][] = [
       (v) => (v === 0 ? tr('misc.xr_density_all') : String(v)),
     ),
     toggleRow('acarsMessages', () => tr('misc.xr_acars')),
-    {
-      // AR-only action row: arm hit-test placement, then any trigger
-      // drops the scope on the reticle (issue #6 "place it on a table").
-      id: '__arPlace',
-      label: () => tr('misc.xr_place'),
-      value: () => (menuActions?.arPlaceActive() ? tr('misc.xr_hint') : tr('misc.xr_off')),
-      activate: () => menuActions?.toggleArPlace(),
-      visible: () => menuActions !== null && getXrState().presentingMode === 'ar',
-    },
   ],
   [
     // Display page (page 1) is at its 6-slot cap, so the shape style
@@ -340,6 +335,34 @@ const PAGES: MenuRow[][] = [
     // Aircraft glide between fixes instead of stepping — matters more in
     // a headset, where per-update jumps read as judder.
     toggleRow('smoothMotion', () => tr('misc.xr_smooth_motion')),
+  ],
+  [
+    // Positioning page: where the map sits, as opposed to how it looks.
+    {
+      // The discoverable twin of holding A/X (issue #18): default scale,
+      // scope movement, map back in front of you.
+      id: '__resetView',
+      label: () => tr('misc.xr_reset_view'),
+      value: () => tr('misc.xr_reset_hint'),
+      activate: () => menuActions?.resetView(),
+      visible: () => menuActions !== null,
+    },
+    {
+      // AR-only action row: arm hit-test placement, then any trigger
+      // drops the scope on the reticle (issue #6 "place it on a table").
+      // On a headset that can't detect surfaces the row says so instead
+      // of sitting armed forever (issue #18).
+      id: '__arPlace',
+      label: () => tr('misc.xr_place'),
+      value: () =>
+        menuActions?.arPlaceActive()
+          ? tr('misc.xr_hint')
+          : menuActions?.arPlaceNoSurface()
+            ? tr('misc.xr_no_surface')
+            : tr('misc.xr_off'),
+      activate: () => menuActions?.toggleArPlace(),
+      visible: () => menuActions !== null && getXrState().presentingMode === 'ar',
+    },
   ],
 ];
 

@@ -70,3 +70,29 @@ describe('faceWorldPoint', () => {
     expect(diff).toBeCloseTo(0, 10);
   });
 });
+
+describe('HoldButton', () => {
+  it('fires press on the rising edge and hold once after the threshold', async () => {
+    const { HoldButton } = await import('../src/world/xr-locomotion');
+    const b = new HoldButton(1000);
+    expect(b.step(false, 16)).toBeNull();
+    expect(b.step(true, 16)).toBe('press');
+    expect(b.step(true, 500)).toBeNull();
+    expect(b.step(true, 499)).toBeNull();
+    expect(b.step(true, 1)).toBe('hold');
+    // Still held: no repeat.
+    expect(b.step(true, 5000)).toBeNull();
+  });
+
+  it('a tap never reaches hold, and release re-arms', async () => {
+    const { HoldButton } = await import('../src/world/xr-locomotion');
+    const b = new HoldButton(1000);
+    expect(b.step(true, 16)).toBe('press');
+    expect(b.step(true, 200)).toBeNull();
+    expect(b.step(false, 16)).toBeNull();
+    // Held time does not carry over to the next press.
+    expect(b.step(true, 16)).toBe('press');
+    expect(b.step(true, 900)).toBeNull();
+    expect(b.step(true, 100)).toBe('hold');
+  });
+});
