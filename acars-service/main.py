@@ -159,14 +159,15 @@ async def migrate_decimal_icao(conn) -> None:
 
 
 async def backfill_decoded(conn) -> None:
-    """One-time decode of rows stored before decoder.py existed: fill `decoded`
-    for any text-bearing row that doesn't have it yet. Bounded by retention,
-    so the table is small; done in batches to keep each statement cheap."""
+    """Decode rows stored before decoder.py recognized them: fill `decoded`
+    for any text-bearing row that doesn't have it yet. Bounded by retention.
+    Rows are matched by time + text: ctid is only unique within one chunk
+    and cannot be selected from compressed chunks at all."""
     try:
         # Single pass over the (retention-bounded) backlog. Undecodable rows
         # keep decoded = NULL; they're cheap to skip on the next boot's scan.
         rows = await conn.fetch(
-            "SELECT ctid, label, text FROM acars_messages "
+            "SELECT time, label, text FROM acars_messages "
             "WHERE decoded IS NULL AND text IS NOT NULL"
         )
         updated = 0
@@ -175,7 +176,9 @@ async def backfill_decoded(conn) -> None:
             if d is None:
                 continue
             await conn.execute(
-                "UPDATE acars_messages SET decoded = $1 WHERE ctid = $2", d, r["ctid"]
+                "UPDATE acars_messages SET decoded = $1 "
+                "WHERE time = $2 AND text = $3 AND decoded IS NULL",
+                d, r["time"], r["text"],
             )
             updated += 1
         if updated:
