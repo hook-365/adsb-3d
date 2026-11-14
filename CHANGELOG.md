@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.13.3] - 2026-11-13
+
 ### Added
 
 - **ACARS history**: browse and search 30 days of messages in the ACARS panel.
