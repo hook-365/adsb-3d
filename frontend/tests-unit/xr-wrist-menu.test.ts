@@ -46,3 +46,11 @@ describe('wrist menu settings parity', () => {
     }
   });
 });
+
+describe('wrist menu controls page', () => {
+  it('is the last page and fits with free-fly showing every row', () => {
+    // Six bindings: the page is at the slot cap, so a seventh needs a
+    // second page rather than silently falling off the bottom.
+    expect(WRIST_MENU_PAGE_SIZES.at(-1)).toBe(WRIST_MENU_MAX_PAGE_SIZE);
+  });
+});

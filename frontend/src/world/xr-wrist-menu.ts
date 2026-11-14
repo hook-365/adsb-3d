@@ -48,7 +48,7 @@ import {
   THEME_OPTIONS,
 } from '../core/theme';
 import { roundRect, withAlpha } from './canvas-ui';
-import { DIORAMA_SIZE_MAX_M, DIORAMA_SIZE_MIN_M } from './diorama-clip';
+import { dioramaActive, DIORAMA_SIZE_MAX_M, DIORAMA_SIZE_MIN_M } from './diorama-clip';
 // Aliased: `t` is the conventional local name for theme tokens in the draw
 // code below.
 import { t as tr } from '../core/i18n';
@@ -84,6 +84,9 @@ interface MenuRow {
   activate: () => void;
   /** Omitted = always shown. Action rows use this to gate by session mode. */
   visible?: () => boolean;
+  /** Read-only row (the controls page): no hover highlight, and a
+   *  trigger on it does nothing but stay off the aircraft behind. */
+  info?: boolean;
 }
 
 /**
@@ -99,6 +102,9 @@ export interface WristMenuActions {
   arPlaceNoSurface: () => boolean;
   /** Full view reset (world/xr-locomotion.ts resetView). */
   resetView: () => void;
+  /** Free-fly is the movement model in effect right now: the setting,
+   *  minus the AR-with-placement case where it is forced back to scope. */
+  freeflyActive: () => boolean;
 }
 let menuActions: WristMenuActions | null = null;
 export function setWristMenuActions(a: WristMenuActions): void {
@@ -213,6 +219,44 @@ const themeRow: MenuRow = {
 // restated literals, so they can't drift apart.
 const DIORAMA_SIZE_STEPS: readonly number[] = [
   DIORAMA_SIZE_MIN_M, 0.05, 0.1, 0.15, 0.25, 0.4, 0.6, 0.9, 1.3, DIORAMA_SIZE_MAX_M,
+];
+
+// ── controls page ─────────────────────────────────────────────────────
+// What each stick and button does (issue #18: "a way to view in-XR
+// bindings"). The rows follow the movement model in effect, since the
+// sticks mean different things in scope and free-fly.
+
+function freeflyNow(): boolean {
+  return menuActions?.freeflyActive() ?? getSettings().xrMoveMode === 'freefly';
+}
+
+function infoRow(id: `__${string}`, label: () => string, value: () => string, visible?: () => boolean): MenuRow {
+  const row: MenuRow = { id, label, value, activate: () => undefined, info: true };
+  if (visible) row.visible = visible;
+  return row;
+}
+
+const CONTROLS_PAGE: MenuRow[] = [
+  infoRow(
+    '__ctlLeftStick',
+    () => tr('misc.xr_ctl_left_stick'),
+    () => (freeflyNow() ? tr('misc.xr_ctl_move') : tr('misc.xr_ctl_size')),
+  ),
+  infoRow(
+    '__ctlGripStick',
+    () => tr('misc.xr_ctl_grip_stick'),
+    () => tr('misc.xr_ctl_size'),
+    freeflyNow,
+  ),
+  infoRow(
+    '__ctlRightStick',
+    () => tr('misc.xr_ctl_right_stick'),
+    // Height is dropped while the diorama box is up (xr-locomotion.ts).
+    () => (freeflyNow() && !dioramaActive() ? tr('misc.xr_ctl_turn_height') : tr('misc.xr_ctl_turn')),
+  ),
+  infoRow('__ctlA', () => 'A / X', () => tr('misc.xr_ctl_recenter')),
+  infoRow('__ctlB', () => 'B / Y', () => tr('misc.xr_ctl_next')),
+  infoRow('__ctlTrigger', () => tr('misc.xr_ctl_trigger'), () => tr('misc.xr_ctl_select')),
 ];
 
 // ── pages ─────────────────────────────────────────────────────────────
@@ -364,6 +408,7 @@ const PAGES: MenuRow[][] = [
       visible: () => menuActions !== null && getXrState().presentingMode === 'ar',
     },
   ],
+  CONTROLS_PAGE,
 ];
 
 /** Settings keys the wrist menu drives — action rows (`__` ids) excluded. */
@@ -635,7 +680,7 @@ export class XrWristMenu {
       const row = isPager ? null : rows[slot];
       if (!isPager && !row) continue;
       const y = HEADER_PX + slot * ROW_HEIGHT_PX;
-      const hovered = slot === this.hoveredSlot;
+      const hovered = slot === this.hoveredSlot && !row?.info;
 
       if (hovered) {
         ctx.fillStyle = withAlpha(t.accent, 0.22);

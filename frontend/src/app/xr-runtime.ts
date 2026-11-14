@@ -59,6 +59,15 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
   // Place mode gave up (no surface on this headset): the row's text changed.
   xrArPlace.onUnavailable(() => xrWristMenu.refresh());
 
+  // In AR with hit-test, free-fly translation would slide a placed scope
+  // off its real surface (issue #6), so scope-style movement is forced
+  // there. AR devices without hit-test keep free-fly (their only way to
+  // position the map manually). VR is unaffected. With the diorama box
+  // active the world slides UNDER a fixed frame, so free-fly is the whole
+  // point and stays on.
+  const freeflyAllowed = (): boolean =>
+    getXrState().presentingMode !== 'ar' || !xrArPlace.isSupported() || getSettings().dioramaClip;
+
   setWristMenuActions({
     toggleArPlace: () => {
       xrArPlace.toggle();
@@ -75,6 +84,7 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
     arPlaceActive: () => xrArPlace.isActive(),
     arPlaceNoSurface: () => xrArPlace.foundNoSurface(),
     resetView: () => xrLocomotion.resetView(),
+    freeflyActive: () => getSettings().xrMoveMode === 'freefly' && freeflyAllowed(),
   });
 
   // Controllers attach to the scene (meter-space, outside xrRoot — they
@@ -119,17 +129,7 @@ export function mountXrRuntime(deps: XrRuntimeDeps): XrRuntime {
     renderer: world.renderer,
     camera: world.camera,
     xrRoot: world.xrRoot,
-    // In AR with hit-test, free-fly translation would slide a placed
-    // scope off its real surface (issue #6) — force scope-style movement
-    // there. AR devices without hit-test keep free-fly (their only way
-    // to position the map manually). VR is unaffected. With the diorama
-    // box active the world slides UNDER a fixed frame, so free-fly is the
-    // whole point — the placed illusion survives it (tyzbit's issue #6
-    // note that free-fly seemed intended to work).
-    freeflyAllowed: () =>
-      getXrState().presentingMode !== 'ar' ||
-      !xrArPlace.isSupported() ||
-      getSettings().dioramaClip,
+    freeflyAllowed,
     // Orbit the selected aircraft when one is picked (matches the desktop
     // follow-cam), else fall back to the scope center. positionOf returns a
     // fresh Vector3 in xrRoot-local space; localToWorld maps it into the
