@@ -6,6 +6,7 @@ import {
   airspaceActive,
   airspaceKindsOn,
   airspaceLimits,
+  airspaceStatus,
   countInside,
   pinAirspace,
   type AirspaceSelection,
@@ -78,7 +79,9 @@ export function mountAirspacePanel(getAircraft: () => Iterable<Aircraft>): Airsp
   const insideValue = el('dd');
   const timesLabel = el('dt', undefined, t('misc.airspace_times'));
   const timesValue = el('dd', 'airspace-times');
-  grid.append(limitsLabel, limitsValue, insideLabel, insideValue, timesLabel, timesValue);
+  const statusLabel = el('dt', undefined, t('misc.airspace_status'));
+  const statusValue = el('dd');
+  grid.append(limitsLabel, limitsValue, insideLabel, insideValue, timesLabel, timesValue, statusLabel, statusValue);
   // Temporary flight restrictions only: what the NOTAM says.
   const tfrGrid = el('dl', 'grid airspace-tfr');
   const tfrRow = (key: Parameters<typeof t>[0]): HTMLElement => {
@@ -152,6 +155,27 @@ export function mountAirspacePanel(getAircraft: () => Iterable<Aircraft>): Airsp
       tfrStatus.textContent = t(started ? 'misc.tfr_active' : 'misc.tfr_upcoming');
       tfrPurpose.textContent = tfr.purpose;
       tfrText.textContent = tfr.text;
+    }
+
+    // Where the clock stands against the published hours. A named airspace
+    // can be several volumes with different hours: say so only if they agree.
+    const statuses = volumes.filter((v) => v.times).map((v) => airspaceStatus(v));
+    const first = statuses[0];
+    const agreed = first !== undefined && statuses.every((s) => s.state === first.state);
+    statusLabel.hidden = statusValue.hidden = tfr !== null || first === undefined;
+    if (first !== undefined) {
+      const key = !agreed
+        ? 'misc.airspace_status_mixed'
+        : first.state === 'active'
+          ? first.intermittent
+            ? 'misc.airspace_status_active_intermittent'
+            : 'misc.airspace_status_active'
+          : first.state === 'inactive'
+            ? first.otherTimesByNotam
+              ? 'misc.airspace_status_inactive_notam'
+              : 'misc.airspace_status_inactive'
+            : 'misc.airspace_status_unknown';
+      statusValue.textContent = t(key);
     }
 
     const rows = shelfRows(volumes);

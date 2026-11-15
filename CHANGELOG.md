@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **Special use airspace follows its published hours**: MOAs and restricted areas outside their times of use are drawn fainter, and the info card says where the clock stands. Areas activated only by NOTAM are left as they were.
 - **Busy scopes are much faster**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
 - **Labels are cheaper to move**: the camera turning over a busy scope no longer repaints every label.
 - **`?perf=1`** logs frame time and draw calls to the console every five seconds.

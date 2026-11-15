@@ -38,6 +38,7 @@ import { DIORAMA_PLANES } from './diorama-clip';
 import { elevationFtAt, subscribeElevation } from './elevation';
 import { terrainActive } from './tiles';
 import { getTfrs, setTfrsWanted, subscribeTfrs } from './tfr';
+import { scheduleFor, scheduleState, type ScheduleState } from './airspace-schedule';
 
 // 3D airspace: US Class B, C and D and special use airspace drawn as the
 // volumes they are. Each published piece is a ground outline with a floor
@@ -72,6 +73,35 @@ export const AIRSPACE_COLORS: Readonly<Record<AirspaceKind, number>> = {
 const WALL_OPACITY = 0.07;
 const LINE_OPACITY = 0.6;
 const FOCUS_WALL_OPACITY = 0.2;
+/** Special use airspace outside its published hours is drawn this much fainter. */
+const INACTIVE_FADE = 0.3;
+/** How often the published hours are checked against the clock. */
+const SCHEDULE_CHECK_MS = 60_000;
+
+export interface AirspaceStatus {
+  /** Inside, outside, or not settled by the published times of use. */
+  state: ScheduleState;
+  /** Outside its hours it can still be activated by NOTAM. */
+  otherTimesByNotam: boolean;
+  intermittent: boolean;
+}
+
+/**
+ * Where a volume stands against its published times of use right now.
+ * Only special use airspace publishes any; everything else, and anything
+ * the schedule does not settle, is 'unknown' and drawn as it always was.
+ */
+export function airspaceStatus(v: AirspaceVolume, now = Date.now()): AirspaceStatus {
+  if (!v.times || !SPECIAL_KINDS.includes(v.kind)) {
+    return { state: 'unknown', otherTimesByNotam: false, intermittent: false };
+  }
+  const schedule = scheduleFor(v.times);
+  return {
+    state: scheduleState(schedule, now, (v.bbox[1] + v.bbox[3]) / 2, (v.bbox[0] + v.bbox[2]) / 2),
+    otherTimesByNotam: schedule.otherTimesByNotam,
+    intermittent: schedule.intermittent,
+  };
+}
 /** Name labels only this close to the feed's home, nearest first. */
 const LABEL_RADIUS_NM = 90;
 const MAX_LABELS = 28;
@@ -320,6 +350,8 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
 
   const wallMats = new Map<AirspaceKind, MeshBasicMaterial>();
   const lineMats = new Map<AirspaceKind, Material>();
+  const idleWallMats = new Map<AirspaceKind, MeshBasicMaterial>();
+  const idleLineMats = new Map<AirspaceKind, LineBasicMaterial>();
   const focusWallMats = new Map<AirspaceKind, MeshBasicMaterial>();
   const focusLineMats = new Map<AirspaceKind, LineBasicMaterial>();
   for (const kind of ALL_KINDS) {
@@ -327,6 +359,8 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     const wall = { color, transparent: true, side: DoubleSide, depthWrite: false, clippingPlanes: DIORAMA_PLANES };
     const line = { color, transparent: true, depthWrite: false, clippingPlanes: DIORAMA_PLANES };
     wallMats.set(kind, new MeshBasicMaterial({ ...wall, opacity: WALL_OPACITY }));
+    idleWallMats.set(kind, new MeshBasicMaterial({ ...wall, opacity: WALL_OPACITY * INACTIVE_FADE }));
+    idleLineMats.set(kind, new LineBasicMaterial({ ...line, opacity: LINE_OPACITY * INACTIVE_FADE }));
     focusWallMats.set(kind, new MeshBasicMaterial({ ...wall, opacity: FOCUS_WALL_OPACITY }));
     // Class D is the dashed blue line on a chart; dash lengths are in NM.
     lineMats.set(
@@ -458,6 +492,12 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     }
   };
 
+  // Which nearby volumes are outside their hours, as one comparable string:
+  // the layer is only rebuilt when the clock actually moves one across.
+  let idleKey = '';
+  const idleSignature = (now: number): string =>
+    nearby.map((v) => (airspaceStatus(v, now).state === 'inactive' ? '1' : '0')).join('');
+
   const rebuild = (): void => {
     disposeLayers(layers);
     disposeLayers(focusLayers);
@@ -469,9 +509,16 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
       ...(all && kinds.size > 0 ? volumesNear(all, HOME.lat, HOME.lon, RANGE_NM, kinds) : []),
       ...(kinds.has('TFR') ? getTfrs() : []),
     ];
+    const now = Date.now();
+    const idle = new Set(nearby.filter((v) => airspaceStatus(v, now).state === 'inactive'));
+    idleKey = idleSignature(now);
     for (const kind of kinds) {
-      const layer = makeLayer(nearby.filter((v) => v.kind === kind), wallMats.get(kind)!, lineMats.get(kind)!, 8, group);
+      const ofKind = nearby.filter((v) => v.kind === kind);
+      const layer = makeLayer(ofKind.filter((v) => !idle.has(v)), wallMats.get(kind)!, lineMats.get(kind)!, 8, group);
       if (layer) layers.push(layer);
+      // Outside its published hours: still there, much fainter.
+      const idleLayer = makeLayer(ofKind.filter((v) => idle.has(v)), idleWallMats.get(kind)!, idleLineMats.get(kind)!, 8, group);
+      if (idleLayer) layers.push(idleLayer);
     }
     placeLabels();
     // The highlight was disposed with the layers above; draw it again.
@@ -514,6 +561,9 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     lastKinds = key;
     sync();
   });
+  setInterval(() => {
+    if (attached && idleSignature(Date.now()) !== idleKey) rebuild();
+  }, SCHEDULE_CHECK_MS);
   subscribeAirspace(rebuild);
   subscribeTfrs(rebuild);
   subscribeHome(rebuild);

@@ -93,7 +93,9 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   extruded between floor and ceiling; also feeds the detail card's
   Airspace row) + `airspace-volumes` (data model, point-in-volume, lazy
   loader) + `airspace-data.json` (generated from FAA open data by
-  `scripts/build-airspace.py`; regenerate, do not hand-edit) + `tfr`
+  `scripts/build-airspace.py`; regenerate, do not hand-edit) +
+  `airspace-schedule` (pure parser of published times of use: active,
+  inactive or unknown, never a guess; inactive volumes draw fainter) + `tfr`
   (live US temporary flight restrictions as `kind: 'TFR'` volumes, from
   the nginx `/tfr/list` and `/tfr/detail/` proxies of tfr.faa.gov; only
   fetched while `airspaceTfr` is on).
