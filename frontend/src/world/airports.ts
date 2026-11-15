@@ -70,12 +70,13 @@ const APPROACH_NM = 10;
 const GLIDE_TAN = Math.tan((3 * Math.PI) / 180);
 /** Pieces per approach: the altitude curve bends a straight descent. */
 const APPROACH_STEPS = 8;
-/** Height over the drawn ground, scene units: clear of the basemap, under the icons. */
-const RUNWAY_LIFT = 0.04;
+/** Height over the drawn ground, scene units. Barely any: a runway is ground,
+ *  and an aircraft parked on it must stand on top of it, not under it. */
+const RUNWAY_LIFT = 0.004;
 const LABEL_RADIUS_NM = 150;
 const MAX_LABELS = 24;
 const ELEVATION_SETTLE_MS = 1500;
-const RUNWAY_COLOR = 0xd7e0ea;
+const RUNWAY_COLOR = 0x8d99a8;
 const APPROACH_COLOR = 0x8fd3ff;
 /** Brightness of a final nobody is flying, of a generic path, and of one in use. */
 const APPROACH_IDLE = 0.4;
@@ -261,15 +262,17 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
   const labelGroup = new Group();
   group.add(labelGroup);
 
+  // Runways are part of the ground. They are opaque and drawn straight
+  // after the basemap, before any aircraft: a polygon offset lets them win
+  // against the terrain they lie on, and because they write no depth,
+  // everything standing on that terrain (aircraft, their ground icons, the
+  // selection ring) then draws over them as it draws over the map. Drawn
+  // late and translucent, as they first were, they covered parked aircraft.
   const runwayMat = new MeshBasicMaterial({
     color: RUNWAY_COLOR,
-    transparent: true,
-    opacity: 0.8,
     side: DoubleSide,
     depthWrite: false,
     clippingPlanes: DIORAMA_PLANES,
-    // Flat on the terrain mesh: pull toward the camera so a corner that
-    // dips under a triangle still draws (the ground icons do the same).
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -6,
@@ -367,7 +370,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
         geom.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
         geom.setIndex(indices);
         runwayMesh = new Mesh(geom, runwayMat);
-        runwayMesh.renderOrder = 3;
+        runwayMesh.renderOrder = -9;
         runwayMesh.frustumCulled = false;
         runwayMesh.userData = { kind: 'runways' };
         group.add(runwayMesh);
