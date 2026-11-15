@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   Group,
   LineBasicMaterial,
   LineSegments,
@@ -65,12 +66,40 @@ export function lightningNear(lat: number, lon: number): number {
   return g ? g.maxNear(lat, lon, 2) : Number.NaN;
 }
 
+const HIDDEN_Y = -1e5;
+
+/** Pure: park every flash slot far below the scene. Slots are drawn as one
+ * ring buffer, so a slot that is not showing a flash must not sit at a
+ * visible position: a zeroed buffer puts all of them at the scene origin. */
+export function hideFlashes(ptPos: Float32Array, linePos: Float32Array): void {
+  for (let i = 1; i < ptPos.length; i += 3) ptPos[i] = HIDDEN_Y;
+  for (let i = 1; i < linePos.length; i += 3) linePos[i] = HIDDEN_Y;
+}
+
+/** Soft round glow for the strike point; without a map a Points sprite is a hard square. */
+function glowTexture(): CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(255,255,255,0.75)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  return new CanvasTexture(canvas);
+}
+
 export function mountLightning(parent: Group): void {
   let unsub: (() => void) | null = null;
   let cells: ReturnType<typeof activeCells> = [];
   const born = new Float32Array(MAX_FLASHES).fill(-1e9);
   const ptPos = new Float32Array(MAX_FLASHES * 3);
   const linePos = new Float32Array(MAX_FLASHES * 6);
+  hideFlashes(ptPos, linePos);
   let next = 0;
   let live = 0;
   const tmp = new Vector3();
@@ -82,6 +111,7 @@ export function mountLightning(parent: Group): void {
   const points = new Points(ptGeo, new PointsMaterial({
     color: 0xfff4c0, size: 2.4, sizeAttenuation: true, transparent: true, opacity: 0.95,
     blending: AdditiveBlending, depthWrite: false, clippingPlanes: DIORAMA_PLANES,
+    map: glowTexture(),
   }));
   const lineGeo = new BufferGeometry();
   lineGeo.setAttribute('position', new BufferAttribute(linePos, 3));
@@ -128,9 +158,9 @@ export function mountLightning(parent: Group): void {
     for (let i = 0; i < MAX_FLASHES; i++) {
       if (now - born[i]! > FLASH_LIFE_MS) {
         if (born[i]! > -1e8) {
-          ptPos[i * 3 + 1] = -1e5;
-          linePos[i * 6 + 1] = -1e5;
-          linePos[i * 6 + 4] = -1e5;
+          ptPos[i * 3 + 1] = HIDDEN_Y;
+          linePos[i * 6 + 1] = HIDDEN_Y;
+          linePos[i * 6 + 4] = HIDDEN_Y;
           born[i] = -1e9;
         }
       } else any = true;
@@ -152,6 +182,7 @@ export function mountLightning(parent: Group): void {
       unsub = null;
       cells = [];
       born.fill(-1e9);
+      hideFlashes(ptPos, linePos);
       ptGeo.setDrawRange(0, 0);
       lineGeo.setDrawRange(0, 0);
       parent.remove(group);
@@ -160,8 +191,11 @@ export function mountLightning(parent: Group): void {
 
   subscribeSettings(sync);
   subscribeHome(() => {
+    // Flashes of the feed being left would otherwise stay parked where
+    // they struck and reappear whenever the new feed has one live.
     cells = [];
     born.fill(-1e9);
+    hideFlashes(ptPos, linePos);
   });
   sync();
 }

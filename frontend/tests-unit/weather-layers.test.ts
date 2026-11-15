@@ -99,6 +99,18 @@ describe('severe cell regions', () => {
 });
 
 describe('lightning rates', () => {
+  it('parks unused flash slots off-scene instead of at the origin', async () => {
+    const { hideFlashes } = await import('../src/world/lightning');
+    // A fresh buffer is all zeros: every slot at the scene centre, drawn
+    // as soon as any one flash is live (the white square over home).
+    const pts = new Float32Array(4 * 3);
+    const lines = new Float32Array(4 * 6);
+    hideFlashes(pts, lines);
+    for (let k = 1; k < pts.length; k += 3) expect(pts[k]).toBeLessThan(-1e4);
+    for (let k = 1; k < lines.length; k += 3) expect(lines[k]).toBeLessThan(-1e4);
+    expect(pts[0]).toBe(0);
+  });
+
   it('turns density into per-second flash rates over active cells only', async () => {
     const { activeCells, flashRatePerSec } = await import('../src/world/lightning');
     expect(flashRatePerSec(0, 100)).toBe(0);
