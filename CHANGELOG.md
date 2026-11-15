@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Labels** no longer flicker at the view edge or the label-density fade while the camera moves.
+- **3D storms**: finer sampling inside the storm removes the grain seen in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)); clear air around it is cheaper.
+
 ---
 
 ## [0.14.2] - 2026-11-15

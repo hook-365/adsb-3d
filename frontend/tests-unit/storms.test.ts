@@ -89,12 +89,34 @@ describe('buildKmLut', () => {
   });
 });
 
-describe('volumeHasEcho', () => {
-  it('is false for a clear-sky volume and true once any cell reaches the ramp', async () => {
-    const { volumeHasEcho } = await import('../src/world/storms');
-    const clear = new Uint8Array(1000).fill(5);
-    expect(volumeHasEcho(clear)).toBe(false);
-    clear[777] = 30;
-    expect(volumeHasEcho(clear)).toBe(true);
+describe('buildOccupancy', () => {
+  it('reports a clear-sky volume as empty', async () => {
+    const { buildOccupancy } = await import('../src/world/storms');
+    const occ = buildOccupancy(new Uint8Array(32 * 32 * 3).fill(5), 32, 32, 3);
+    expect(occ.any).toBe(false);
+    expect(occ.data.some((v) => v !== 0)).toBe(false);
+  });
+
+  it('marks the block holding an echo in any layer, grown by the dilation', async () => {
+    const { buildOccupancy } = await import('../src/world/storms');
+    const nx = 64;
+    const ny = 64;
+    const nz = 3;
+    const vol = new Uint8Array(nx * ny * nz);
+    // One cell in the top layer, at x = 36, y = 20: block (4, 2) of an 8 x 8 map.
+    vol[36 + nx * (20 + ny * 2)] = 40;
+    const occ = buildOccupancy(vol, nx, ny, nz, 8, 1);
+    expect([occ.w, occ.h, occ.any]).toEqual([8, 8, true]);
+    const on = (x: number, y: number): boolean => occ.data[y * occ.w + x] === 255;
+    expect(on(4, 2)).toBe(true);
+    expect(on(3, 1) && on(5, 3)).toBe(true);
+    expect(on(6, 2) || on(4, 4) || on(0, 0)).toBe(false);
+  });
+
+  it('asks for enough coarse strides that none can step over a grown cell', async () => {
+    const { minCoarseSteps } = await import('../src/world/storms');
+    // 256 x 256 volume, 8-cell blocks grown by 2: a stride may span 32 cells of a 362-cell diagonal.
+    expect(minCoarseSteps(256, 256, 8, 2)).toBe(12);
+    expect(minCoarseSteps(256, 256, 8, 1)).toBe(23);
   });
 });

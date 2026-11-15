@@ -68,11 +68,34 @@ const RAMP_MAX_DBZ = 80;
 /** Below this the ramp is fully transparent (its first stop is 18 dBZ, and
  * the ramp texture's linear filter starts fading in just under it). */
 const CLEAR_AIR_DBZ = 16;
-const STEPS_DESKTOP = 64;
-const STEPS_XR = 32;
+// The march is two-level. A coarse pass strides across the box reading
+// only the occupancy map (which columns hold any echo); wherever that says
+// "storm here" each coarse stride is walked again in FINE sub-steps that
+// read the real volume. Clear air costs one lookup per stride, and the
+// samples are spent inside the storm, where a single-level march was so
+// sparse (a step every 8 cells in a headset) that its per-pixel jitter
+// showed as a fixed grain over the cloud (issue #18).
+/** Coarse strides across the box; never fewer than MIN_COARSE (see buildOccupancy). */
+const COARSE_DESKTOP = 24;
+const COARSE_XR = 16;
+/** Fine sub-steps per occupied stride. */
+const FINE_DESKTOP = 4;
+const FINE_XR = 4;
 /** While the camera is moving: the eye forgives a coarser march in motion,
  * and this is when a dropped frame shows. Full quality returns at rest. */
-const STEPS_MOVING = 40;
+const FINE_MOVING = 2;
+/** Occupancy cell size in volume cells, and how many cells it is grown by. */
+const OCC_POOL = 8;
+const OCC_DILATE = 2;
+/**
+ * Fewest coarse strides that cannot step over an occupied cell: a stride
+ * is probed at its midpoint, the map is grown by OCC_DILATE cells each
+ * way, so a stride may span 2 * OCC_DILATE cells, and the longest ray is
+ * the box diagonal.
+ */
+export function minCoarseSteps(nx: number, ny: number, pool = OCC_POOL, dilate = OCC_DILATE): number {
+  return Math.ceil(Math.hypot(nx, ny) / (2 * dilate * pool));
+}
 
 export interface VolumeManifest {
   time: number;
@@ -222,7 +245,9 @@ out vec4 fragColor;
 uniform sampler3D uVolume;
 uniform sampler2D uHeightLut;
 uniform sampler2D uRamp;
-uniform int uSteps;
+uniform int uSteps;      // coarse strides
+uniform int uFine;       // sub-steps per occupied stride
+uniform sampler2D uOcc;  // which columns hold any echo (grown, nearest)
 uniform float uDensity;
 // Echo tops (MRMS EchoTop_18, km, code/10): the march ignores samples above
 // a column's top so cells end at their real height instead of smearing
@@ -234,10 +259,11 @@ uniform sampler2D uKmLut;   // box y -> km MSL
 in vec3 vPosObj;
 in vec3 vCamObj;
 
-float hash12(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.x + p3.y) * p3.z);
+// Interleaved gradient noise: an ordered, evenly spread dither. White noise
+// clumps, and the clumps are what read as grain when the pattern is fixed
+// to the screen while a headset turns.
+float ign(vec2 p) {
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
 void main() {
@@ -251,47 +277,97 @@ void main() {
   float tEnter = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
   float tExit = min(min(tmax.x, tmax.y), tmax.z);
   if (tExit <= tEnter) discard;
-  float stepLen = (tExit - tEnter) / float(uSteps);
-  // Per-pixel jitter hides the slab banding a fixed step would show.
-  float t = tEnter + stepLen * hash12(gl_FragCoord.xy);
+  float coarse = (tExit - tEnter) / float(uSteps);
+  float stepLen = coarse / float(uFine);
+  // Jitter by a fraction of one fine step: enough to hide slab banding,
+  // far too little to show.
+  float tStart = tEnter + stepLen * ign(gl_FragCoord.xy);
   vec3 rgb = vec3(0.0);
   float acc = 0.0;
-  for (int i = 0; i < 128; i++) {
-    if (i >= uSteps || t >= tExit) break;
-    vec3 p = vCamObj + dir * t;
-    // x: west→east. z: -north, so the north edge (z = -0.5) is row 0.
-    // y: scene height → texture layer via the altitude-curve LUT.
-    float w = textureLod(uHeightLut, vec2(p.y + 0.5, 0.5), 0.0).r;
-    float dbz = textureLod(uVolume, vec3(p.x + 0.5, p.z + 0.5, w), 0.0).r * 255.0;
-    t += stepLen;
-    // Most of the box is clear air, which the ramp draws as nothing: stop
-    // here and save the three lookups below. This is most of the march's
-    // cost when a storm fills the screen.
-    if (dbz < ${CLEAR_AIR_DBZ.toFixed(1)}) continue;
-    if (uHasTop > 0.5) {
-      vec2 tuv = (p.xz + 0.5) * uTopUv.xy + uTopUv.zw;
-      float topKm = textureLod(uTop, tuv, 0.0).r * 25.5;
-      float km = textureLod(uKmLut, vec2(p.y + 0.5, 0.5), 0.0).r;
-      // Half a kilometre of grace: EchoTop is itself a 0.5 km stepped product.
-      if (topKm > 0.0 && km > topKm + 0.5) continue;
+  for (int i = 0; i < 64; i++) {
+    float tc = tStart + coarse * float(i);
+    if (i >= uSteps || tc >= tExit || acc > 0.95) break;
+    // Clear column all the way along this stride: skip it for one lookup.
+    vec3 mid = vCamObj + dir * (tc + 0.5 * coarse);
+    if (textureLod(uOcc, mid.xz + 0.5, 0.0).r < 0.5) continue;
+    for (int j = 0; j < 8; j++) {
+      float t = tc + stepLen * float(j);
+      if (j >= uFine || t >= tExit) break;
+      vec3 p = vCamObj + dir * t;
+      // x: west→east. z: -north, so the north edge (z = -0.5) is row 0.
+      // y: scene height → texture layer via the altitude-curve LUT.
+      float w = textureLod(uHeightLut, vec2(p.y + 0.5, 0.5), 0.0).r;
+      float dbz = textureLod(uVolume, vec3(p.x + 0.5, p.z + 0.5, w), 0.0).r * 255.0;
+      // Clear air inside an occupied column: nothing to add.
+      if (dbz < ${CLEAR_AIR_DBZ.toFixed(1)}) continue;
+      if (uHasTop > 0.5) {
+        vec2 tuv = (p.xz + 0.5) * uTopUv.xy + uTopUv.zw;
+        float topKm = textureLod(uTop, tuv, 0.0).r * 25.5;
+        float km = textureLod(uKmLut, vec2(p.y + 0.5, 0.5), 0.0).r;
+        // Half a kilometre of grace: EchoTop is itself a 0.5 km stepped product.
+        if (topKm > 0.0 && km > topKm + 0.5) continue;
+      }
+      vec4 c = textureLod(uRamp, vec2(dbz / ${RAMP_MAX_DBZ.toFixed(1)}, 0.5), 0.0);
+      float a = 1.0 - exp(-c.a * uDensity * stepLen);
+      rgb += (1.0 - acc) * a * c.rgb;
+      acc += (1.0 - acc) * a;
+      if (acc > 0.95) break;
     }
-    vec4 c = textureLod(uRamp, vec2(dbz / ${RAMP_MAX_DBZ.toFixed(1)}, 0.5), 0.0);
-    float a = 1.0 - exp(-c.a * uDensity * stepLen);
-    rgb += (1.0 - acc) * a * c.rgb;
-    acc += (1.0 - acc) * a;
-    if (acc > 0.95) break;
   }
   if (acc <= 0.002) discard;
   fragColor = vec4(rgb, acc);
 }
 `;
 
-/** Pure: does the volume hold anything the ramp would draw? A clear-sky
- * volume is all below the threshold, and marching it costs a full-screen
- * shader pass (twice over in a headset) to draw nothing. */
-export function volumeHasEcho(dbz: Uint8Array, minDbz = CLEAR_AIR_DBZ): boolean {
-  for (let i = 0; i < dbz.length; i++) if (dbz[i]! >= minDbz) return true;
-  return false;
+/**
+ * Pure: the occupancy map the coarse march reads. One byte per
+ * `pool` x `pool` block of columns: 255 where any cell of any layer in the
+ * block, or in a block within `dilate` of it, reaches the ramp. Same x / y
+ * layout as the volume. `any` is false for a clear-sky volume, which is
+ * then not drawn at all: marching it would cost a full-screen shader pass
+ * (twice over in a headset) to draw nothing.
+ */
+export function buildOccupancy(
+  dbz: Uint8Array,
+  nx: number,
+  ny: number,
+  nz: number,
+  pool = OCC_POOL,
+  dilate = OCC_DILATE,
+  minDbz = CLEAR_AIR_DBZ,
+): { data: Uint8Array<ArrayBuffer>; w: number; h: number; any: boolean } {
+  const w = Math.ceil(nx / pool);
+  const h = Math.ceil(ny / pool);
+  const raw = new Uint8Array(w * h);
+  let any = false;
+  for (let z = 0; z < nz; z++) {
+    for (let y = 0; y < ny; y++) {
+      const row = nx * (y + ny * z);
+      const oy = Math.floor(y / pool) * w;
+      for (let x = 0; x < nx; x++) {
+        if (dbz[row + x]! >= minDbz) {
+          raw[oy + Math.floor(x / pool)] = 1;
+          any = true;
+        }
+      }
+    }
+  }
+  const data = new Uint8Array(w * h);
+  if (!any) return { data, w, h, any };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!raw[y * w + x]) continue;
+      for (let dy = -dilate; dy <= dilate; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (let dx = -dilate; dx <= dilate; dx++) {
+          const xx = x + dx;
+          if (xx >= 0 && xx < w) data[yy * w + xx] = 255;
+        }
+      }
+    }
+  }
+  return { data, w, h, any };
 }
 
 export function mountStorms(parent: Group): void {
@@ -299,7 +375,8 @@ export function mountStorms(parent: Group): void {
   let mesh: Mesh | null = null;
   let material: ShaderMaterial | null = null;
   let volumeTex: Data3DTexture | null = null;
-  let hasEcho = false;
+  let occTex: DataTexture | null = null;
+  let coarseMin = 1;
   let lutTex: DataTexture | null = null;
   let kmLutTex: DataTexture | null = null;
   let topTex: DataTexture | null = null;
@@ -360,6 +437,8 @@ export function mountStorms(parent: Group): void {
     dispose();
     volumeTex?.dispose();
     volumeTex = null;
+    occTex?.dispose();
+    occTex = null;
     manifest = null;
   };
 
@@ -367,7 +446,7 @@ export function mountStorms(parent: Group): void {
   const place = (): void => {
     dispose();
     // Clear skies: keep the volume but draw nothing, so it costs nothing.
-    if (!stormsActive() || !manifest || !volumeTex || !hasEcho) return;
+    if (!stormsActive() || !manifest || !volumeTex || !occTex) return;
     const { bounds, heightsKm, nz } = manifest;
     const layerY = heightsKm.map((km) => toScene(HOME.lat, HOME.lon, km * FT_PER_KM, tmp).y);
     const yBottom = layerY[0]!;
@@ -392,7 +471,9 @@ export function mountStorms(parent: Group): void {
         uVolume: { value: volumeTex },
         uHeightLut: { value: lutTex },
         uRamp: { value: rampTex },
-        uSteps: { value: STEPS_DESKTOP },
+        uSteps: { value: Math.max(COARSE_DESKTOP, coarseMin) },
+        uFine: { value: FINE_DESKTOP },
+        uOcc: { value: occTex },
         uDensity: { value: 48 },
         uTop: { value: rampTex },   // placeholder until a field lands
         uHasTop: { value: 0 },
@@ -417,7 +498,9 @@ export function mountStorms(parent: Group): void {
       if (!material) return;
       const moving = !camera.matrixWorld.equals(lastView);
       lastView.copy(camera.matrixWorld);
-      material.uniforms.uSteps!.value = renderer.xr.isPresenting ? STEPS_XR : moving ? STEPS_MOVING : STEPS_DESKTOP;
+      const xr = renderer.xr.isPresenting;
+      material.uniforms.uSteps!.value = Math.max(xr ? COARSE_XR : COARSE_DESKTOP, coarseMin);
+      material.uniforms.uFine!.value = xr ? FINE_XR : moving ? FINE_MOVING : FINE_DESKTOP;
     };
     parent.add(mesh);
   };
@@ -443,7 +526,17 @@ export function mountStorms(parent: Group): void {
       tex.needsUpdate = true;
       volumeTex?.dispose();
       volumeTex = tex;
-      hasEcho = volumeHasEcho(buf);
+      const occ = buildOccupancy(buf, next.nx, next.ny, next.nz);
+      occTex?.dispose();
+      occTex = null;
+      if (occ.any) {
+        occTex = new DataTexture(occ.data, occ.w, occ.h, RedFormat, UnsignedByteType);
+        occTex.minFilter = NearestFilter;
+        occTex.magFilter = NearestFilter;
+        occTex.unpackAlignment = 1;
+        occTex.needsUpdate = true;
+      }
+      coarseMin = minCoarseSteps(next.nx, next.ny);
       manifest = next;
       place();
     } catch {

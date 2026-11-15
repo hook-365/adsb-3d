@@ -9,6 +9,7 @@ import {
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
   Matrix4,
+  Quaternion,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -275,6 +276,9 @@ interface RenderEntry {
   lastLabelClass: string;
   lastLabelColor: string;
   lastLabelOpacity: number;
+  /** The LOD pass's last verdict (off-screen or faded out). syncFrame
+   *  honours it, so the two never fight over label.visible. */
+  lodHidden: boolean;
   isMilitary: boolean;
   isSelected: boolean;
   // Per-frame skip gates. lastRev tracks the store's record rev for this
@@ -646,6 +650,7 @@ function buildEntry(a: Aircraft): RenderEntry {
     lastLabelClass: '',
     lastLabelColor: '',
     lastLabelOpacity: -1,
+    lodHidden: false,
     isMilitary: a.military,
     isSelected: false,
     lastRev: 0,
@@ -1239,6 +1244,10 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], sta
 // advance (~1Hz per aircraft) a stationary camera + stationary aircraft
 // means the previous opacity values are still correct.
 const CAMERA_IDLE_EPS_SQ = 0.05;
+/** Orientation change that counts as a camera move: about 0.25 degrees. */
+const CAMERA_IDLE_QUAT_DOT = 0.9999976;
+/** Longest a label LOD verdict stands without a fresh pass. */
+const LOD_REFRESH_MS = 250;
 
 // Smoothing-gate padding (scene units = NM). Must exceed the largest gap
 // between an aircraft's displayed and raw positions: MAX_DELAY_MS (12 s)
@@ -1257,6 +1266,10 @@ export class AircraftReconciler {
   private lastCamX = Number.NaN;
   private lastCamY = Number.NaN;
   private lastCamZ = Number.NaN;
+  // A camera turning in place (free look) moves the frustum without moving
+  // the camera, so the idle test watches its orientation too.
+  private readonly lastCamQuat = new Quaternion();
+  private lastLodMs = 0;
   // Set by syncFrame whenever an entry is added or removed, so the next
   // updateLabelLOD bypasses the camera-idle skip and assigns opacities
   // for the new entry / drops them for the dropped one.
@@ -1300,6 +1313,7 @@ export class AircraftReconciler {
       projectionMatrix: Matrix4;
       matrixWorld: Matrix4;
       matrixWorldInverse: Matrix4;
+      quaternion: Quaternion;
       updateMatrixWorld(): void;
     }
   ) {
@@ -1552,7 +1566,14 @@ export class AircraftReconciler {
     const dx = this.camPos.x - this.lastCamX;
     const dy = this.camPos.y - this.lastCamY;
     const dz = this.camPos.z - this.lastCamZ;
-    if (!this.lodDirty && dx * dx + dy * dy + dz * dz < CAMERA_IDLE_EPS_SQ) return;
+    // Aircraft move even while the camera rests, so the verdicts also
+    // expire on a clock: one that flies into view gets its label back.
+    const now = performance.now();
+    const stale = now - this.lastLodMs > LOD_REFRESH_MS;
+    const turned = Math.abs(this.camera.quaternion.dot(this.lastCamQuat)) < CAMERA_IDLE_QUAT_DOT;
+    if (!this.lodDirty && !stale && !turned && dx * dx + dy * dy + dz * dz < CAMERA_IDLE_EPS_SQ) return;
+    this.lastLodMs = now;
+    this.lastCamQuat.copy(this.camera.quaternion);
     this.lastCamX = this.camPos.x;
     this.lastCamY = this.camPos.y;
     this.lastCamZ = this.camPos.z;
@@ -1585,6 +1606,7 @@ export class AircraftReconciler {
       // Anchor point is the cone position (the label sits on a small
       // local offset above it — the frustum margin absorbs that error).
       if (!this.frustum.containsPoint(entry.cone.position)) {
+        entry.lodHidden = true;
         if (entry.label.visible) entry.label.visible = false;
         continue;
       }
@@ -1604,6 +1626,7 @@ export class AircraftReconciler {
       }
 
       const wantVisible = opacity > 0.02;
+      entry.lodHidden = !wantVisible;
       if (entry.label.visible !== wantVisible) entry.label.visible = wantVisible;
       if (Math.abs(opacity - entry.lastLabelOpacity) > 0.02) {
         entry.labelEl.style.opacity = opacity >= 0.99 ? '' : opacity.toFixed(2);
@@ -1676,7 +1699,11 @@ export class AircraftReconciler {
       // The LOD pass downstream skips filtered-out entries to keep the
       // label hidden through the next frame.
       const visible = entry.isSelected || passesFilter(a);
-      const labelVisible = visible && labelsAllowed;
+      // The LOD verdict stands between its passes: re-showing a culled
+      // label here every frame, only for the next LOD pass to hide it
+      // again, made labels at the view edge flicker whenever the camera
+      // moved slowly (the LOD pass skips frames with little camera travel).
+      const labelVisible = visible && labelsAllowed && !entry.lodHidden;
       if (entry.group.visible !== visible) entry.group.visible = visible;
       if (entry.label.visible !== labelVisible) entry.label.visible = labelVisible;
       if (!visible) continue;
