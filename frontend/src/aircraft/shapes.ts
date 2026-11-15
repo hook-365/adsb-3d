@@ -1,4 +1,4 @@
-import { CanvasTexture, LinearFilter } from 'three';
+import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter } from 'three';
 import shapesDataJson from './shapes-data.json';
 
 // Aircraft shape catalog vendored from tar1090 (GPL v2+).
@@ -94,6 +94,7 @@ interface CachedTexture {
 const textureCache = new Map<string, CachedTexture>();
 
 const RASTER_PX = 128;
+const ICON_ANISOTROPY = 8;
 
 function buildSvg(def: ShapeDef): string {
   // Render with white fill + black stroke. The stroke width is given in
@@ -152,11 +153,16 @@ export function getShapeTexture(shapeName: string): CachedTexture | null {
   const url = URL.createObjectURL(blob);
 
   const texture = new CanvasTexture(canvas);
-  texture.minFilter = LinearFilter;
+  // Ground icons lie flat and are mostly seen small and at a grazing
+  // angle, far below one texel per pixel. Without mipmaps that minification
+  // skips texels and the outline breaks into jagged, shimmering steps
+  // (most visible in a headset, issue #18); trilinear mipmaps average them
+  // instead and anisotropic filtering keeps the icon from blurring along
+  // the view direction. The renderer clamps anisotropy to what the GPU has.
+  texture.minFilter = LinearMipmapLinearFilter;
   texture.magFilter = LinearFilter;
-  // Stop the texture from interpolating beyond the canvas edges, which
-  // would smear black stroke into transparent space.
-  texture.generateMipmaps = false;
+  texture.generateMipmaps = true;
+  texture.anisotropy = ICON_ANISOTROPY;
 
   const img = new Image();
   img.onload = () => {
