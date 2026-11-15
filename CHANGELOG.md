@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.14.0] - 2026-11-14
+
 ### Added
 
 - **3D airspace** (US only): Class B, C and D and special use airspace drawn as volumes between their floors and ceilings, so a Class B shows as its stacked shelves. Three toggles under Settings, Map: controlled airspace, special use airspace, and the name labels. FAA data, not for navigation.
