@@ -255,6 +255,12 @@ export interface Settings {
   airportLabels: boolean;
   /** Current weather at airports: label tint by flight category, METAR and TAF in the card. */
   airportWeather: boolean;
+  /** Low (Victor, T) and high (Jet, Q) airways (world/navdata.ts; FAA CIFP, US). */
+  airwaysLow: boolean;
+  airwaysHigh: boolean;
+  /** VORs and NDBs, and the named fixes along the airways. */
+  navaids: boolean;
+  fixes: boolean;
   /** Great-circle line along the selected aircraft's scheduled route (world/route-line.ts). */
   routeLine: boolean;
   /**
@@ -344,6 +350,10 @@ const DEFAULTS: Settings = {
   airportApproaches: false,
   airportLabels: true,
   airportWeather: true,
+  airwaysLow: false,
+  airwaysHigh: false,
+  navaids: false,
+  fixes: false,
   routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,

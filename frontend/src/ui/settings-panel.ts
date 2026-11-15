@@ -348,6 +348,30 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'airwaysLow',
+        label: t('settings.airways_low'),
+        description: t('settings.airways_low_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airwaysHigh',
+        label: t('settings.airways_high'),
+        description: t('settings.airways_high_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'navaids',
+        label: t('settings.navaids'),
+        description: t('settings.navaids_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'fixes',
+        label: t('settings.fixes'),
+        description: t('settings.fixes_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'airspaceControlled',
         label: t('settings.airspace_controlled'),
         description: t('settings.airspace_controlled_desc'),
@@ -661,6 +685,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
     { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels', 'airportWeather'] },
+    { heading: t('settings.group_navigation'), ids: ['airwaysLow', 'airwaysHigh', 'navaids', 'fixes'] },
     { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],

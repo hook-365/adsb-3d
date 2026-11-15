@@ -107,7 +107,10 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   loader, range-fetch of one airport from `procedures.pack`, runways in
   use) + `procedure-geometry` (pure: ARINC 424 legs to polylines; legs
   that end on a condition are flagged approximate and drawn dashed) +
-  `procedure-layer` (the one procedure picked in the airport card), `route-line` (great
+  `procedure-layer` (the one procedure picked in the airport card),
+  `navdata` (US airways at the heights they are flown, navaids and fixes)
+  + `navdata.json` (generated from the same CIFP edition by
+  `scripts/build-navdata.py`), `route-line` (great
   circle of the selected aircraft's scheduled route).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
@@ -303,8 +306,9 @@ Generated data (committed; regenerate, never hand-edit; stdlib Python):
 (OurAirports), `scripts/build-runways.py` → `world/runways-data.json`
 (OurAirports; run after build-airports, it keeps that file's airports),
 `scripts/build-procedures.py` → `world/procedures-index.json` +
-`world/procedures.pack` (FAA CIFP; a new edition every 28 days, and the
-airport card shows the cycle and says when it is out of date). The airspace and airports files are fetched as hashed
+`world/procedures.pack` and `scripts/build-navdata.py` →
+`world/navdata.json` (both FAA CIFP; a new edition every 28 days, and
+the airport card shows the cycle and says when it is out of date). The airspace and airports files are fetched as hashed
 assets (`?url`) on first use; the city list is bundled because feed boot
 resolves `?place=` synchronously.
 

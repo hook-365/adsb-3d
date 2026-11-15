@@ -1808,6 +1808,26 @@ body.xr-on .acars-toggle {
   flex-shrink: 0;
 }
 
+/* Navaid and fix names (world/navdata.ts). */
+.aircraft-label.nav-label {
+  display: flex;
+  gap: 5px;
+  font-size: 9px;
+  color: #9fe0c0;
+  border-color: color-mix(in srgb, #9fe0c0 30%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 60%, transparent);
+}
+.aircraft-label.nav-label .nav-sub {
+  color: var(--muted);
+  font-weight: 500;
+}
+.aircraft-label.nav-label.fix-label {
+  color: #8aa0b8;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 2px;
+}
+
 /* Fix names along a drawn procedure (world/procedure-layer.ts). */
 .aircraft-label.procedure-fix {
   display: flex;
