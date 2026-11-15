@@ -8,6 +8,9 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
+  CanvasTexture,
+  Sprite,
+  SpriteMaterial,
   ShapeUtils,
   Vector2,
   Vector3,
@@ -18,6 +21,7 @@ import { HOME, RANGE_NM, subscribeHome } from '../core/config';
 import { toScene } from '../core/coords';
 import { t } from '../core/i18n';
 import { getSettings, subscribeSettings } from '../core/settings';
+import { getXrState, subscribeXr } from '../core/xr';
 import { fmtAltitude } from '../core/units';
 import {
   ALL_KINDS,
@@ -108,6 +112,39 @@ const MAX_LABELS = 28;
 /** Class D fields this close to a labelled Class B or C go unlabelled. */
 const D_LABEL_CLEARANCE_NM = 15;
 const ELEVATION_SETTLE_MS = 1500;
+/** In a headset: how many names are drawn, and how tall each is in scene units (NM). */
+const XR_MAX_LABELS = 12;
+const XR_LABEL_HEIGHT = 5;
+
+/** A name and its limits on a canvas, for the headset where CSS labels cannot draw. */
+function xrLabelSprite(title: string, limits: string, color: number): Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const hex = `#${color.toString(16).padStart(6, '0')}`;
+  if (ctx) {
+    ctx.fillStyle = 'rgba(8, 14, 26, 0.78)';
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.strokeStyle = hex;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 508, 124);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = hex;
+    ctx.font = '600 40px ui-monospace, Menlo, monospace';
+    ctx.fillText(title, 256, 46, 490);
+    ctx.fillStyle = '#b8c4d6';
+    ctx.font = '500 30px ui-monospace, Menlo, monospace';
+    ctx.fillText(limits, 256, 94, 490);
+  }
+  const material = new SpriteMaterial({ map: new CanvasTexture(canvas), transparent: true, depthWrite: false });
+  const sprite = new Sprite(material);
+  sprite.scale.set(XR_LABEL_HEIGHT * 4, XR_LABEL_HEIGHT, 1);
+  sprite.renderOrder = 11;
+  sprite.userData = { kind: 'airspace-label' };
+  return sprite;
+}
 
 export function airspaceKindsOn(): Set<AirspaceKind> {
   const s = getSettings();
@@ -418,6 +455,10 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     for (const child of Array.from(labelGroup.children)) {
       labelGroup.remove(child);
       if (child instanceof CSS2DObject) child.element.remove();
+      if (child instanceof Sprite) {
+        child.material.map?.dispose();
+        child.material.dispose();
+      }
     }
   };
 
@@ -425,7 +466,10 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   // its lowest shelf at that shelf's ceiling, with the overall limits.
   const placeLabels = (): void => {
     clearLabels();
-    if (!getSettings().airspaceLabels) return;
+    // CSS labels are not drawn in a headset: there the nearest few names
+    // become sprites, whatever the desktop label toggle says.
+    const xr = getXrState().presenting;
+    if (!xr && !getSettings().airspaceLabels) return;
     const byName = new Map<string, AirspaceVolume[]>();
     for (const v of nearby) {
       if (distanceToVolumeNm(v, HOME.lat, HOME.lon) > LABEL_RADIUS_NM) continue;
@@ -445,10 +489,21 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     const majors = ranked.filter((g) => g.core.kind === 'B' || g.core.kind === 'C');
     const groups = ranked
       .filter((g) => g.core.kind !== 'D' || !majors.some((m) => distanceToVolumeNm(m.core, (g.core.bbox[1] + g.core.bbox[3]) / 2, (g.core.bbox[0] + g.core.bbox[2]) / 2) <= D_LABEL_CLEARANCE_NM))
-      .slice(0, MAX_LABELS);
+      .slice(0, xr ? XR_MAX_LABELS : MAX_LABELS);
     const pos = new Vector3();
     for (const { list, core } of groups) {
       const ceiling = list.reduce((a, b) => (limitsMsl(b, volumeGroundFt(b)).hi > limitsMsl(a, volumeGroundFt(a)).hi ? b : a));
+      if (xr) {
+        const sprite = xrLabelSprite(
+          airspaceTitle(core.name),
+          airspaceLimits({ loFt: core.loFt, loAgl: core.loAgl, hiFt: ceiling.hiFt, hiAgl: ceiling.hiAgl, unlimited: ceiling.unlimited }),
+          AIRSPACE_COLORS[core.kind],
+        );
+        toScene((core.bbox[1] + core.bbox[3]) / 2, (core.bbox[0] + core.bbox[2]) / 2, limitsMsl(ceiling, volumeGroundFt(ceiling)).hi, pos);
+        sprite.position.copy(pos).setY(pos.y + XR_LABEL_HEIGHT * 0.7);
+        labelGroup.add(sprite);
+        continue;
+      }
       const el = document.createElement('div');
       el.className = 'aircraft-label airspace-label';
       el.style.setProperty('--airspace', `#${AIRSPACE_COLORS[core.kind].toString(16).padStart(6, '0')}`);
@@ -564,6 +619,13 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   setInterval(() => {
     if (attached && idleSignature(Date.now()) !== idleKey) rebuild();
   }, SCHEDULE_CHECK_MS);
+  // Entering or leaving a headset swaps CSS labels for sprites and back.
+  let wasPresenting = getXrState().presenting;
+  subscribeXr((x) => {
+    if (x.presenting === wasPresenting) return;
+    wasPresenting = x.presenting;
+    if (attached) placeLabels();
+  });
   subscribeAirspace(rebuild);
   subscribeTfrs(rebuild);
   subscribeHome(rebuild);

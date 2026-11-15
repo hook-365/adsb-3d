@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Airports**: runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels. Toggles under Settings, Map.
 - **Airways, navaids and fixes** (US): low and high airways drawn at the heights they are flown, VORs and NDBs with frequencies, and the named fixes along the airways. Toggles under Settings, Map, Navigation.
+- **Airspace in the headset**: a wrist-menu page for airspace, TFRs, runways and approaches, and airspace names drawn in VR and AR.
 - **Winds aloft** (`ENABLE_WINDS_ALOFT`, off by default): forecast wind as arrows at a chosen height, and a wind row on the aircraft card with its head or tail wind. From Open-Meteo, proxied and cached hourly.
 - **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.

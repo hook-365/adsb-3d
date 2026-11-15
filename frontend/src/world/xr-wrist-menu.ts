@@ -408,6 +408,16 @@ const PAGES: MenuRow[][] = [
       visible: () => menuActions !== null && getXrState().presentingMode === 'ar',
     },
   ],
+  [
+    // Airspace and airports page (issue #18): the layers that give a
+    // diorama its structure. Their name labels are CSS on the desktop; in a
+    // headset world/airspace.ts draws the nearest few as sprites instead.
+    toggleRow('airspaceControlled', () => tr('misc.xr_airspace_controlled')),
+    toggleRow('airspaceSpecial', () => tr('misc.xr_airspace_special')),
+    toggleRow('airspaceTfr', () => tr('misc.xr_airspace_tfr')),
+    toggleRow('airportRunways', () => tr('misc.xr_runways')),
+    toggleRow('airportApproaches', () => tr('misc.xr_approaches')),
+  ],
   CONTROLS_PAGE,
 ];
 
@@ -440,9 +450,6 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   weatherFreezingLevel: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
   weatherSevere: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
   weatherLightning: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
-  airspaceControlled: 'map decoration toggle; panel-only to keep the wrist pages lean',
-  airspaceSpecial: 'map decoration toggle; panel-only to keep the wrist pages lean',
-  airspaceTfr: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceLabels: 'labels are CSS overlays, never drawn in a headset',
   routeLine: 'map decoration toggle; panel-only to keep the wrist pages lean',
   windsAloft: 'map decoration toggle; panel-only to keep the wrist pages lean',
@@ -452,8 +459,6 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   airwaysHigh: 'map decoration toggle; panel-only to keep the wrist pages lean',
   navaids: 'map decoration toggle; panel-only to keep the wrist pages lean',
   fixes: 'map decoration toggle; panel-only to keep the wrist pages lean',
-  airportRunways: 'map decoration toggle; panel-only to keep the wrist pages lean',
-  airportApproaches: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airportLabels: 'labels are CSS overlays, never drawn in a headset',
   airportWeather: 'shown on labels and in the airport card, both desktop-only',
 };
