@@ -102,7 +102,12 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   3 degree approach paths, ICAO labels) + `runways-data.json` (generated
   from OurAirports by `scripts/build-runways.py`), `airport-weather`
   (METARs around home and a TAF on request, from aviationweather.gov
-  through the nginx `/wx/` proxies; tints the airport labels), `route-line` (great
+  through the nginx `/wx/` proxies; tints the airport labels),
+  `procedures` (US instrument procedures from the FAA's CIFP: index
+  loader, range-fetch of one airport from `procedures.pack`, runways in
+  use) + `procedure-geometry` (pure: ARINC 424 legs to polylines; legs
+  that end on a condition are flagged approximate and drawn dashed) +
+  `procedure-layer` (the one procedure picked in the airport card), `route-line` (great
   circle of the selected aircraft's scheduled route).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
@@ -296,7 +301,10 @@ Generated data (committed; regenerate, never hand-edit; stdlib Python):
 `scripts/build-cities.py` → `feed/explore-cities.json` (GeoNames, CC BY
 4.0), `scripts/build-airports.py` → `feed/explore-airports.json`
 (OurAirports), `scripts/build-runways.py` → `world/runways-data.json`
-(OurAirports; run after build-airports, it keeps that file's airports). The airspace and airports files are fetched as hashed
+(OurAirports; run after build-airports, it keeps that file's airports),
+`scripts/build-procedures.py` → `world/procedures-index.json` +
+`world/procedures.pack` (FAA CIFP; a new edition every 28 days, and the
+airport card shows the cycle and says when it is out of date). The airspace and airports files are fetched as hashed
 assets (`?url`) on first use; the city list is bundled because feed boot
 resolves `?place=` synchronously.
 

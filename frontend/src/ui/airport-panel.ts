@@ -12,18 +12,45 @@ import {
   type Metar,
 } from '../world/airport-weather';
 import { airportsActive, runwayLengthFt, type AirportSite, type Runway } from '../world/airports';
+import {
+  approachRunway,
+  daysLeft,
+  getProcedureIndex,
+  loadProcedureIndex,
+  procedureName,
+  subscribeProcedures,
+  type ProcedureKind,
+} from '../world/procedures';
 
 // Airport card: opened by clicking an airport's label (the same click
 // flies the camera there). Says what the field is, what the weather is
 // doing (decoded METAR, the raw report, the forecast), which runways it
 // has, how much of the traffic on screen is at it right now, and offers
-// to move the Explore scope there. It sits in the aircraft detail card's
+// to move the Explore scope there. Where the FAA publishes procedures it
+// also lists the airport's approaches, arrivals and departures; clicking
+// one draws it (world/procedure-layer.ts). It sits in the aircraft detail card's
 // slot and borrows the airspace card's surface; main.ts keeps the three
 // from being up together.
 
 export interface AirportPanel {
   show(site: AirportSite): void;
   hide(): void;
+}
+
+export interface AirportPanelOptions {
+  /** A procedure was picked in the card, or (null) the pick was cleared. */
+  onProcedure?: (site: AirportSite, pick: { kind: ProcedureKind; id: string } | null) => void;
+}
+
+/** Approach identifiers in runway order, then by name: every approach to 12L, then 12R, ... */
+export function sortApproaches(ids: readonly string[]): string[] {
+  return [...ids].sort((a, b) => {
+    const ra = approachRunway(a);
+    const rb = approachRunway(b);
+    // Circling approaches name no runway: they go last.
+    if ((ra === '') !== (rb === '')) return ra === '' ? 1 : -1;
+    return ra.localeCompare(rb) || procedureName('approach', a).localeCompare(procedureName('approach', b));
+  });
 }
 
 const NEARBY_NM = 5;
@@ -74,7 +101,7 @@ export function countNear(
   return { near, ground };
 }
 
-export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>): AirportPanel {
+export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options: AirportPanelOptions = {}): AirportPanel {
   const root = el('section', 'airspace-panel airport-panel');
   root.hidden = true;
   root.setAttribute('aria-live', 'polite');
@@ -113,10 +140,11 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>): Airpor
   const taf = el('pre', 'airspace-notam');
   const runwaysHeading = el('h3', undefined, t('misc.airport_runways'));
   const runways = el('dl', 'grid airspace-shelves');
+  const procedures = el('div', 'airport-procedures');
   const explore = el('button', 'airport-explore', t('misc.airport_explore'));
   explore.type = 'button';
   const note = el('p', 'airspace-note', t('misc.airport_note'));
-  root.append(header, name, grid, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, explore, note);
+  root.append(header, name, grid, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, procedures, explore, note);
   document.body.appendChild(root);
 
   let current: AirportSite | null = null;
@@ -167,14 +195,63 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>): Airpor
     metar.textContent = m.raw;
   };
 
+  let picked: string | null = null;
+  const pick = (kind: ProcedureKind, id: string): void => {
+    if (!current) return;
+    const key = `${kind}:${id}`;
+    picked = picked === key ? null : key;
+    for (const chip of procedures.querySelectorAll<HTMLElement>('button')) {
+      chip.classList.toggle('active', chip.dataset.key === picked);
+    }
+    options.onProcedure?.(current, picked ? { kind, id } : null);
+  };
+
+  // Approaches, arrivals and departures as the FAA publishes them, when it
+  // does for this airport. Rebuilt when the index arrives.
+  const refreshProcedures = (): void => {
+    procedures.replaceChildren();
+    if (!current) return;
+    const index = getProcedureIndex();
+    const entry = index?.airports[current.airport.icao];
+    procedures.hidden = !index || !entry;
+    if (!index || !entry) return;
+    const section = (kind: ProcedureKind, heading: Parameters<typeof t>[0], ids: readonly string[]): void => {
+      if (ids.length === 0) return;
+      procedures.append(el('h3', undefined, t(heading)));
+      const list = el('div', 'airport-chips');
+      for (const id of ids) {
+        const chip = el('button', undefined, procedureName(kind, id));
+        chip.type = 'button';
+        chip.dataset.key = `${kind}:${id}`;
+        chip.classList.toggle('active', chip.dataset.key === picked);
+        chip.addEventListener('click', () => pick(kind, id));
+        list.append(chip);
+      }
+      procedures.append(list);
+    };
+    section('approach', 'misc.airport_approaches', sortApproaches(entry.a));
+    section('star', 'misc.airport_arrivals', entry.s);
+    section('sid', 'misc.airport_departures', entry.d);
+    const date = new Date(`${index.effective}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const edition = t('misc.airport_procedures_cycle', { cycle: index.cycle, date });
+    const stale = daysLeft(index) < 0;
+    const line = el('p', 'airspace-note', stale ? `${edition} ${t('misc.airport_procedures_stale')}` : edition);
+    line.classList.toggle('stale', stale);
+    procedures.append(line, el('p', 'airspace-note', t('misc.airport_procedures_note')));
+  };
+
   const hide = (): void => {
     if (!current) return;
+    if (picked) options.onProcedure?.(current, null);
+    picked = null;
     current = null;
     root.hidden = true;
     clearInterval(timer);
   };
 
   const show = (site: AirportSite): void => {
+    if (current && picked && current.airport.icao !== site.airport.icao) options.onProcedure?.(current, null);
+    if (current?.airport.icao !== site.airport.icao) picked = null;
     current = site;
     const { airport } = site;
     title.textContent = airport.iata ? `${airport.icao} · ${airport.iata}` : airport.icao;
@@ -190,6 +267,9 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>): Airpor
     explore.hidden = getExploreFeed() === null;
 
     refreshWeather();
+    refreshProcedures();
+    // The card can list procedures whether or not approach paths are drawn.
+    void loadProcedureIndex();
     taf.textContent = t('misc.airport_taf_loading');
     if (getSettings().airportWeather) {
       const asked = airport.icao;
@@ -217,6 +297,7 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>): Airpor
     if (e.key === 'Escape') hide();
   });
   subscribeAirportWeather(refreshWeather);
+  subscribeProcedures(refreshProcedures);
   // The airport belongs to the feed and the layer it was clicked in.
   subscribeHome(hide);
   subscribeSettings(() => {

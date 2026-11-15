@@ -104,3 +104,78 @@ describe('daysLeft', () => {
     expect(daysLeft(edition, Date.UTC(2026, 10, 27, 12))).toBe(-2);
   });
 });
+
+describe('procedureParts', async () => {
+  const { procedureParts, departureStarts } = await import('../src/world/procedure-layer');
+  const { sortApproaches } = await import('../src/ui/airport-panel');
+  const runway = {
+    lowIdent: '12R', highIdent: '30L', lowLat: 44.888, lowLon: -93.234, highLat: 44.874, highLon: -93.201,
+    widthFt: 200, lighted: true, hard: true, lowElevFt: 841, highElevFt: 813,
+  };
+
+  it('splits an approach into transitions, the final and the missed approach', () => {
+    const { parts, fixes } = procedureParts(
+      'approach',
+      [
+        { r: 'A', t: 'KRUGG', legs: [{ l: 'IF', f: 'KRUGG', p: [45.2, -93.8], a1: 7000 }, { l: 'TF', f: 'ZESTY', p: [44.972, -93.43], ad: '+', a1: 4000 }] },
+        {
+          r: 'I', t: '',
+          legs: [
+            { l: 'IF', f: 'ZESTY', p: [44.972, -93.43], a1: 4000, r: 'I' },
+            { l: 'CF', f: 'KINNS', p: [44.945, -93.367], a1: 3000, r: 'F', c: 121 },
+            { l: 'CF', f: 'RW12R', p: [44.888, -93.234], a1: 892, r: 'M', rw: 1, c: 121 },
+            { l: 'CA', c: 121.3, ad: '+', a1: 1300 },
+            { l: 'DF', f: 'FGT', p: [44.631, -93.182], ad: '+', a1: 3000 },
+            { l: 'HM', f: 'FGT', p: [44.631, -93.182], c: 358, t: 'R', tm: 1, a1: 3000 },
+          ],
+        },
+      ],
+      0,
+      [runway],
+    );
+    const main = parts.filter((p) => p.main);
+    expect(main).toHaveLength(1);
+    expect(main[0]!.approximate).toBe(false);
+    expect(main[0]!.points.map((p) => p.altFt)).toEqual([4000, 3000, 892]);
+    // Everything after the missed approach point is dashed, the hold included.
+    const missed = parts.filter((p) => !p.main && p.approximate);
+    expect(missed.length).toBeGreaterThanOrEqual(3);
+    // The transition is solid but not the main route.
+    expect(parts.some((p) => !p.main && !p.approximate)).toBe(true);
+    // ZESTY appears on both segments; the copy with its role wins.
+    expect(fixes.filter((f) => f.name === 'ZESTY')).toHaveLength(1);
+    expect(fixes.find((f) => f.name === 'ZESTY')!.role).toBe('I');
+    expect(fixes.map((f) => f.name)).toEqual(expect.arrayContaining(['KRUGG', 'KINNS', 'RW12R', 'FGT']));
+  });
+
+  it('starts a departure at the far end of the runway its transition names', () => {
+    expect(departureStarts('RW12R', [runway])).toEqual([{ lat: 44.874, lon: -93.201, altFt: 813 }]);
+    expect(departureStarts('RW30L', [runway])).toEqual([{ lat: 44.888, lon: -93.234, altFt: 841 }]);
+    expect(departureStarts('RW12B', [runway, { ...runway, lowIdent: '12L', highIdent: '30R' }])).toHaveLength(2);
+    expect(departureStarts('DKOTA', [runway])).toEqual([]);
+    const { parts } = procedureParts(
+      'sid',
+      [{ r: '4', t: 'RW12R', legs: [{ l: 'VA', c: 121, ad: '+', a1: 1500 }, { l: 'DF', f: 'AAA', p: [44.7, -92.9] }] }],
+      0,
+      [runway],
+    );
+    expect(parts[0]!.points[0]).toMatchObject({ lat: 44.874, lon: -93.201 });
+  });
+
+  it('marks the common route of an arrival as its main part', () => {
+    const { parts } = procedureParts(
+      'star',
+      [
+        { r: '4', t: 'COLDD', legs: [{ l: 'IF', f: 'COLDD', p: [46.5, -94] }, { l: 'TF', f: 'BAINY', p: [45.6, -93.6] }] },
+        { r: '5', t: '', legs: [{ l: 'IF', f: 'BAINY', p: [45.6, -93.6] }, { l: 'TF', f: 'XYZ', p: [45.2, -93.4] }] },
+      ],
+      0,
+      [],
+    );
+    expect(parts.map((p) => p.main)).toEqual([false, true]);
+  });
+
+  it('lists approaches by runway', () => {
+    expect(sortApproaches(['R30LZ', 'I12R', 'VDM-A', 'L12R', 'I12L'])).toEqual(['I12L', 'I12R', 'L12R', 'R30LZ', 'VDM-A']);
+  });
+});

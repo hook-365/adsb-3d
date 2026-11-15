@@ -1801,6 +1801,64 @@ body.xr-on .acars-toggle {
 [data-category="IFR"] { --category: #ff4d4d; }
 [data-category="LIFR"] { --category: #e056e0; }
 
+/* The card scrolls when it is taller than the screen; its parts must keep
+   their size instead of being squeezed to fit (the METAR and TAF boxes
+   collapsed to a sliver once the procedure lists were added). */
+.airspace-panel > * {
+  flex-shrink: 0;
+}
+
+/* Fix names along a drawn procedure (world/procedure-layer.ts). */
+.aircraft-label.procedure-fix {
+  display: flex;
+  gap: 5px;
+  color: #ffd166;
+  border-color: color-mix(in srgb, #ffd166 40%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 72%, transparent);
+  font-size: 9px;
+}
+.aircraft-label.procedure-fix .procedure-limit {
+  color: var(--fg-soft);
+  font-weight: 500;
+}
+
+/* Procedure lists in the airport card: one chip per procedure. */
+.airspace-panel .airport-procedures {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.airspace-panel .airport-procedures[hidden] {
+  display: none;
+}
+.airspace-panel .airport-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.airspace-panel .airport-chips button {
+  font: inherit;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--fg-soft);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, transparent);
+}
+.airspace-panel .airport-chips button:hover {
+  color: var(--fg-bright);
+  border-color: color-mix(in srgb, #ffd166 60%, transparent);
+}
+.airspace-panel .airport-chips button.active {
+  color: #1a1408;
+  background: #ffd166;
+  border-color: #ffd166;
+}
+.airspace-panel .airspace-note.stale {
+  color: #ff8a65;
+}
+
 /* Airport card (ui/airport-panel.ts): the airspace card's surface, with
    the flight category as its accent when one is reported. */
 .airspace-panel.airport-panel {

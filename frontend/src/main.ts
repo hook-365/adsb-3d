@@ -56,6 +56,7 @@ import { mountLightning } from './world/lightning';
 import { mountAirspace } from './world/airspace';
 import { mountRouteLine } from './world/route-line';
 import { mountAirports } from './world/airports';
+import { mountProcedureLayer } from './world/procedure-layer';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountAirportPanel, type AirportPanel } from './ui/airport-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
@@ -1083,7 +1084,19 @@ mountAirspace(world.xrRoot, {
     airspacePanel?.show(selection);
   },
 });
-airportPanel = mountAirportPanel(() => store.snapshot.values());
+const procedureLayer = mountProcedureLayer(world.xrRoot);
+airportPanel = mountAirportPanel(() => store.snapshot.values(), {
+  onProcedure: (site, pick) => {
+    if (!pick) {
+      procedureLayer.clear();
+      return;
+    }
+    // Draw it, then bring the whole of it into view.
+    void procedureLayer.show(site.airport.icao, pick.kind, pick.id, site.airport.place.altFt).then((frame) => {
+      if (frame) frameBox(frame);
+    });
+  },
+});
 mountAirports(world.xrRoot, {
   getTraffic: () => store.snapshot.values(),
   onSelect: (site, center) => {
