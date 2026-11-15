@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.14.1] - 2026-11-15
+
 ### Added
 
 - **Temporary flight restrictions** (US): active and upcoming TFRs as 3D volumes, live from the FAA. Click a label for the NOTAM. Toggle under Settings, Map.
