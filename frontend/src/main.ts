@@ -675,6 +675,12 @@ function cancelReturn(): void {
 // lerp a deselect uses; the free camera has no target to ease, so it
 // jumps. The view keeps the bearing the user was already looking from.
 const FRAME_ELEVATION = (18 * Math.PI) / 180;
+// A shared aircraft link (#hex) glides in to this distance from the
+// aircraft, in NM, once it appears. Cleared when it arrives, when the user
+// takes the camera, or when the selection changes.
+const LINK_ZOOM_DISTANCE = 10;
+let linkZoomHex: string | null = null;
+const linkZoomOffset = new Vector3();
 // Mounted further down, once the store and scene exist; selections made
 // before then have no panel to close.
 let airspacePanel: AirspacePanel | null = null;
@@ -716,6 +722,7 @@ let controlsInteracting = false;
 const targetAtGestureStart = new Vector3();
 controls.addEventListener('start', () => {
   controlsInteracting = true;
+  linkZoomHex = null;
   targetAtGestureStart.copy(controls.target);
 });
 controls.addEventListener('end', () => {
@@ -780,6 +787,7 @@ function applySelection(hex: string | null): void {
   // the one the user framed before they started looking at planes.
   if (hex !== null && xrSelectedHex === null && !returningHome && !freeMode) rememberReturnPose();
   xrSelectedHex = hex;
+  if (hex !== linkZoomHex) linkZoomHex = null;
   // The airspace card shares the detail card's slot: an aircraft takes it over.
   if (hex !== null) airspacePanel?.hide();
   // New target: drop the XR follow anchor so it re-captures at the new
@@ -1136,6 +1144,7 @@ if (initialSelectedHex) {
   }
   setSearchQuery(initialSelectedHex);
   seededSearchHex = initialSelectedHex;
+  linkZoomHex = initialSelectedHex;
 }
 
 let lastFrame = performance.now();
@@ -1207,7 +1216,22 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     // handled above; OrbitControls is disabled
   } else if (followHex && !controlsInteracting) {
     const pos = reconciler.positionOf(followHex);
-    if (pos) controls.target.lerp(pos, FOLLOW_LERP);
+    if (pos) {
+      controls.target.lerp(pos, FOLLOW_LERP);
+      // Opened from a shared aircraft link: the page boots on the whole
+      // scope, where one aircraft is a speck (worse on a phone), so glide
+      // in to a close view once it has a position. One shot.
+      if (linkZoomHex === followHex) {
+        linkZoomOffset.subVectors(world.camera.position, controls.target);
+        const dist = linkZoomOffset.length();
+        if (dist <= LINK_ZOOM_DISTANCE * 1.02) {
+          linkZoomHex = null;
+        } else {
+          linkZoomOffset.setLength(dist + (LINK_ZOOM_DISTANCE - dist) * FOLLOW_LERP);
+          world.camera.position.copy(controls.target).add(linkZoomOffset);
+        }
+      }
+    }
   } else if (returningHome && !controlsInteracting) {
     const dest = returnTarget ?? HOME_TARGET;
     controls.target.lerp(dest, FOLLOW_LERP);

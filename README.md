@@ -292,6 +292,8 @@ Two camera modes, switched with the footer pill (or Settings → Camera):
 - **Orbit** (default): **left-drag** turns around a point, **scroll** zooms,
   **right-drag** pans the view (moves the center point). Selecting an
   aircraft follows it; deselecting eases back to the view you had.
+  The footer's **share** button copies a link to the selected aircraft;
+  opening one zooms in on that aircraft.
 - **Free**: **left-drag** looks around, **WASD** or the arrow keys fly
   relative to where you look, **R / F** (or PageUp / PageDown) go straight
   up and down, **Shift** is fast, **scroll** pushes along the line of sight.

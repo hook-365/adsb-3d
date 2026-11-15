@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Shared aircraft links** zoom in on the aircraft instead of opening on the whole scope.
+
 ---
 
 ## [0.14.1] - 2026-11-15
