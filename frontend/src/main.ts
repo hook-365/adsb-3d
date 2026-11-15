@@ -1154,6 +1154,8 @@ const PERF_LOG = new URLSearchParams(window.location.search).get('perf') === '1'
 let perfMs = 0;
 let perfGlMs = 0;
 let perfLabelMs = 0;
+let perfSyncMs = 0;
+let perfTickMs = 0;
 let perfFrames = 0;
 let xrPerfMs = 0;
 let xrPerfFrames = 0;
@@ -1164,6 +1166,7 @@ let fpsAccumMs = 0;
 // while a session is presenting — the hit-test API (AR place mode) only
 // exists on the frame object.
 function tick(frameTime: number, xrFrame?: XRFrame): void {
+  const tickT0 = PERF_LOG ? performance.now() : 0;
   const dt = frameTime - lastFrame;
   lastFrame = frameTime;
   frames++;
@@ -1275,7 +1278,9 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
       world.camera.updateProjectionMatrix();
     }
   }
+  const syncT0 = PERF_LOG ? performance.now() : 0;
   reconciler.syncFrame();
+  if (PERF_LOG) perfSyncMs += performance.now() - syncT0;
   acarsPings.update(frameTime);
   // CSS2D labels are never rendered while presenting (the render branch
   // below skips labelRenderer), so the LOD pass would be pure wasted
@@ -1400,7 +1405,8 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     stereoEffect.render(world.scene, world.camera);
   } else if (PERF_LOG) {
     // ?perf=1: the desktop twin of the [xr] perf log above, with the frame
-    // split into its two renderers. The newest sample is also left on
+    // split into its two renderers, the reconciler pass (syncMs) and the
+    // whole tick (tickMs). A frame much longer than tickMs is GPU-bound. The newest sample is also left on
     // window.__adsb3dPerf for a remote inspector.
     const t0 = performance.now();
     world.renderer.render(world.scene, world.camera);
@@ -1408,6 +1414,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     labelRenderer.render(world.scene, world.camera);
     perfGlMs += t1 - t0;
     perfLabelMs += performance.now() - t1;
+    perfTickMs += performance.now() - tickT0;
     perfMs += dt;
     perfFrames++;
     if (perfMs >= 5000) {
@@ -1418,13 +1425,15 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
         fps: Math.round(1000 / (perfMs / perfFrames)),
         glMs: round(perfGlMs / perfFrames),
         labelMs: round(perfLabelMs / perfFrames),
+        syncMs: round(perfSyncMs / perfFrames),
+        tickMs: round(perfTickMs / perfFrames),
         drawCalls: render.calls,
         triangles: render.triangles,
         aircraft: reconciler.count,
       };
       console.info('[perf]', sample);
       (window as unknown as { __adsb3dPerf?: unknown }).__adsb3dPerf = sample;
-      perfMs = perfGlMs = perfLabelMs = perfFrames = 0;
+      perfMs = perfGlMs = perfLabelMs = perfSyncMs = perfTickMs = perfFrames = 0;
     }
   } else {
     world.renderer.render(world.scene, world.camera);

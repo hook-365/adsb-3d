@@ -107,10 +107,25 @@ describe('buildOccupancy', () => {
     vol[36 + nx * (20 + ny * 2)] = 40;
     const occ = buildOccupancy(vol, nx, ny, nz, 8, 1);
     expect([occ.w, occ.h, occ.any]).toEqual([8, 8, true]);
-    const on = (x: number, y: number): boolean => occ.data[y * occ.w + x] === 255;
-    expect(on(4, 2)).toBe(true);
-    expect(on(3, 1) && on(5, 3)).toBe(true);
-    expect(on(6, 2) || on(4, 4) || on(0, 0)).toBe(false);
+    // The value is the storm's top layer plus one (the echo is in layer 2).
+    const at = (x: number, y: number): number => occ.data[y * occ.w + x]!;
+    expect(at(4, 2)).toBe(3);
+    expect([at(3, 1), at(5, 3)]).toEqual([3, 3]);
+    expect([at(6, 2), at(4, 4), at(0, 0)]).toEqual([0, 0, 0]);
+  });
+
+  it('keeps the tallest top where grown neighbourhoods overlap', async () => {
+    const { buildOccupancy } = await import('../src/world/storms');
+    const nx = 64;
+    const ny = 64;
+    const nz = 6;
+    const vol = new Uint8Array(nx * ny * nz);
+    vol[4 + nx * (4 + ny * 1)] = 40; // block (0, 0), top layer 1
+    vol[20 + nx * (4 + ny * 5)] = 40; // block (2, 0), top layer 5
+    const occ = buildOccupancy(vol, nx, ny, nz, 8, 1);
+    expect(occ.data[0]).toBe(2);
+    expect(occ.data[1]).toBe(6); // between the two: the taller wins
+    expect(occ.data[2]).toBe(6);
   });
 
   it('asks for enough coarse strides that none can step over a grown cell', async () => {

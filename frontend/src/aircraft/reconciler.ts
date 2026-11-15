@@ -52,6 +52,7 @@ import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-
 import { DIORAMA_PLANES } from '../world/diorama-clip';
 import { groundIconFade, markerViewScale } from './marker-scale';
 import { BodyInstancePool } from './body-instances';
+import { TrailArena } from './trail-arena';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -315,6 +316,11 @@ interface RenderEntry {
   lastTrailLastB: number;
   lastSolidIdx: number;
   lastDashedIdx: number;
+  /** What the fleet-wide TrailArena has yet to copy from this entry's
+   *  arrays: the first solid segment changed since its last add (Infinity
+   *  when none), and whether the dashed side changed at all. */
+  solidDirtyFrom: number;
+  dashedDirty: boolean;
   // Windowed-trail state (trail-length cap). trailStartIdx is the first
   // index of store.trails(hex) currently rendered — advanced only when
   // enough head has expired to be worth a rebuild (see refreshTrail's
@@ -563,7 +569,11 @@ function buildEntry(a: Aircraft): RenderEntry {
   solid.line.userData = { kind: 'trail', hex: a.hex };
   const dashed = buildTrailLine(TRAIL_MAT_DASHED);
   dashed.line.userData = { kind: 'trail-dashed', hex: a.hex };
-  solid.line.visible = dashed.line.visible = getSettings().historyTrails;
+  // Trails are drawn from the reconciler's TrailArenas (issue #18). These
+  // two lines still own the aircraft's trail arrays and all the build
+  // logic, and are themselves drawn only while the aircraft is selected,
+  // with the selected materials (applySelection).
+  solid.line.visible = dashed.line.visible = false;
   const labelEl = document.createElement('div');
   const label = new CSS2DObject(labelEl);
   label.position.set(0, 3.2, 0);
@@ -677,6 +687,8 @@ function buildEntry(a: Aircraft): RenderEntry {
     lastTrailLastB: 0,
     lastSolidIdx: 0,
     lastDashedIdx: 0,
+    solidDirtyFrom: 0,
+    dashedDirty: true,
     trailStartIdx: 0,
     lastStoreFirstMs: Number.NaN,
     lastSampleMs: Number.NaN,
@@ -892,6 +904,7 @@ function clipTrailHead(entry: RenderEntry, points: readonly TrailPoint[] | null,
     solid.posArr[o + 2] = entry.clipEndZ;
     solid.posBuf.needsUpdate = true;
     entry.trailSolid.geometry.instanceCount = fullCount;
+    entry.solidDirtyFrom = Math.min(entry.solidDirtyFrom, entry.clipSegIdx);
     entry.clipSegIdx = -1;
   }
   if (!points || !Number.isFinite(displayMs) || fullCount < 1) return;
@@ -916,6 +929,7 @@ function clipTrailHead(entry: RenderEntry, points: readonly TrailPoint[] | null,
   solid.posArr[o + 1] = c.y;
   solid.posArr[o + 2] = c.z;
   solid.posBuf.needsUpdate = true;
+  entry.solidDirtyFrom = Math.min(entry.solidDirtyFrom, seg);
   entry.trailSolid.geometry.instanceCount = seg + 1;
 }
 
@@ -1153,6 +1167,8 @@ function markTrailUpdated(entry: RenderEntry, solidIdx: number, dashedIdx: numbe
   entry.dashed.posBuf.needsUpdate = true;
   entry.dashed.colBuf.needsUpdate = true;
   entry.dashed.distBuf.needsUpdate = true;
+  entry.solidDirtyFrom = 0;
+  entry.dashedDirty = true;
   entry.trailSolid.geometry.instanceCount = solidIdx / 2;
   entry.trailDashed.geometry.instanceCount = dashedIdx / 2;
 }
@@ -1311,6 +1327,8 @@ export class AircraftReconciler {
   // Fleet-wide altitude-line arena (issue #6): one draw call total.
   private readonly altArena: AltLineArena;
   private readonly bodyPool: BodyInstancePool;
+  private readonly solidTrails: TrailArena;
+  private readonly dashedTrails: TrailArena;
   // Smooth-motion fix history. Subscribes to the store; sampled per frame
   // for visible aircraft (see aircraft/motion.ts).
   private readonly motion: MotionTracker;
@@ -1334,6 +1352,10 @@ export class AircraftReconciler {
     this.motion = new MotionTracker(store, { modeFn: () => getTimeContext().mode });
     this.iconPool = new IconInstancePool(root, s0.groundSprites);
     this.bodyPool = new BodyInstancePool(root);
+    this.solidTrails = new TrailArena(TRAIL_MAT_SOLID, false);
+    this.dashedTrails = new TrailArena(TRAIL_MAT_DASHED, true, 512);
+    this.solidTrails.line.visible = this.dashedTrails.line.visible = s0.historyTrails;
+    root.add(this.solidTrails.line, this.dashedTrails.line);
     this.altArena = new AltLineArena(LINE_MAT_DEFAULT);
     this.altArena.line.visible = s0.altitudeLines;
     root.add(this.altArena.line);
@@ -1362,10 +1384,18 @@ export class AircraftReconciler {
       if (!gsChanged && !alChanged && !labChanged && !shapeChanged && !trailsChanged && !trailLenChanged && !acarsChanged) return;
       if (gsChanged) this.iconPool.setVisible(s.groundSprites);
       if (alChanged) this.altArena.line.visible = s.altitudeLines;
+      if (trailsChanged) {
+        this.solidTrails.line.visible = this.dashedTrails.line.visible = s.historyTrails;
+        // Nothing was copied or uploaded while they were hidden.
+        if (s.historyTrails) {
+          this.solidTrails.invalidate();
+          this.dashedTrails.invalidate();
+        }
+      }
       for (const [hex, entry] of this.entries) {
         if (trailsChanged) {
-          entry.trailSolid.visible = s.historyTrails;
-          entry.trailDashed.visible = s.historyTrails;
+          entry.trailSolid.visible = s.historyTrails && entry.isSelected;
+          entry.trailDashed.visible = s.historyTrails && entry.isSelected;
           // Rebuild on re-enable: refreshTrail was skipped while off, so
           // the buffers may be arbitrarily stale.
           if (s.historyTrails) entry.lastTrailRev = -1;
@@ -1543,6 +1573,8 @@ export class AircraftReconciler {
     // Selected: drawn as its own mesh. Otherwise: an instance in the pool.
     entry.cone.visible = selected;
     entry.labelEl.classList.toggle('selected', selected);
+    // Selected: its own two lines. Otherwise: a slot in the trail arenas.
+    entry.trailSolid.visible = entry.trailDashed.visible = selected && getSettings().historyTrails;
     entry.trailSolid.material = selected ? TRAIL_MAT_SOLID_SELECTED : TRAIL_MAT_SOLID;
     entry.trailDashed.material = selected ? TRAIL_MAT_DASHED_SELECTED : TRAIL_MAT_DASHED;
     // Render selected trail on top so it doesn't z-fight with neighbors.
@@ -1699,6 +1731,10 @@ export class AircraftReconciler {
     this.iconPool.begin();
     this.altArena.begin();
     this.bodyPool.begin();
+    if (trailsOn) {
+      this.solidTrails.begin();
+      this.dashedTrails.begin();
+    }
 
     for (const a of snapshot.values()) {
       let entry = this.entries.get(a.hex);
@@ -1809,6 +1845,31 @@ export class AircraftReconciler {
       if (trailsOn && !this.xrMode && (sampled || entry.clipSegIdx >= 0)) {
         clipTrailHead(entry, sampled ? (this.store.trails(a.hex) ?? null) : null, sampled ? sampled.ms : Number.NaN);
       }
+      if (trailsOn && !entry.isSelected) {
+        // The arena draws the trail from the entry's own arrays; the head
+        // clip shortens instanceCount, which is what "visible" carries.
+        this.solidTrails.add(
+          entry,
+          entry.solid.posArr,
+          entry.solid.colArr,
+          null,
+          entry.lastSolidIdx / 2,
+          entry.trailSolid.geometry.instanceCount,
+          entry.solidDirtyFrom,
+        );
+        const dashedCount = entry.lastDashedIdx / 2;
+        this.dashedTrails.add(
+          entry,
+          entry.dashed.posArr,
+          entry.dashed.colArr,
+          entry.dashed.distArr,
+          dashedCount,
+          dashedCount,
+          entry.dashedDirty ? 0 : Number.POSITIVE_INFINITY,
+        );
+        entry.solidDirtyFrom = Number.POSITIVE_INFINITY;
+        entry.dashedDirty = false;
+      }
       // Stale-data fade: cone + ground icon fade toward STALE_MIN_OPACITY
       // as lastSeenMs grows. The selected aircraft stays at full opacity
       // so the user can keep inspecting it even when the feed is choppy.
@@ -1913,6 +1974,10 @@ export class AircraftReconciler {
     this.iconPool.commit();
     this.altArena.commit();
     this.bodyPool.commit();
+    if (trailsOn) {
+      this.solidTrails.commit();
+      this.dashedTrails.commit();
+    }
   }
 
   get count(): number {

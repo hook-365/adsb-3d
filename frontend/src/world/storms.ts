@@ -79,8 +79,8 @@ const CLEAR_AIR_DBZ = 16;
 const COARSE_DESKTOP = 24;
 const COARSE_XR = 16;
 /** Fine sub-steps per occupied stride. */
-const FINE_DESKTOP = 4;
-const FINE_XR = 4;
+const FINE_DESKTOP = 3;
+const FINE_XR = 3;
 /** While the camera is moving: the eye forgives a coarser march in motion,
  * and this is when a dropped frame shows. Full quality returns at rest. */
 const FINE_MOVING = 2;
@@ -247,7 +247,7 @@ uniform sampler2D uHeightLut;
 uniform sampler2D uRamp;
 uniform int uSteps;      // coarse strides
 uniform int uFine;       // sub-steps per occupied stride
-uniform sampler2D uOcc;  // which columns hold any echo (grown, nearest)
+uniform sampler2D uOcc;  // per column block: 0 = no echo, else box height of its top
 uniform float uDensity;
 // Echo tops (MRMS EchoTop_18, km, code/10): the march ignores samples above
 // a column's top so cells end at their real height instead of smearing
@@ -289,7 +289,13 @@ void main() {
     if (i >= uSteps || tc >= tExit || acc > 0.95) break;
     // Clear column all the way along this stride: skip it for one lookup.
     vec3 mid = vCamObj + dir * (tc + 0.5 * coarse);
-    if (textureLod(uOcc, mid.xz + 0.5, 0.0).r < 0.5) continue;
+    float top = textureLod(uOcc, mid.xz + 0.5, 0.0).r;
+    if (top <= 0.0) continue;
+    // Nor is there anything above the storm's top: a ray from a camera
+    // looking down spends much of its length up there. The stride's lower
+    // end decides, since the ray may be descending into the storm.
+    float yLow = min(dir.y * tc, dir.y * (tc + coarse)) + vCamObj.y + 0.5;
+    if (yLow > top) continue;
     for (int j = 0; j < 8; j++) {
       float t = tc + stepLen * float(j);
       if (j >= uFine || t >= tExit) break;
@@ -321,9 +327,10 @@ void main() {
 
 /**
  * Pure: the occupancy map the coarse march reads. One byte per
- * `pool` x `pool` block of columns: 255 where any cell of any layer in the
- * block, or in a block within `dilate` of it, reaches the ramp. Same x / y
- * layout as the volume. `any` is false for a clear-sky volume, which is
+ * `pool` x `pool` block of columns: 0 where no cell of any layer in the
+ * block, or in a block within `dilate` of it, reaches the ramp; otherwise
+ * one more than the highest layer that does, across that neighbourhood.
+ * Same x / y layout as the volume. `any` is false for a clear-sky volume, which is
  * then not drawn at all: marching it would cost a full-screen shader pass
  * (twice over in a headset) to draw nothing.
  */
@@ -346,7 +353,8 @@ export function buildOccupancy(
       const oy = Math.floor(y / pool) * w;
       for (let x = 0; x < nx; x++) {
         if (dbz[row + x]! >= minDbz) {
-          raw[oy + Math.floor(x / pool)] = 1;
+          // Layers are visited bottom up, so the last write is the top.
+          raw[oy + Math.floor(x / pool)] = z + 1;
           any = true;
         }
       }
@@ -362,7 +370,7 @@ export function buildOccupancy(
         if (yy < 0 || yy >= h) continue;
         for (let dx = -dilate; dx <= dilate; dx++) {
           const xx = x + dx;
-          if (xx >= 0 && xx < w) data[yy * w + xx] = 255;
+          if (xx >= 0 && xx < w && raw[y * w + x]! > data[yy * w + xx]!) data[yy * w + xx] = raw[y * w + x]!;
         }
       }
     }
@@ -375,6 +383,8 @@ export function mountStorms(parent: Group): void {
   let mesh: Mesh | null = null;
   let material: ShaderMaterial | null = null;
   let volumeTex: Data3DTexture | null = null;
+  /** Storm-top layers per column block, from the loaded volume. */
+  let occ: { data: Uint8Array; w: number; h: number } | null = null;
   let occTex: DataTexture | null = null;
   let coarseMin = 1;
   let lutTex: DataTexture | null = null;
@@ -405,6 +415,8 @@ export function mountStorms(parent: Group): void {
     lutTex = null;
     kmLutTex?.dispose();
     kmLutTex = null;
+    occTex?.dispose();
+    occTex = null;
   };
 
   /** Upload (or clear) the echo-top texture and its uv mapping into the live material. */
@@ -437,8 +449,7 @@ export function mountStorms(parent: Group): void {
     dispose();
     volumeTex?.dispose();
     volumeTex = null;
-    occTex?.dispose();
-    occTex = null;
+    occ = null;
     manifest = null;
   };
 
@@ -446,12 +457,27 @@ export function mountStorms(parent: Group): void {
   const place = (): void => {
     dispose();
     // Clear skies: keep the volume but draw nothing, so it costs nothing.
-    if (!stormsActive() || !manifest || !volumeTex || !occTex) return;
+    if (!stormsActive() || !manifest || !volumeTex || !occ) return;
     const { bounds, heightsKm, nz } = manifest;
     const layerY = heightsKm.map((km) => toScene(HOME.lat, HOME.lon, km * FT_PER_KM, tmp).y);
     const yBottom = layerY[0]!;
     const yTop = layerY[nz - 1]!;
     if (!(yTop > yBottom)) return;
+    // The occupancy map holds layer numbers; the shader wants box heights,
+    // which follow the altitude curve like everything else here. One layer
+    // of headroom, since the volume is interpolated between layers.
+    const tops = new Uint8Array(occ.data.length);
+    for (let i = 0; i < tops.length; i++) {
+      const v = occ.data[i]!;
+      if (v === 0) continue;
+      const y = (layerY[Math.min(v, nz - 1)]! - yBottom) / (yTop - yBottom);
+      tops[i] = Math.min(255, Math.max(1, Math.ceil(y * 255)));
+    }
+    occTex = new DataTexture(tops, occ.w, occ.h, RedFormat, UnsignedByteType);
+    occTex.minFilter = NearestFilter;
+    occTex.magFilter = NearestFilter;
+    occTex.unpackAlignment = 1;
+    occTex.needsUpdate = true;
     // The tangent plane is linear in lat/lon, so two corners fix the box.
     const nw = toScene(bounds.north, bounds.west, 0, new Vector3());
     const se = toScene(bounds.south, bounds.east, 0, new Vector3());
@@ -526,16 +552,8 @@ export function mountStorms(parent: Group): void {
       tex.needsUpdate = true;
       volumeTex?.dispose();
       volumeTex = tex;
-      const occ = buildOccupancy(buf, next.nx, next.ny, next.nz);
-      occTex?.dispose();
-      occTex = null;
-      if (occ.any) {
-        occTex = new DataTexture(occ.data, occ.w, occ.h, RedFormat, UnsignedByteType);
-        occTex.minFilter = NearestFilter;
-        occTex.magFilter = NearestFilter;
-        occTex.unpackAlignment = 1;
-        occTex.needsUpdate = true;
-      }
+      const built = buildOccupancy(buf, next.nx, next.ny, next.nz);
+      occ = built.any ? built : null;
       coarseMin = minCoarseSteps(next.nx, next.ny);
       manifest = next;
       place();
