@@ -50,7 +50,8 @@ The defining pattern is **inverted dataflow + a reconciler**:
 State is shared via **subscribe-pattern singletons**: a module-level singleton
 exposing `getX()` / `updateX()` / `subscribeX()` backed by a listener `Set`.
 No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
-`core/time-context.ts`, `core/filter.ts`, `feed/feeds.ts`,
+`core/time-context.ts`, `core/filter.ts`, `core/loading.ts` (what the
+loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds.ts`,
 `feed/voice-calls.ts`, `aircraft/acars-store.ts`.
 
 `src/` directories:

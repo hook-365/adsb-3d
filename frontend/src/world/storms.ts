@@ -20,6 +20,8 @@ import {
 } from 'three';
 import { HOME, WEATHER3D_ENABLED, subscribeHome } from '../core/config';
 import { toScene } from '../core/coords';
+import { t } from '../core/i18n';
+import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { DIORAMA_PLANES } from './diorama-clip';
 import { subscribeField, type FieldGrid } from './weather-fields';
@@ -560,12 +562,19 @@ export function mountStorms(parent: Group): void {
     } catch {
       // Offline or upstream down: keep the last volume we drew.
     } finally {
+      waiting(false);
       if (loadingTime === next.time) loadingTime = -1;
     }
   };
 
+  /** The loading toast: up from the first request until a volume (or a
+   *  definite "nothing here") comes back. Refreshes of a volume already
+   *  on screen are silent. */
+  const waiting = (on: boolean): void => setLoading('storms', on ? t('settings.weather_storms_3d') : null);
+
   const poll = async (): Promise<void> => {
     if (!stormsActive()) return;
+    if (manifest === null) waiting(true);
     try {
       const res = await fetch(manifestUrl(HOME.lat, HOME.lon), { cache: 'no-store' });
       if (res.status === 503) {
@@ -574,10 +583,14 @@ export function mountStorms(parent: Group): void {
         if (retry === null) retry = window.setTimeout(() => { retry = null; void poll(); }, RETRY_MS);
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) {
+        waiting(false);
+        return;
+      }
       const json: unknown = await res.json();
       const next = parseVolumeManifest(json);
       if (next === null) {
+        waiting(false);
         if ((json as { coverage?: unknown } | null)?.coverage === false && !warnedCoverage) {
           warnedCoverage = true;
           console.info('[storms] this feed is outside MRMS coverage; 3D storms stay empty');
@@ -585,8 +598,10 @@ export function mountStorms(parent: Group): void {
         return;
       }
       if (manifest === null || next.time !== manifest.time) void load(next);
+      else waiting(false);
     } catch {
       // Keep whatever is drawn.
+      waiting(false);
     }
   };
 
@@ -613,6 +628,7 @@ export function mountStorms(parent: Group): void {
         retry = null;
       }
     }
+    if (!on) waiting(false);
     if (!on && mesh) dispose();
     else if (on && !mesh && manifest && volumeTex) place();
   };

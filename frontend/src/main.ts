@@ -56,6 +56,7 @@ import { mountLightning } from './world/lightning';
 import { mountAirspace } from './world/airspace';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
+import { mountLoadingToast } from './ui/loading-toast';
 import { mountWhatsNew } from './ui/whats-new';
 import { mountShapeChip } from './ui/shape-chip';
 import { mountAltitudeLegend } from './ui/altitude-legend';
@@ -1074,6 +1075,7 @@ mountAirspace(world.xrRoot, {
   },
 });
 mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
+mountLoadingToast();
 mountWhatsNew();
 
 // ────────────────────────────────────────────────────────────────────

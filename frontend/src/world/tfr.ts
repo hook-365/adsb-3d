@@ -1,4 +1,6 @@
 import { HOME, RANGE_NM, subscribeHome } from '../core/config';
+import { t } from '../core/i18n';
+import { setLoading } from '../core/loading';
 import { distanceToVolumeNm, type AirspaceVolume } from './airspace-volumes';
 
 // Temporary flight restrictions (US): the one live part of the airspace
@@ -214,6 +216,7 @@ let volumes: AirspaceVolume[] = [];
 let wanted = false;
 let timer: ReturnType<typeof setInterval> | undefined;
 let generation = 0;
+let loadedOnce = false;
 const details = new Map<string, AirspaceVolume[]>();
 const listeners = new Set<() => void>();
 
@@ -235,6 +238,9 @@ function publish(next: AirspaceVolume[]): void {
 
 async function poll(): Promise<void> {
   const mine = ++generation;
+  // Toast for the first fetch of a place only; refreshes are silent.
+  const first = !loadedOnce;
+  if (first) setLoading('tfr', t('settings.airspace_tfr'));
   try {
     const res = await fetch(LIST_URL);
     if (!res.ok) return;
@@ -264,8 +270,11 @@ async function poll(): Promise<void> {
     for (const key of details.keys()) if (!listed.has(key)) details.delete(key);
     const now = Date.now();
     publish(found.flat().filter((v) => tfrCurrent(v, now)));
+    loadedOnce = true;
   } catch {
     // Offline or the FAA site is down: keep what is drawn.
+  } finally {
+    if (first) setLoading('tfr', null);
   }
 }
 
@@ -287,5 +296,6 @@ export function setTfrsWanted(on: boolean): void {
 subscribeHome(() => {
   if (!wanted) return;
   publish([]);
+  loadedOnce = false;
   void poll();
 });

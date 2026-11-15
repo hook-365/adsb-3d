@@ -1,4 +1,6 @@
 import { HOME, WEATHER3D_ENABLED, subscribeHome } from '../core/config';
+import { t } from '../core/i18n';
+import { setLoading } from '../core/loading';
 
 // 2-D MRMS fields from weather-service (echo tops, freezing level,
 // precipitation rate and type, hail, lightning): one manifest
@@ -131,6 +133,22 @@ let timer: number | null = null;
 let retry: number | null = null;
 const loading = new Set<string>();
 
+// Which toggle each field belongs to, for the loading toast. Echo tops
+// ride along with the 3D storms, which report their own loading.
+const FIELD_LABEL: Readonly<Record<string, Parameters<typeof t>[0]>> = {
+  preciprate: 'settings.weather_radar',
+  preciptype: 'settings.weather_radar',
+  freezing: 'settings.weather_freezing',
+  mesh: 'settings.weather_severe',
+  lightning: 'settings.weather_lightning',
+};
+
+/** Tell the toast that `id` is awaited (or no longer is). */
+function pending(id: string, on: boolean): void {
+  const key = FIELD_LABEL[id];
+  if (key) setLoading(`field:${id}`, on ? t(key) : null);
+}
+
 function emit(id: string): void {
   const grid = grids.get(id) ?? null;
   for (const fn of listeners.get(id) ?? []) fn(grid);
@@ -149,10 +167,13 @@ async function loadField(id: string, info: FieldInfo, m: FieldManifest): Promise
       return;
     }
     grids.set(id, makeFieldGrid(id, info, m, buf));
+    pending(id, false);
     emit(id);
   } catch {
     // Offline or upstream down: keep the last grid.
   } finally {
+    // Arrived or failed, the wait is over; the next poll tries again quietly.
+    pending(id, false);
     loading.delete(key);
   }
 }
@@ -165,18 +186,29 @@ async function poll(): Promise<void> {
       if (retry === null) retry = window.setTimeout(() => { retry = null; void poll(); }, RETRY_MS);
       return;
     }
-    if (!res.ok) return;
+    if (!res.ok) {
+      for (const id of listeners.keys()) pending(id, false);
+      return;
+    }
     const next = parseFieldManifest(await res.json());
-    if (!next) return;
+    if (!next) {
+      // No coverage here (or nothing usable): there is nothing to wait for.
+      for (const id of listeners.keys()) pending(id, false);
+      return;
+    }
     manifest = next;
     for (const id of listeners.keys()) {
       const info = next.fields[id];
-      if (!info) continue;
+      if (!info) {
+        pending(id, false);
+        continue;
+      }
       const have = grids.get(id);
       if (!have || have.time !== info.time) void loadField(id, info, next);
     }
   } catch {
     // Keep whatever we have.
+    for (const id of listeners.keys()) pending(id, false);
   }
 }
 
@@ -210,12 +242,16 @@ export function subscribeField(id: string, fn: Listener): () => void {
   set.add(fn);
   const have = grids.get(id);
   if (have) fn(have);
+  else if (WEATHER3D_ENABLED) pending(id, true);
   syncPolling();
   return () => {
     const s = listeners.get(id);
     if (!s) return;
     s.delete(fn);
-    if (s.size === 0) listeners.delete(id);
+    if (s.size === 0) {
+      listeners.delete(id);
+      pending(id, false);
+    }
     syncPolling();
   };
 }
@@ -237,6 +273,9 @@ if (typeof window !== 'undefined') {
     const ids = Array.from(grids.keys());
     grids.clear();
     for (const id of ids) emit(id);
-    if (timer !== null) void poll();
+    if (timer !== null) {
+      for (const id of listeners.keys()) pending(id, true);
+      void poll();
+    }
   });
 }

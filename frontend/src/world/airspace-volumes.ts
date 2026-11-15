@@ -1,5 +1,7 @@
 import dataUrl from './airspace-data.json?url';
 import type { TfrInfo } from './tfr';
+import { t } from '../core/i18n';
+import { setLoading } from '../core/loading';
 
 // Airspace volumes: the data model behind the 3D airspace layer
 // (world/airspace.ts) and the detail card's "Airspace" row.
@@ -223,6 +225,7 @@ export function subscribeAirspace(fn: () => void): () => void {
 
 export function loadAirspace(): Promise<void> {
   if (volumes) return Promise.resolve();
+  if (!loading) setLoading('airspace', t('settings.group_airspace'));
   loading ??= fetch(dataUrl)
     .then((res) => {
       if (!res.ok) throw new Error(`airspace data: HTTP ${res.status}`);
@@ -235,6 +238,7 @@ export function loadAirspace(): Promise<void> {
     .catch((err: unknown) => {
       console.warn('[airspace] could not load volumes', err);
       loading = null;
-    });
+    })
+    .finally(() => setLoading('airspace', null));
   return loading;
 }

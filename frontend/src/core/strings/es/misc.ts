@@ -86,6 +86,7 @@ export const miscStrings = {
   'misc.xr_basemap_ifr_low': 'IFR bajo',
   'misc.xr_basemap_ifr_high': 'IFR alto',
   'misc.emergency_toast': '⚠ {flight} · {detail}',
+  'misc.loading_toast': 'Cargando {what}…',
   'misc.emergency_toast_hint': 'Clic para seleccionar esta aeronave',
   'misc.whats_new_title': 'Novedades en v{version}',
   'misc.whats_new_full': 'Registro de cambios completo',
