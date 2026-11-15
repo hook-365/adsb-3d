@@ -12,6 +12,7 @@ import { elevationFtAt } from '../world/elevation';
 import { stormsActive } from '../world/storms';
 import { getField, subscribeField } from '../world/weather-fields';
 import { lightningActive, lightningNear } from '../world/lightning';
+import { airspaceFor, airspaceSummary } from '../world/airspace';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
 
@@ -164,6 +165,8 @@ export function createAircraftDetail(
   const stormTopEl = document.getElementById('detail-stormtop')!;
   const lightningLabelEl = document.getElementById('detail-lightning-label')!;
   const lightningEl = document.getElementById('detail-lightning')!;
+  const airspaceLabelEl = document.getElementById('detail-airspace-label')!;
+  const airspaceEl = document.getElementById('detail-airspace')!;
   const vrateEl = document.getElementById('detail-vrate')!;
   const spdEl = document.getElementById('detail-spd')!;
   const hdgEl = document.getElementById('detail-hdg')!;
@@ -387,6 +390,7 @@ export function createAircraftDetail(
     if (!selectedHex) {
       root.hidden = true;
       pillEl.hidden = true;
+      airspaceFor(null);
       return;
     }
     const a = store.snapshot.get(selectedHex);
@@ -437,6 +441,11 @@ export function createAircraftDetail(
     const strikes = lightningActive() ? lightningNear(a.lat, a.lon) : Number.NaN;
     setRow(lightningLabelEl, lightningEl, t('detail.lightning'),
       Number.isFinite(strikes) && strikes > 0 ? t('misc.lightning_nearby', { rate: strikes.toFixed(strikes < 1 ? 2 : 1) }) : null);
+
+    // Airspace the aircraft is inside while the 3D airspace layer is on
+    // (one line per volume); the same call highlights those volumes.
+    const inside = airspaceFor(a);
+    setRow(airspaceLabelEl, airspaceEl, t('detail.airspace'), inside.length ? inside.map(airspaceSummary).join('\n') : null);
 
     const groundFt = elevationFtAt(a.lat, a.lon);
     altEl.textContent = a.onGround

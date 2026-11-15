@@ -4,8 +4,9 @@ import { Euler, Vector3, type PerspectiveCamera } from 'three';
 // Drag to look around (yaw/pitch, no roll), WASD or the arrow keys to fly
 // relative to the view heading, R/F (or PageUp/PageDown) for straight up
 // and down, Shift for a burst of speed, and the wheel to push along the
-// line of sight. Speed scales with height so a sweep over a city at
-// 200 NM up and a taxi past a terminal both feel deliberate.
+// line of sight. Speed scales with height above the ground so a sweep
+// over a city at 200 NM up and a walk around an airspace shelf a few
+// hundred feet off the deck both feel deliberate.
 //
 // main.ts owns the mode switch: while free, OrbitControls is disabled and
 // this class's update() runs once per frame instead of controls.update();
@@ -14,8 +15,14 @@ import { Euler, Vector3, type PerspectiveCamera } from 'three';
 
 const LOOK_RAD_PER_PX = 0.0035;
 const PITCH_LIMIT = Math.PI / 2 - 0.05;
-const BASE_SPEED = 12; // scene units (NM) per second at ground level
-const SPEED_PER_UNIT_HEIGHT = 0.45; // added per unit of camera height
+const BASE_SPEED = 12; // scene units (NM) per second once clear of the ground
+const SPEED_PER_UNIT_HEIGHT = 0.45; // added per unit of height above ground
+// Near the ground the base speed ramps up from a walk: 12 NM/s is a blur
+// when the thing being inspected is a few miles across.
+const GROUND_SPEED = 0.6;
+const GROUND_SPEED_RAMP = 1.5; // per unit of height, until BASE_SPEED
+const WHEEL_GROUND_SCALE = 0.05;
+const WHEEL_SCALE_RAMP = 0.12; // per unit of height, until full step
 const SPRINT = 3;
 const WHEEL_UNITS_PER_PX = 0.08;
 const MAX_RANGE = 1500; // keep the eye within the scope's basemap/terrain
@@ -29,6 +36,17 @@ const KEY_DOWN = new Set(['f', 'F', 'PageDown']);
 export const FREE_CAMERA_KEYS: ReadonlySet<string> = new Set([
   ...KEY_FORWARD, ...KEY_BACK, ...KEY_LEFT, ...KEY_RIGHT, ...KEY_UP, ...KEY_DOWN,
 ]);
+
+/** Flight speed in scene units per second for a height above the ground. */
+export function flySpeed(heightAboveGround: number): number {
+  const h = Math.max(0, heightAboveGround);
+  return Math.min(BASE_SPEED, GROUND_SPEED + h * GROUND_SPEED_RAMP) + h * SPEED_PER_UNIT_HEIGHT;
+}
+
+/** Fraction of the full wheel step to take at a height above the ground. */
+export function wheelScale(heightAboveGround: number): number {
+  return Math.min(1, WHEEL_GROUND_SCALE + Math.max(0, heightAboveGround) * WHEEL_SCALE_RAMP);
+}
 
 /** Smallest signed rotation from `from` to `to`, in (-π, π]. */
 export function shortestAngle(from: number, to: number): number {
@@ -77,6 +95,8 @@ export class FreeCamera {
   private detach: (() => void) | null = null;
   private readonly tmp = new Vector3();
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
+  /** Scene height of the ground under the eye; main.ts refreshes it each frame. */
+  groundY = 0;
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -130,9 +150,7 @@ export class FreeCamera {
     if (!this._enabled) return;
     const dir = moveVector(this.keys, this.yaw, this.tmp);
     if (dir.lengthSq() > 0) {
-      const speed =
-        (BASE_SPEED + Math.max(0, this.camera.position.y) * SPEED_PER_UNIT_HEIGHT) *
-        (this.sprint ? SPRINT : 1);
+      const speed = flySpeed(this.camera.position.y - this.groundY) * (this.sprint ? SPRINT : 1);
       this.camera.position.addScaledVector(dir, (speed * Math.min(dtMs, 100)) / 1000);
       this.clampRange();
     }
@@ -185,7 +203,11 @@ export class FreeCamera {
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       // Push along the line of sight; wheel-down backs away, like orbit zoom.
-      const step = -e.deltaY * WHEEL_UNITS_PER_PX * (1 + Math.max(0, this.camera.position.y) / 200);
+      const step =
+        -e.deltaY *
+        WHEEL_UNITS_PER_PX *
+        (1 + Math.max(0, this.camera.position.y) / 200) *
+        wheelScale(this.camera.position.y - this.groundY);
       this.camera.getWorldDirection(this.tmp);
       this.camera.position.addScaledVector(this.tmp, step);
       this.clampRange();

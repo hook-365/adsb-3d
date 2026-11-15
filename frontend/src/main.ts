@@ -53,6 +53,8 @@ import { mountFreezingLevel } from './world/freezing-level';
 import { mountPrecipLayer } from './world/precip-layer';
 import { mountSevereCells } from './world/severe-cells';
 import { mountLightning } from './world/lightning';
+import { mountAirspace } from './world/airspace';
+import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
 import { mountWhatsNew } from './ui/whats-new';
 import { mountShapeChip } from './ui/shape-chip';
@@ -73,6 +75,8 @@ import { mountTimeControls } from './ui/time-controls';
 import { attachPicking } from './interaction/picking';
 import { setHome } from './core/config';
 import { groundSceneY } from './world/elevation';
+import { terrainSurface } from './world/tiles';
+import { enuToLatLon } from './core/coords';
 import { readSelectedHex, readTimeState, writeSelectedHex, writeTimeState } from './core/url-state';
 import { getFilter, getSearchQuery, passesFilter, setSearchQuery } from './core/filter';
 import { initSession } from './app/session';
@@ -302,6 +306,27 @@ const VR_OFFSET_Z = -0.9;       // 90 cm in front
 // restoring it on exit is all that's needed.
 const VR_NEAR = 0.05;           // 5 cm — close-up geometry and the wrist menu stay visible
 const DESKTOP_NEAR = 1;         // matches the PerspectiveCamera constructed in scene.ts
+
+// Close-up limits. The scope is 250 NM wide but airspace shelves, pattern
+// traffic and terrain live in the bottom fraction of a scene unit, so the
+// camera may come within a mile or so of what it orbits and skim the
+// ground. The near plane follows it down (a fixed tiny near plane across a
+// 4,000-unit frustum would make distant geometry flicker), and returns to
+// DESKTOP_NEAR as soon as the camera is back up.
+const MIN_ORBIT_DISTANCE = 1.5; // NM from the orbit target
+const MIN_FOLLOW_DISTANCE = 1;  // closer still while following an aircraft
+const GROUND_CLEARANCE = 0.08;  // scene units the eye stays above the ground
+const NEAR_MIN = 0.02;
+const NEAR_PER_REACH = 0.25;    // near plane as a fraction of the camera's reach
+const surfaceTmp = new Vector3();
+
+/** Highest of the sampled elevation and the drawn terrain mesh under a
+ * scene position: the mesh is flat between its vertices, so in a valley
+ * it can sit above the point sample and a low eye would end up inside it. */
+function groundUnder(x: number, z: number): number {
+  const { lat, lon } = enuToLatLon(x, -z);
+  return Math.max(groundSceneY(x, -z), terrainSurface(lat, lon, surfaceTmp).y);
+}
 subscribeXr((s) => {
   document.body.classList.toggle('xr-on', s.presenting);
   if (s.presenting) {
@@ -645,6 +670,42 @@ function cancelReturn(): void {
   returnEye = null;
 }
 
+// Fly the camera to a low three-quarter view of a box in scene space (an
+// airspace label was clicked). Orbit mode eases there through the same
+// lerp a deselect uses; the free camera has no target to ease, so it
+// jumps. The view keeps the bearing the user was already looking from.
+const FRAME_ELEVATION = (18 * Math.PI) / 180;
+// Mounted further down, once the store and scene exist; selections made
+// before then have no panel to close.
+let airspacePanel: AirspacePanel | null = null;
+function frameBox(box: { center: Vector3; radius: number; yLo: number; yHi: number }): void {
+  if (world.renderer.xr.isPresenting) return;
+  if (xrSelectedHex !== null) {
+    applySelection(null);
+    aircraftList.setSelected(null);
+  }
+  const target = new Vector3(box.center.x, (box.yLo + box.yHi) / 2, box.center.z);
+  const dist = Math.max(box.radius * 2.2, (box.yHi - box.yLo) * 3, MIN_ORBIT_DISTANCE * 1.5);
+  const bearing = new Vector3(world.camera.position.x - target.x, 0, world.camera.position.z - target.z);
+  if (bearing.lengthSq() < 1e-6) bearing.set(0, 0, 1);
+  bearing.normalize();
+  const eye = target
+    .clone()
+    .addScaledVector(bearing, dist * Math.cos(FRAME_ELEVATION))
+    .setY(target.y + dist * Math.sin(FRAME_ELEVATION));
+  if (freeMode) {
+    cancelReturn();
+    world.camera.position.copy(eye);
+    world.camera.lookAt(target);
+    freeCam.syncFromCamera();
+    return;
+  }
+  followHex = null;
+  returnTarget = target;
+  returnEye = eye;
+  returningHome = true;
+}
+
 // Pan breaks follow: a deliberate pan is the user asking to look somewhere
 // else, so the pivot stops chasing the aircraft while the selection (and
 // card) stay. Orbit and zoom never move the target, so target displacement
@@ -719,6 +780,8 @@ function applySelection(hex: string | null): void {
   // the one the user framed before they started looking at planes.
   if (hex !== null && xrSelectedHex === null && !returningHome && !freeMode) rememberReturnPose();
   xrSelectedHex = hex;
+  // The airspace card shares the detail card's slot: an aircraft takes it over.
+  if (hex !== null) airspacePanel?.hide();
   // New target: drop the XR follow anchor so it re-captures at the new
   // aircraft's current spot instead of yanking the world across the room.
   xrFollowAnchor = null;
@@ -868,7 +931,7 @@ function setCameraMode(mode: 'orbit' | 'free'): void {
     let dist = 100;
     if (dir.y < -0.01) {
       const ground = groundSceneY(eye.x, -eye.z);
-      dist = Math.max(8, Math.min(1200, (eye.y - ground) / -dir.y));
+      dist = Math.max(MIN_ORBIT_DISTANCE, Math.min(1200, (eye.y - ground) / -dir.y));
     }
     controls.target.copy(eye).addScaledVector(dir, dist);
     controls.target.y = Math.max(controls.target.y, groundSceneY(controls.target.x, -controls.target.z));
@@ -879,7 +942,29 @@ function setCameraMode(mode: 'orbit' | 'free'): void {
 // The footer switch (two icon segments) lives in ui/camera-mode.ts and
 // only writes Settings.cameraMode; this subscription does the hand-over.
 mountCameraModeSwitch();
-subscribeSettings((s) => setCameraMode(s.cameraMode));
+// Spin is an orbit around a point, so it and the free camera exclude each
+// other, whichever control asked last wins: starting a spin (footer
+// button, its slider or the settings row) leaves free mode, and switching
+// to free mode stops a spin.
+let lastSpin = getSettings().autoOrbit;
+let lastCameraMode = getSettings().cameraMode;
+subscribeSettings((s) => {
+  const spinStarted = lastSpin === 0 && s.autoOrbit > 0;
+  const wentFree = lastCameraMode !== 'free' && s.cameraMode === 'free';
+  lastSpin = s.autoOrbit;
+  lastCameraMode = s.cameraMode;
+  if (spinStarted && s.cameraMode === 'free') {
+    updateSettings({ cameraMode: 'orbit' });
+    return;
+  }
+  if (wentFree && s.autoOrbit > 0) {
+    updateSettings({ autoOrbit: 0 });
+    return;
+  }
+  setCameraMode(s.cameraMode);
+});
+// A saved state with both on (from before this rule) resolves to free.
+if (lastCameraMode === 'free' && lastSpin > 0) updateSettings({ autoOrbit: 0 });
 setCameraMode(getSettings().cameraMode);
 
 // Share button — copies the current URL (feed param + selected-hex hash)
@@ -973,6 +1058,13 @@ mountStorms(world.xrRoot);
 mountFreezingLevel(world.xrRoot);
 mountSevereCells(world.xrRoot);
 mountLightning(world.xrRoot);
+airspacePanel = mountAirspacePanel(() => store.snapshot.values());
+mountAirspace(world.xrRoot, {
+  onSelect: (selection) => {
+    frameBox(selection.frame);
+    airspacePanel?.show(selection);
+  },
+});
 mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
 mountWhatsNew();
 
@@ -1096,14 +1188,19 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   } else if (!world.renderer.xr.isPresenting) {
     const t = controls.target;
     const dist = Math.max(world.camera.position.distanceTo(t), 0.001);
-    const headroom = t.y - (groundSceneY(t.x, -t.z) + 1.2);
+    const headroom = t.y - (groundUnder(t.x, t.z) + GROUND_CLEARANCE * 2);
     const cosMax = Math.max(-1, Math.min(1, -headroom / dist));
     controls.maxPolarAngle = Math.min(Math.PI - 0.15, Math.acos(cosMax) - 0.02);
     // Inspection zoom: markers shrink with camera distance
     // (aircraft/marker-scale.ts), so the floor can sit low enough for
     // true vertical scale to read: a few miles up, a jet at FL350 has
     // visible air under it. Following an aircraft goes closer still.
-    controls.minDistance = followHex ? 3 : 8;
+    controls.minDistance = followHex ? MIN_FOLLOW_DISTANCE : MIN_ORBIT_DISTANCE;
+    // The wheel dives at whatever is under the cursor, so an airport or a
+    // shelf can be approached directly. Not while following: the zoom
+    // would drag the orbit target off the aircraft and follow would pull
+    // it straight back.
+    controls.zoomToCursor = !followHex;
   }
 
   if (freeMode) {
@@ -1134,9 +1231,19 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // could put the eye underground. Hold a small clearance above the
   // sampled ground. Skipped in XR, where the headset owns the camera.
   if (!world.renderer.xr.isPresenting) {
-    const camGroundY =
-      groundSceneY(world.camera.position.x, -world.camera.position.z) + 0.6;
-    if (world.camera.position.y < camGroundY) world.camera.position.y = camGroundY;
+    const groundY = groundUnder(world.camera.position.x, world.camera.position.z);
+    freeCam.groundY = groundY;
+    if (world.camera.position.y < groundY + GROUND_CLEARANCE) world.camera.position.y = groundY + GROUND_CLEARANCE;
+    // Near plane from the camera's reach: its height above the ground and,
+    // when orbiting, its distance to the target. Rewritten only on a real
+    // change so the projection matrix is not rebuilt every frame.
+    const height = world.camera.position.y - groundY;
+    const reach = freeMode ? height : Math.min(height, world.camera.position.distanceTo(controls.target));
+    const near = Math.max(NEAR_MIN, Math.min(DESKTOP_NEAR, reach * NEAR_PER_REACH));
+    if (Math.abs(near - world.camera.near) > world.camera.near * 0.05) {
+      world.camera.near = near;
+      world.camera.updateProjectionMatrix();
+    }
   }
   reconciler.syncFrame();
   acarsPings.update(frameTime);

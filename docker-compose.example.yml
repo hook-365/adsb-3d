@@ -51,6 +51,7 @@ services:
       # - EXPLORE_PROVIDER=adsb.lol       # no key; data ODbL 1.0
       # - EXPLORE_PROVIDER=adsb.fi        # no key; personal, non-commercial; 1 req/s
       # - EXPLORE_PROVIDER=airplanes.live # no key; non-commercial terms
+      # - EXPLORE_FALLBACK_PROVIDER=adsb.lol # optional: takes over while the provider above fails
       # - EXPLORE_POLL_S=10               # poll cadence = per-city cache window
       # - CARTO_API_KEY=your-key      # free key from carto.com/basemaps/apikey unlocks
       #                               # the Carto Dark/Voyager basemaps (browser-direct,

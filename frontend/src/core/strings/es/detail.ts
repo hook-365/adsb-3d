@@ -64,4 +64,5 @@ export const detailStrings = {
   'detail.storm_top': 'Tope de tormenta',
   'detail.storm_top_value': '{alt} cerca',
   'detail.lightning': 'Rayos',
+  'detail.airspace': 'Espacio aéreo',
 } as const;

@@ -381,50 +381,88 @@ CARTO_API_KEY_JS=$(_js_escape "${CARTO_API_KEY:-}")
 # minute per city whatever the viewer count. All four providers answer in
 # readsb's aircraft.json record format under an `ac` key; the frontend
 # keeps a 250 NM scope, so the radius asked for is 250 NM (463 km).
+#
+# EXPLORE_FALLBACK_PROVIDER names a second aggregator. When the first one
+# fails (connection error, timeout, 5xx, rate limited, or a rejected key)
+# nginx retries that request against the second, so the feed keeps moving
+# and falls back to the first on its own as soon as it answers again.
 EXPLORE_ENABLED_JS=false
 EXPLORE_DISABLED_DIRECTIVE="return 404;"
 EXPLORE_UPSTREAM_HOST="127.0.0.1"
 EXPLORE_UPSTREAM_PATH="/"
 EXPLORE_AUTH_DIRECTIVE=""
+EXPLORE_FALLBACK_HOST="127.0.0.1"
+EXPLORE_FALLBACK_PATH="/"
+EXPLORE_FALLBACK_AUTH_DIRECTIVE=""
+EXPLORE_FALLBACK_DIRECTIVE=""
+EXPLORE_FALLBACK_DISABLED_DIRECTIVE="return 502;"
 EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
 EXPLORE_PROVIDER="${EXPLORE_PROVIDER:-}"
+EXPLORE_FALLBACK_PROVIDER="${EXPLORE_FALLBACK_PROVIDER:-}"
 if [ -z "${EXPLORE_PROVIDER}" ] && [ -n "${EXPLORE_API_KEY}" ]; then
     EXPLORE_PROVIDER=flyitalyadsb
 fi
-case "${EXPLORE_PROVIDER}" in
-    "")
-        ;;
-    flyitalyadsb)
-        if [ -z "${EXPLORE_API_KEY}" ]; then
-            echo "[ERROR] EXPLORE_PROVIDER=flyitalyadsb needs EXPLORE_API_KEY (free at https://flyitalyadsb.com/en/data/api/)"
+
+# Sets _EX_HOST / _EX_PATH / _EX_AUTH for a provider id; "$2" names the
+# variable in error messages. Exits on an unknown id or a missing key.
+_explore_upstream() {
+    _EX_AUTH=""
+    case "$1" in
+        flyitalyadsb)
+            if [ -z "${EXPLORE_API_KEY}" ]; then
+                echo "[ERROR] $2=flyitalyadsb needs EXPLORE_API_KEY (free at https://flyitalyadsb.com/en/data/api/)"
+                exit 1
+            fi
+            _EX_HOST="api.flyitalyadsb.com"
+            _EX_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/463'
+            _EX_AUTH='proxy_set_header X-Api-Key "'"${EXPLORE_API_KEY}"'";'
+            ;;
+        adsb.lol)
+            _EX_HOST="api.adsb.lol"
+            _EX_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/250'
+            ;;
+        adsb.fi)
+            _EX_HOST="opendata.adsb.fi"
+            _EX_PATH='/api/v3/lat/$arg_lat/lon/$arg_lon/dist/250'
+            ;;
+        airplanes.live)
+            _EX_HOST="api.airplanes.live"
+            _EX_PATH='/v2/point/$arg_lat/$arg_lon/250'
+            ;;
+        *)
+            echo "[ERROR] $2 must be one of: flyitalyadsb, adsb.lol, adsb.fi, airplanes.live (got '$1')"
             exit 1
-        fi
-        EXPLORE_UPSTREAM_HOST="api.flyitalyadsb.com"
-        EXPLORE_UPSTREAM_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/463'
-        EXPLORE_AUTH_DIRECTIVE='proxy_set_header X-Api-Key "'"${EXPLORE_API_KEY}"'";'
-        ;;
-    adsb.lol)
-        EXPLORE_UPSTREAM_HOST="api.adsb.lol"
-        EXPLORE_UPSTREAM_PATH='/v2/lat/$arg_lat/lon/$arg_lon/dist/250'
-        ;;
-    adsb.fi)
-        EXPLORE_UPSTREAM_HOST="opendata.adsb.fi"
-        EXPLORE_UPSTREAM_PATH='/api/v3/lat/$arg_lat/lon/$arg_lon/dist/250'
-        ;;
-    airplanes.live)
-        EXPLORE_UPSTREAM_HOST="api.airplanes.live"
-        EXPLORE_UPSTREAM_PATH='/v2/point/$arg_lat/$arg_lon/250'
-        ;;
-    *)
-        echo "[ERROR] EXPLORE_PROVIDER must be one of: flyitalyadsb, adsb.lol, adsb.fi, airplanes.live (got '${EXPLORE_PROVIDER}')"
-        exit 1
-        ;;
-esac
+            ;;
+    esac
+}
+
 if [ -n "${EXPLORE_PROVIDER}" ]; then
+    _explore_upstream "${EXPLORE_PROVIDER}" EXPLORE_PROVIDER
+    EXPLORE_UPSTREAM_HOST="${_EX_HOST}"
+    EXPLORE_UPSTREAM_PATH="${_EX_PATH}"
+    EXPLORE_AUTH_DIRECTIVE="${_EX_AUTH}"
     EXPLORE_ENABLED_JS=true
     EXPLORE_DISABLED_DIRECTIVE=""
 fi
+if [ -n "${EXPLORE_FALLBACK_PROVIDER}" ]; then
+    if [ -z "${EXPLORE_PROVIDER}" ]; then
+        echo "[WARNING] EXPLORE_FALLBACK_PROVIDER is set without EXPLORE_PROVIDER; ignoring it"
+        EXPLORE_FALLBACK_PROVIDER=""
+    elif [ "${EXPLORE_FALLBACK_PROVIDER}" = "${EXPLORE_PROVIDER}" ]; then
+        echo "[WARNING] EXPLORE_FALLBACK_PROVIDER is the same as EXPLORE_PROVIDER; ignoring it"
+        EXPLORE_FALLBACK_PROVIDER=""
+    else
+        _explore_upstream "${EXPLORE_FALLBACK_PROVIDER}" EXPLORE_FALLBACK_PROVIDER
+        EXPLORE_FALLBACK_HOST="${_EX_HOST}"
+        EXPLORE_FALLBACK_PATH="${_EX_PATH}"
+        EXPLORE_FALLBACK_AUTH_DIRECTIVE="${_EX_AUTH}"
+        EXPLORE_FALLBACK_DISABLED_DIRECTIVE=""
+        # 401/403: a revoked or mistyped key should not take the feed down.
+        EXPLORE_FALLBACK_DIRECTIVE='proxy_intercept_errors on; error_page 401 403 429 500 502 503 504 = @explore_fallback;'
+    fi
+fi
 EXPLORE_PROVIDER_JS=$(_js_escape "${EXPLORE_PROVIDER}")
+EXPLORE_FALLBACK_PROVIDER_JS=$(_js_escape "${EXPLORE_FALLBACK_PROVIDER}")
 EXPLORE_POLL_S="${EXPLORE_POLL_S:-10}"
 if ! echo "${EXPLORE_POLL_S}" | grep -qE '^[0-9]+(\.[0-9]+)?$' || ! awk -v v="${EXPLORE_POLL_S}" 'BEGIN { exit !(v > 0) }'; then
     echo "[WARNING] EXPLORE_POLL_S must be a positive number ('${EXPLORE_POLL_S}'); using 10"
@@ -432,6 +470,7 @@ if ! echo "${EXPLORE_POLL_S}" | grep -qE '^[0-9]+(\.[0-9]+)?$' || ! awk -v v="${
 fi
 EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
 export EXPLORE_API_KEY EXPLORE_DISABLED_DIRECTIVE EXPLORE_POLL_S EXPLORE_UPSTREAM_HOST EXPLORE_UPSTREAM_PATH EXPLORE_AUTH_DIRECTIVE
+export EXPLORE_FALLBACK_HOST EXPLORE_FALLBACK_PATH EXPLORE_FALLBACK_AUTH_DIRECTIVE EXPLORE_FALLBACK_DIRECTIVE EXPLORE_FALLBACK_DISABLED_DIRECTIVE
 
 # Generate config.js from environment variables
 cat > /usr/share/nginx/html/config.js <<EOF
@@ -537,7 +576,8 @@ window.MAP_CONFIG = {
 window.EXPLORE_CONFIG = {
     enabled: ${EXPLORE_ENABLED_JS},
     pollS: ${EXPLORE_POLL_S},
-    provider: '${EXPLORE_PROVIDER_JS}'
+    provider: '${EXPLORE_PROVIDER_JS}',
+    fallbackProvider: '${EXPLORE_FALLBACK_PROVIDER_JS}'
 };
 
 // Multi-feed configuration
@@ -585,6 +625,9 @@ fi
 
 if [ "${EXPLORE_ENABLED_JS}" = "true" ]; then
     echo "Explore feed enabled - /data/explore/ proxied to ${EXPLORE_UPSTREAM_HOST} (${EXPLORE_PROVIDER}, poll every ${EXPLORE_POLL_S}s)"
+    if [ -n "${EXPLORE_FALLBACK_PROVIDER}" ]; then
+        echo "Explore fallback - ${EXPLORE_FALLBACK_HOST} (${EXPLORE_FALLBACK_PROVIDER}) takes over when ${EXPLORE_PROVIDER} fails"
+    fi
 else
     echo "Explore feed disabled (set EXPLORE_PROVIDER, or EXPLORE_API_KEY for FlyItalyADSB, to pick any city)"
 fi
@@ -934,7 +977,7 @@ export DNS_RESOLVER
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${ADSB3D_USER_AGENT} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${ADSB3D_USER_AGENT} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_HOST} ${EXPLORE_FALLBACK_PATH} ${EXPLORE_FALLBACK_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_DIRECTIVE} ${EXPLORE_FALLBACK_DISABLED_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then

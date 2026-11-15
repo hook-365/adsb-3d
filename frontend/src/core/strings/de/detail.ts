@@ -64,4 +64,5 @@ export const detailStrings = {
   'detail.storm_top': 'Gewitteroberkante',
   'detail.storm_top_value': '{alt} in der Nähe',
   'detail.lightning': 'Blitze',
+  'detail.airspace': 'Luftraum',
 } as const;

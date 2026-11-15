@@ -18,6 +18,7 @@
 import {
   DEFAULT_PLACE_ID,
   findPlace,
+  rememberPlaceRecord,
   type ExplorePlace,
 } from './explore-places';
 import type { Feed } from './feeds';
@@ -28,6 +29,8 @@ export const EXPLORE_LIVE_PATH = '/data/explore/aircraft.json';
 const PLACE_STORAGE_KEY = 'adsb3d_explore_place';
 const PLACE_URL_PARAM = 'place';
 const DEFAULT_POLL_MS = 10_000;
+/** Dot colour for every Explore city (receivers carry their own FEEDn_COLOR). */
+export const EXPLORE_COLOR = '#9b7bff';
 
 interface ExploreConfigShape {
   enabled?: boolean;
@@ -35,6 +38,8 @@ interface ExploreConfigShape {
   pollS?: number;
   /** EXPLORE_PROVIDER id; picks the attribution line. */
   provider?: string;
+  /** EXPLORE_FALLBACK_PROVIDER id, or empty: nginx switches to it when the first fails. */
+  fallbackProvider?: string;
 }
 
 /** Aggregators the entrypoint knows how to proxy, with the credit each asks for. */
@@ -85,29 +90,37 @@ export function exploreLiveUrl(lat: number, lon: number): string {
   return `${EXPLORE_LIVE_PATH}?lat=${lat.toFixed(2)}&lon=${lon.toFixed(2)}`;
 }
 
-/** Credit the active provider asks for (a licence condition for some), shown while the feed is active. */
-export function exploreAttribution(): string {
-  const id = config().provider ?? '';
+const LICENCE_URLS: Record<string, string> = {
+  'CC BY-SA 4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
+  'ODbL 1.0': 'https://opendatacommons.org/licenses/odbl/1-0/',
+};
+
+function providerCredit(id: string): string {
   const p = EXPLORE_PROVIDERS[id] ?? { name: id || 'aggregator', url: '' };
-  const name = p.url
-    ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>`
-    : p.name;
-  const LICENCE_URLS: Record<string, string> = {
-    'CC BY-SA 4.0': 'https://creativecommons.org/licenses/by-sa/4.0/',
-    'ODbL 1.0': 'https://opendatacommons.org/licenses/odbl/1-0/',
-  };
+  const name = p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${p.name}</a>` : p.name;
   const licenceUrl = p.licence ? LICENCE_URLS[p.licence] : undefined;
-  const licence = p.licence && licenceUrl
-    ? ` (<a href="${licenceUrl}" target="_blank" rel="noopener">${p.licence}</a>)`
-    : '';
-  return `data ${name}${licence}`;
+  const licence =
+    p.licence && licenceUrl ? ` (<a href="${licenceUrl}" target="_blank" rel="noopener">${p.licence}</a>)` : '';
+  return `${name}${licence}`;
+}
+
+/**
+ * Credit the providers ask for (a licence condition for some), shown while
+ * the feed is active. With a fallback configured nginx may answer from
+ * either one, request by request, so both are credited.
+ */
+export function exploreAttribution(): string {
+  const primary = config().provider ?? '';
+  const fallback = config().fallbackProvider ?? '';
+  const credit = `data ${providerCredit(primary)}`;
+  return fallback && fallback !== primary ? `${credit} / ${providerCredit(fallback)}` : credit;
 }
 
 export function buildExploreFeed(place: ExplorePlace): Feed {
   return {
     id: exploreFeedId(place.id),
     name: place.name,
-    color: '#9b7bff',
+    color: EXPLORE_COLOR,
     liveUrl: exploreLiveUrl(place.lat, place.lon),
     // No track-service behind this feed: live polling only. apiBase is a
     // dead path so nothing accidentally resolves to the local /api.
@@ -132,6 +145,18 @@ export function rememberPlace(placeId: string): void {
   } catch {
     // ignore
   }
+  rememberPlaceRecord(findPlace(placeId));
+}
+
+// The ?place= the page was opened with, read before feeds.ts rewrites the
+// URL to the feed it could resolve. A link to an airport names a place
+// that is unknown until the airport list has loaded; the feed selector
+// uses this to finish the trip once it has.
+const requestedPlace =
+  typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get(PLACE_URL_PARAM) : null;
+
+export function requestedPlaceId(): string | null {
+  return requestedPlace;
 }
 
 function storedPlace(storage: Storage): ExplorePlace | null {

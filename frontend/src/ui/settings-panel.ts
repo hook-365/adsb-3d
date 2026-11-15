@@ -8,6 +8,7 @@ import {
   type Settings,
 } from '../core/settings';
 import { t } from '../core/i18n';
+import { MOBILE_BREAKPOINT_PX, setAircraftListExpanded } from './panel-toggle';
 import { WEATHER3D_ENABLED } from '../core/config';
 import { subscribeUpdateInfo } from '../core/update-check';
 import { isBasemapAvailable } from '../core/basemaps';
@@ -316,6 +317,24 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.acars_pings_desc'),
       },
       {
+        kind: 'toggle',
+        key: 'airspaceControlled',
+        label: t('settings.airspace_controlled'),
+        description: t('settings.airspace_controlled_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airspaceSpecial',
+        label: t('settings.airspace_special'),
+        description: t('settings.airspace_special_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airspaceLabels',
+        label: t('settings.airspace_labels'),
+        description: t('settings.airspace_labels_desc'),
+      },
+      {
         kind: 'choice',
         key: 'altitudeExaggeration',
         label: t('settings.alt_exaggeration'),
@@ -605,6 +624,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
       ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings'] },
+    { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],
   xr: [
@@ -1047,7 +1067,12 @@ export function mountSettingsPanel(): void {
     for (const fn of inputSyncs) fn(s);
   });
 
+  // On a phone the aircraft list and this panel each fill the screen, so
+  // only one is up at a time: opening either puts the other away.
+  const isPhone = (): boolean => window.innerWidth < MOBILE_BREAKPOINT_PX;
+
   function setOpen(open: boolean): void {
+    if (open && isPhone()) setAircraftListExpanded(false);
     panel.hidden = !open;
     button.setAttribute('aria-expanded', open ? 'true' : 'false');
     button.classList.toggle('open', open);
@@ -1067,7 +1092,9 @@ export function mountSettingsPanel(): void {
     const target = e.target as Node;
     if (panel.contains(target)) return;
     if (button.contains(target)) return;
-    if (sidebarToggle?.contains(target)) return;
+    // Desktop: the popover rides beside the sidebar, so its toggle leaves
+    // it open. Phone: the list is about to take the screen.
+    if (sidebarToggle?.contains(target) && !isPhone()) return;
     setOpen(false);
   });
   document.addEventListener('keydown', (e) => {

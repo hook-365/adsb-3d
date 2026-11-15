@@ -65,4 +65,5 @@ export const detailStrings = {
   'detail.storm_top': 'Storm top',
   'detail.storm_top_value': '{alt} nearby',
   'detail.lightning': 'Lightning',
+  'detail.airspace': 'Airspace',
 } as const;

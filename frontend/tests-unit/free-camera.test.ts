@@ -44,3 +44,17 @@ describe('moveVector', () => {
     expect(moveVector(new Set(['PageDown']), 1.3).y).toBe(-1);
   });
 });
+
+describe('speed near the ground', () => {
+  it('walks at ground level and reaches the old cruise speeds once clear of it', async () => {
+    const { flySpeed, wheelScale } = await import('../src/world/free-camera');
+    expect(flySpeed(0)).toBeCloseTo(0.6);
+    expect(flySpeed(-5)).toBeCloseTo(0.6);
+    expect(flySpeed(1)).toBeLessThan(3);
+    // Above the ramp the speed is the previous 12 + 0.45 per unit of height.
+    expect(flySpeed(100)).toBeCloseTo(12 + 45);
+    for (let h = 0; h < 50; h += 0.5) expect(flySpeed(h + 0.5)).toBeGreaterThan(flySpeed(h));
+    expect(wheelScale(0)).toBeCloseTo(0.05);
+    expect(wheelScale(50)).toBe(1);
+  });
+});

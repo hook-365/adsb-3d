@@ -11,7 +11,7 @@ import type { AircraftStore } from '../aircraft/store';
 // Defaults to collapsed on small viewports so phones don't open with the
 // list dominating the screen.
 
-const MOBILE_BREAKPOINT_PX = 768;
+export const MOBILE_BREAKPOINT_PX = 768;
 
 // Module-level handle so main.ts's mobile auto-collapse goes through the
 // same state transition as the buttons (keeping the chip's visibility and

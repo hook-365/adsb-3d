@@ -239,6 +239,12 @@ export interface Settings {
   weatherSevere: boolean;
   /** Cloud-to-ground lightning flashes from MRMS NLDN density (weather-service only). */
   weatherLightning: boolean;
+  /** US Class B, C and D airspace as 3D volumes (world/airspace.ts). */
+  airspaceControlled: boolean;
+  /** US special use airspace (MOA, restricted, prohibited, warning, alert) as 3D volumes. */
+  airspaceSpecial: boolean;
+  /** Name labels on the airspace volumes (also the click target for framing and the info card). */
+  airspaceLabels: boolean;
   /**
    * UI language. 'auto' resolves navigator.language against the locales
    * registered in core/i18n.ts, falling back to English. Changing this
@@ -318,6 +324,9 @@ const DEFAULTS: Settings = {
   weatherFreezingLevel: false,
   weatherSevere: false,
   weatherLightning: false,
+  airspaceControlled: false,
+  airspaceSpecial: false,
+  airspaceLabels: true,
   language: 'auto',
   altitudeCurveBias: 0,
   altitudeExaggeration: '4',

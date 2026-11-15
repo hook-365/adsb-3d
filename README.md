@@ -37,6 +37,7 @@ and translations count just as much as code.
 
 <img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
 
+- **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
 - **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.
 - **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
 - **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
@@ -67,12 +68,14 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 
 - **3D storms** (weather-service, US only): NOAA MRMS merged reflectivity, 33 altitude slices cropped around whichever feed is active and raymarched as translucent storm volumes so you can see aircraft route around cells. One sidecar serves every feed; refreshes every 5 minutes; browsers get a few hundred KB at most. Cells end at their real **echo tops**, and the detail panel shows the storm top next to a nearby aircraft's altitude.
 - **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
+- **3D airspace** (off by default, US only; separate toggles for controlled airspace, special use airspace and the name labels): Class B, C and D and special use airspace (MOA, restricted, prohibited, warning, alert) drawn as volumes between their published floors and ceilings, so a Class B shows as its stacked shelves. Select an aircraft and the detail panel names the airspace it is in. Click an airspace's name label to fly the camera to it and open a card that explains it: what the class means and what entering takes, its limits, each shelf, published times of use, and how many aircraft are inside right now. Built from FAA open data baked into the image (`scripts/build-airspace.py` refreshes it); no extra container, no runtime calls to the FAA. Not for navigation.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
 - **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
-- **Multi-feed**: several receivers, a feed picker in the status bar, in-place switching.
-- **Explore any city**: pick from about 85 cities worldwide and watch that area's traffic from a global aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live), with terrain and basemaps as usual. See [Explore](#explore-any-city).
-- **Free camera**: the footer *fly* button swaps the orbit for a free-flying eye: drag to look, WASD or arrows to move, R/F up and down, Shift for speed. Deselecting an aircraft returns the orbit camera to the view you had before.
+- **Multi-feed**: several receivers and one feed picker in the status bar that lists them above the Explore places, with a single search box and in-place switching.
+- **Explore anywhere**: watch any area's traffic from a global aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live), with terrain and basemaps as usual. Pick from about 85 curated world cities, search about 3,100 US cities, or type an airport code or name (`KMSP`, `ATW`, `heathrow`) from about 6,000 airports. An optional second provider takes over automatically if the first fails. See [Explore](#explore-any-city).
+- **Free camera**: the footer *fly* button swaps the orbit for a free-flying eye: drag to look, WASD or arrows to move, R/F up and down, Shift for speed. It slows to a walk near the ground. Deselecting an aircraft returns the orbit camera to the view you had before.
+- **Close-up views**: the camera goes down to within a mile or so of the ground and the wheel zooms toward the cursor, so an airport, a ridge or an airspace shelf can be inspected from beside it.
 - **Themes**: Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast, or `Auto` from your system preference. The 3D scene re-tints live.
 - **Languages**: English, German, Spanish (machine-drafted pending native review; corrections welcome).
 - **3D terrain** (opt-in): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
@@ -170,12 +173,22 @@ Parsing stops at the first missing `FEEDN_NAME`.
 
 ### Explore: any city
 
-Set `EXPLORE_PROVIDER` and the feed picker gains an *Explore* entry with a
-searchable city list (Rome, London, Tokyo, New York and about 80 more,
-grouped by region). The scene recentres on the chosen city and shows that
-area's traffic from the aggregator's worldwide feed, with terrain and
-basemaps as usual. Live only: no history, ACARS or voice for that feed,
-and routes are looked up only for the aircraft you select.
+Set `EXPLORE_PROVIDER` and the feed picker lists Explore places under your
+receivers. The scene recentres on the chosen place and shows that area's
+traffic from the aggregator's worldwide feed, with terrain and basemaps as
+usual. Live only: no history, ACARS or voice for that feed, and routes are
+looked up only for the aircraft you select.
+
+One search box covers three sources:
+
+| Source | What you can type | Notes |
+|---|---|---|
+| Curated cities (about 85 worldwide, grouped by region) | City, state or province, country, or an airport code serving it (`msp`, `lhr`) | Always listed |
+| US cities (about 3,100, every city over 15,000 people) | City, `City, ST`, or a state name | Shown as you type, largest first. From [GeoNames](https://www.geonames.org) |
+| Airports (about 6,000: large and medium worldwide, plus US small fields with an ICAO code) | ICAO or IATA code, airport name or city (`KMSP`, `ATW`, `heathrow`) | Centres on the airport itself; fetched the first time the picker opens. From [OurAirports](https://ourairports.com/data/) |
+
+Every place has a shareable link (`?place=minneapolis`, `?place=us_wi_wausau`,
+`?place=apt_kmsp`).
 
 | `EXPLORE_PROVIDER` | Key | Notes |
 |---|---|---|
@@ -183,6 +196,12 @@ and routes are looked up only for the aircraft you select.
 | `adsb.lol` | none | No published limit ("dynamic"); data is ODbL 1.0; feeding them is encouraged |
 | `adsb.fi` | none | 1 request/s per IP; personal, non-commercial use only; cite with a link |
 | `airplanes.live` | none | No published limit; site terms are non-commercial |
+
+Set `EXPLORE_FALLBACK_PROVIDER` to a second provider from the table and
+nginx switches to it by itself whenever the first one fails: a connection
+error or timeout, a 5xx, a rate limit (429) or a rejected key. It goes
+back to the first as soon as that answers again, and both are credited in
+the attribution line, since either may be supplying the data.
 
 Any key stays in nginx. nginx rewrites the browser's `?lat=&lon=` into the
 provider's radius query, adds the key and User-Agent, and caches each
@@ -212,6 +231,7 @@ condition for some of them.
 | `ENABLE_VOICE` | `false` | VHF voice scanner panel (see [docs/VOICE.md](docs/VOICE.md)) |
 | `EXPLORE_PROVIDER` | — | `flyitalyadsb`, `adsb.lol`, `adsb.fi` or `airplanes.live`; adds the *Explore* feed (pick any city). See [Explore](#explore-any-city) |
 | `EXPLORE_API_KEY` | — | API key for `flyitalyadsb` (setting it alone selects that provider) |
+| `EXPLORE_FALLBACK_PROVIDER` | — | A second provider from the same list, used automatically while `EXPLORE_PROVIDER` is failing. See [Explore](#explore-any-city) |
 | `EXPLORE_POLL_S` | `10` | Seconds between Explore polls and the per-city cache window; a free key allows 30 requests a minute |
 | `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
 | `ENABLE_UPDATE_CHECK` | `true` | The container asks GitHub once a day for the latest release and the settings panel shows a badge when it is newer. Runs server-side only (one request per deployment per day, no viewer IPs); `false` disables it entirely |
@@ -271,9 +291,23 @@ Two camera modes, switched with the footer pill (or Settings → Camera):
   relative to where you look, **R / F** (or PageUp / PageDown) go straight
   up and down, **Shift** is fast, **scroll** pushes along the line of sight.
 
+In orbit mode the camera can come within about a mile of the point it
+turns around, **scroll** zooms toward whatever is under the cursor (toward
+the aircraft while one is followed), and the eye can skim just above the
+ground. The free camera slows down as it gets low, so close inspection is
+not a blur.
+
 **Spin** in the footer starts a slow auto-orbit and opens a direction and
 speed popover; once the hand is still for two seconds the controls fade so
-only the orbit is left, and any movement brings them back.
+only the orbit is left, and any movement brings them back. Spin is an
+orbit, so starting it switches a free camera back to orbit, and switching
+to the free camera stops it.
+
+With **3D airspace** on, click an airspace's name label to frame it and
+open its info card; `Esc` or the × closes the card.
+
+On a phone the aircraft list and the settings panel each fill the screen,
+so opening one closes the other.
 
 | Key | Action |
 |---|---|
@@ -355,7 +389,18 @@ npm run build       # → dist/
 ```
 
 `npm run dev` proxies backend routes to `http://localhost:8080`; override
-with `DEV_BACKEND`. To run the full container against an existing backend:
+with `DEV_BACKEND`.
+
+Three data files in the frontend are generated from public sources and
+committed, so the running container never fetches them. Regenerate with
+the matching script (Python 3, standard library only) and commit the
+result:
+
+| Script | Writes | Source | When |
+|---|---|---|---|
+| `scripts/build-airspace.py` | `frontend/src/world/airspace-data.json` | FAA ADDS Class Airspace and Special Use Airspace | When a chart cycle changes airspace |
+| `scripts/build-cities.py` | `frontend/src/feed/explore-cities.json` | GeoNames `cities15000` (CC BY 4.0) | Rarely |
+| `scripts/build-airports.py` | `frontend/src/feed/explore-airports.json` | OurAirports `airports.csv` (public domain) | When airports or codes change | To run the full container against an existing backend:
 
 ```sh
 docker compose -f docker-compose.dev.yml --project-directory . up --build -d
@@ -364,6 +409,8 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 ## Credits
 
+- **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`).
+- **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
 - **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),
   GPL v2+) — SVG aircraft shape catalog and the altitude → color palette.
 - **readsb / dump1090-fa** — upstream Mode S/ADS-B decoder.

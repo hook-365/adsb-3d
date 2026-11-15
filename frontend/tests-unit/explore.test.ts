@@ -13,9 +13,21 @@ import {
   placeIdFromFeedId,
   writePlaceParam,
 } from '../src/feed/explore';
-import { DEFAULT_PLACE_ID, EXPLORE_PLACES, EXPLORE_REGIONS, findPlace } from '../src/feed/explore-places';
+import {
+  DEFAULT_PLACE_ID,
+  EXPLORE_PLACES,
+  EXPLORE_REGIONS,
+  LIBRARY_PLACES,
+  PLACE_AIRPORTS,
+  findPlace,
+} from '../src/feed/explore-places';
 
 describe('explore-places catalog', () => {
+  it('has airport codes for every place and no orphans', () => {
+    expect(Object.keys(PLACE_AIRPORTS).sort()).toEqual(EXPLORE_PLACES.map((p) => p.id).sort());
+    for (const codes of Object.values(PLACE_AIRPORTS)) expect(codes).toMatch(/^[A-Z]{3}( [A-Z]{3})*$/);
+  });
+
   it('has unique ids, sane coordinates and a known region', () => {
     const ids = new Set<string>();
     for (const p of EXPLORE_PLACES) {
@@ -34,6 +46,26 @@ describe('explore-places catalog', () => {
   it('findPlace tolerates null and unknown ids', () => {
     expect(findPlace(null)).toBeNull();
     expect(findPlace('atlantis')).toBeNull();
+  });
+});
+
+describe('US city library', () => {
+  it('adds thousands of US cities with unique, URL-safe ids', () => {
+    expect(LIBRARY_PLACES.length).toBeGreaterThan(2500);
+    const ids = new Set([...EXPLORE_PLACES, ...LIBRARY_PLACES].map((p) => p.id));
+    expect(ids.size).toBe(EXPLORE_PLACES.length + LIBRARY_PLACES.length);
+    for (const p of LIBRARY_PLACES) {
+      expect(p.id).toMatch(/^us_[a-z]{2}_[a-z0-9_]+$/);
+      expect(p.admin).toBeTruthy();
+      expect(Math.abs(p.lat)).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it('resolves library ids and leaves out cities the curated list already has', () => {
+    expect(findPlace('us_wi_wausau')).toMatchObject({ name: 'Wausau', admin: 'Wisconsin', country: 'US' });
+    expect(LIBRARY_PLACES.some((p) => p.name === 'Minneapolis' && p.alias === 'MN')).toBe(false);
+    expect(LIBRARY_PLACES.some((p) => p.name === 'New York City')).toBe(false);
+    expect(LIBRARY_PLACES.some((p) => p.name === 'Saint Paul')).toBe(true);
   });
 });
 
@@ -69,6 +101,13 @@ describe('explore feed shape', () => {
     expect(exploreAttribution()).not.toContain('CC BY-SA');
     window.EXPLORE_CONFIG = { enabled: true, provider: 'something-else' };
     expect(exploreAttribution()).toBe('data something-else');
+    // A fallback provider can answer any request, so both are credited.
+    window.EXPLORE_CONFIG = { enabled: true, provider: 'flyitalyadsb', fallbackProvider: 'adsb.lol' };
+    expect(exploreAttribution()).toContain('flyitalyadsb.com');
+    expect(exploreAttribution()).toContain('adsb.lol');
+    expect(exploreAttribution()).toContain('ODbL 1.0');
+    window.EXPLORE_CONFIG = { enabled: true, provider: 'adsb.lol', fallbackProvider: 'adsb.lol' };
+    expect(exploreAttribution()).toBe(exploreAttribution().split(' / ')[0]);
     delete window.EXPLORE_CONFIG;
   });
 

@@ -2,7 +2,7 @@
 // must carry the 'feeds.' prefix (enforced by tests-unit/i18n.test.ts).
 export const feedsStrings = {
   'feeds.select_feed': 'Select feed',
-  'feeds.select_place': 'Select city',
+  'feeds.receivers': 'Receivers',
   'feeds.explore': 'Explore',
   'feeds.region.europe': 'Europe',
   'feeds.region.north_america': 'North America',
@@ -11,6 +11,8 @@ export const feedsStrings = {
   'feeds.region.asia': 'Asia',
   'feeds.region.oceania': 'Oceania',
   'feeds.region.africa': 'Africa',
-  'feeds.search_place': 'Search city or country',
-  'feeds.no_match': 'No matching city',
+  'feeds.search_place': 'Search city, state, airport or receiver',
+  'feeds.airports': 'Airports',
+  'feeds.more_cities': 'More US cities',
+  'feeds.no_match': 'No match',
 } as const;
