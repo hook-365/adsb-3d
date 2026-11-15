@@ -1767,6 +1767,24 @@ body.xr-on .acars-toggle {
   opacity: 0.9;
 }
 
+/* Airport labels (world/airports.ts): the ICAO code on the field. */
+.aircraft-label.airport-label {
+  color: var(--fg-bright);
+  border-color: color-mix(in srgb, var(--fg) 35%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 70%, transparent);
+  opacity: 0.92;
+}
+.aircraft-label.airport-label.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.aircraft-label.airport-label.clickable:hover,
+.aircraft-label.airport-label.clickable:focus-visible {
+  border-color: var(--fg-bright);
+  opacity: 1;
+  outline: none;
+}
+
 /* "Green Bay, Austin Straubel International Airport Class C" would run
    across half the scope; the full name is one click away. */
 .aircraft-label.airspace-label > span {

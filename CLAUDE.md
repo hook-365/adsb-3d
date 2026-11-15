@@ -98,7 +98,10 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   inactive or unknown, never a guess; inactive volumes draw fainter) + `tfr`
   (live US temporary flight restrictions as `kind: 'TFR'` volumes, from
   the nginx `/tfr/list` and `/tfr/detail/` proxies of tfr.faa.gov; only
-  fetched while `airspaceTfr` is on).
+  fetched while `airspaceTfr` is on), `airports` (runways on the terrain,
+  3 degree approach paths, ICAO labels) + `runways-data.json` (generated
+  from OurAirports by `scripts/build-runways.py`), `route-line` (great
+  circle of the selected aircraft's scheduled route).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
   `airspace-panel` (info card for a clicked airspace label; shares the
@@ -289,7 +292,8 @@ Generated data (committed; regenerate, never hand-edit; stdlib Python):
 `scripts/build-airspace.py` → `world/airspace-data.json` (FAA),
 `scripts/build-cities.py` → `feed/explore-cities.json` (GeoNames, CC BY
 4.0), `scripts/build-airports.py` → `feed/explore-airports.json`
-(OurAirports). The airspace and airports files are fetched as hashed
+(OurAirports), `scripts/build-runways.py` → `world/runways-data.json`
+(OurAirports; run after build-airports, it keeps that file's airports). The airspace and airports files are fetched as hashed
 assets (`?url`) on first use; the city list is bundled because feed boot
 resolves `?place=` synchronously.
 

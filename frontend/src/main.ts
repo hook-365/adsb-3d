@@ -55,6 +55,7 @@ import { mountSevereCells } from './world/severe-cells';
 import { mountLightning } from './world/lightning';
 import { mountAirspace } from './world/airspace';
 import { mountRouteLine } from './world/route-line';
+import { mountAirports } from './world/airports';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
 import { mountLoadingToast } from './ui/loading-toast';
@@ -1075,6 +1076,10 @@ mountAirspace(world.xrRoot, {
     frameBox(selection.frame);
     airspacePanel?.show(selection);
   },
+});
+mountAirports(world.xrRoot, {
+  // Three miles across and a couple of thousand feet up frames a field.
+  onSelect: (_site, center) => frameBox({ center, radius: 3, yLo: center.y, yHi: center.y + 1 }),
 });
 mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
 mountLoadingToast();

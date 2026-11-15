@@ -324,6 +324,24 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'airportRunways',
+        label: t('settings.airport_runways'),
+        description: t('settings.airport_runways_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airportApproaches',
+        label: t('settings.airport_approaches'),
+        description: t('settings.airport_approaches_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airportLabels',
+        label: t('settings.airport_labels'),
+        description: t('settings.airport_labels_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'airspaceControlled',
         label: t('settings.airspace_controlled'),
         description: t('settings.airspace_controlled_desc'),
@@ -636,6 +654,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
       ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
+    { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels'] },
     { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],

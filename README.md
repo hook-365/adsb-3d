@@ -74,6 +74,9 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
 - **3D airspace** (off by default, US only; separate toggles for controlled airspace, special use airspace and the name labels): Class B, C and D and special use airspace (MOA, restricted, prohibited, warning, alert) drawn as volumes between their published floors and ceilings, so a Class B shows as its stacked shelves. Select an aircraft and the detail panel names the airspace it is in. Click an airspace's name label to fly the camera to it and open a card that explains it: what the class means and what entering takes, its limits, each shelf, published times of use, and how many aircraft are inside right now. Built from FAA open data baked into the image (`scripts/build-airspace.py` refreshes it); no extra container, no runtime calls to the FAA. Not for navigation.
 - **Temporary flight restrictions** (off by default, US only): active and upcoming TFRs (wildfires, stadiums, launches, VIP movements) drawn as volumes with the rest of the airspace, live from the FAA's TFR site through the container's own cached proxy and refreshed every ten minutes. Click a TFR's label for its NOTAM: type, location, limits, when it is in force and the published text. Not for navigation.
+- **Airspace that follows its hours**: special use airspace outside its published times of use is drawn fainter, and its info card says where the clock stands. Areas activated only by NOTAM, and schedules the app cannot read with certainty, are left as they are; it never guesses.
+- **Airports** (off by default): runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels, for the airports on the scope. Runway data from OurAirports, baked into the image.
+- **Route line**: select an aircraft and its scheduled route is drawn as a great-circle line from origin to destination, when the route fits where the aircraft is.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
 - **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
@@ -407,7 +410,10 @@ result:
 |---|---|---|---|
 | `scripts/build-airspace.py` | `frontend/src/world/airspace-data.json` | FAA ADDS Class Airspace and Special Use Airspace | When a chart cycle changes airspace |
 | `scripts/build-cities.py` | `frontend/src/feed/explore-cities.json` | GeoNames `cities15000` (CC BY 4.0) | Rarely |
-| `scripts/build-airports.py` | `frontend/src/feed/explore-airports.json` | OurAirports `airports.csv` (public domain) | When airports or codes change | To run the full container against an existing backend:
+| `scripts/build-airports.py` | `frontend/src/feed/explore-airports.json` | OurAirports `airports.csv` (public domain) | When airports or codes change |
+| `scripts/build-runways.py` | `frontend/src/world/runways-data.json` | OurAirports `runways.csv` (public domain) | After `build-airports.py`, or when runways change |
+
+To run the full container against an existing backend:
 
 ```sh
 docker compose -f docker-compose.dev.yml --project-directory . up --build -d
@@ -418,7 +424,7 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 - **FAA Aeronautical Information Services** ([ADDS open data](https://adds-faa.opendata.arcgis.com), published for public use) — Class Airspace and Special Use Airspace behind the 3D airspace (`frontend/src/world/airspace-data.json`). Simplified from the FAA originals, which the FAA does not warrant once modified; not for navigation.
 - **FAA TFR site** ([tfr.faa.gov](https://tfr.faa.gov)) — the live temporary flight restrictions, proxied and cached by the container (list ten minutes, each NOTAM thirty); nothing stored.
-- **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`).
+- **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`) and the runways of the airports layer (`frontend/src/world/runways-data.json`).
 - **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
 - **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),
   GPL v2+) — SVG aircraft shape catalog and the altitude → color palette.

@@ -247,6 +247,12 @@ export interface Settings {
   airspaceTfr: boolean;
   /** Name labels on the airspace volumes (also the click target for framing and the info card). */
   airspaceLabels: boolean;
+  /** Runways drawn where they lie (world/airports.ts; OurAirports data). */
+  airportRunways: boolean;
+  /** A 3 degree approach path to each lit hard-surface runway end. */
+  airportApproaches: boolean;
+  /** ICAO labels on airports (also the click target for framing one). */
+  airportLabels: boolean;
   /** Great-circle line along the selected aircraft's scheduled route (world/route-line.ts). */
   routeLine: boolean;
   /**
@@ -332,6 +338,9 @@ const DEFAULTS: Settings = {
   airspaceSpecial: false,
   airspaceTfr: false,
   airspaceLabels: true,
+  airportRunways: false,
+  airportApproaches: false,
+  airportLabels: true,
   routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,
