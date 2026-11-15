@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Busy scopes are much faster**: aircraft bodies are drawn in one batch per shape instead of one draw each ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
+- **`?perf=1`** logs frame time and draw calls to the console every five seconds.
+
 ### Fixed
 
 - **Labels** no longer flicker at the view edge or the label-density fade while the camera moves.

@@ -39,7 +39,11 @@ The defining pattern is **inverted dataflow + a reconciler**:
   aircraft state.
 - `aircraft/reconciler.ts` runs once per frame: it diffs the store against the
   Three.js scene and creates / updates / removes a per-aircraft `Group` (cone,
-  ground icon, altitude line, trail, CSS label, rings). **The reconciler owns
+  ground icon, altitude line, trail, CSS label, rings). Bodies, ground icons
+  and altitude lines are batched (`body-instances`, `icon-instances`,
+  `altline-arena`: rebuilt each frame, one draw per shape or one in total),
+  and the per-aircraft body `Mesh` is an undrawn transform anchor except
+  while selected. **The reconciler owns
   the aircraft scene graph — do not add or remove aircraft objects elsewhere.**
 
 State is shared via **subscribe-pattern singletons**: a module-level singleton

@@ -51,6 +51,7 @@ import { MotionTracker, type SampledFix } from './motion';
 import { altitudeColorCached, altitudeColorStyleCached } from '../core/altitude-color';
 import { DIORAMA_PLANES } from '../world/diorama-clip';
 import { groundIconFade, markerViewScale } from './marker-scale';
+import { BodyInstancePool } from './body-instances';
 
 // Each aircraft is a Group: a cone pointing along its heading + a vertical
 // altitude line dropping to the ground plane + a positional trail. The
@@ -532,6 +533,13 @@ function buildEntry(a: Aircraft): RenderEntry {
   const body = markerBodyFor(getSettings().aircraftShape, a.onGround, shapeName, scaling);
   const cone = new Mesh(body.geometry, material);
   cone.userData = { kind: 'aircraft', hex: a.hex };
+  // The fleet's bodies are drawn by the reconciler's BodyInstancePool, one
+  // instanced draw per geometry (issue #18). This mesh stays as the
+  // aircraft's transform anchor (the label and pick proxy are its
+  // children) and as the holder of its geometry, colour and fade, and is
+  // itself drawn only while the aircraft is selected, when it wants the
+  // brighter emissive no instance can have.
+  cone.visible = false;
   // Ground icon: per-instance state for the reconciler's IconInstancePool.
   // Footprint sizing matches the old per-aircraft plane (aspect-corrected,
   // longer side at full raster resolution).
@@ -1253,6 +1261,10 @@ const LOD_REFRESH_MS = 250;
 // between an aircraft's displayed and raw positions: MAX_DELAY_MS (12 s)
 // at 600 kt is 2 NM.
 const SMOOTHING_GATE = new Sphere(new Vector3(), 2.5);
+// Body cull: a sphere comfortably larger than any marker geometry at unit
+// scale, so a body half off the edge of the view is still drawn.
+const BODY_CULL = new Sphere(new Vector3(), 1);
+const BODY_CULL_RADIUS = 6;
 
 export class AircraftReconciler {
   private readonly entries = new Map<string, RenderEntry>();
@@ -1298,6 +1310,7 @@ export class AircraftReconciler {
   private readonly iconPool: IconInstancePool;
   // Fleet-wide altitude-line arena (issue #6): one draw call total.
   private readonly altArena: AltLineArena;
+  private readonly bodyPool: BodyInstancePool;
   // Smooth-motion fix history. Subscribes to the store; sampled per frame
   // for visible aircraft (see aircraft/motion.ts).
   private readonly motion: MotionTracker;
@@ -1320,6 +1333,7 @@ export class AircraftReconciler {
     const s0 = getSettings();
     this.motion = new MotionTracker(store, { modeFn: () => getTimeContext().mode });
     this.iconPool = new IconInstancePool(root, s0.groundSprites);
+    this.bodyPool = new BodyInstancePool(root);
     this.altArena = new AltLineArena(LINE_MAT_DEFAULT);
     this.altArena.line.visible = s0.altitudeLines;
     root.add(this.altArena.line);
@@ -1526,6 +1540,8 @@ export class AircraftReconciler {
     // selection flips need a trail rebuild to apply / lift the truncation.
     if (getSettings().trailLength >= 0) entry.lastTrailRev = -1;
     entry.material.emissiveIntensity = selected ? 1.6 : 1.0;
+    // Selected: drawn as its own mesh. Otherwise: an instance in the pool.
+    entry.cone.visible = selected;
     entry.labelEl.classList.toggle('selected', selected);
     entry.trailSolid.material = selected ? TRAIL_MAT_SOLID_SELECTED : TRAIL_MAT_SOLID;
     entry.trailDashed.material = selected ? TRAIL_MAT_DASHED_SELECTED : TRAIL_MAT_DASHED;
@@ -1670,7 +1686,11 @@ export class AircraftReconciler {
     // headset sees of a placed diorama.
     const frustumGate = smoothOn && !this.xrMode;
     this.frustumFresh = false;
-    if (frustumGate) this.computeFrustum();
+    // The body pool is one draw per geometry, so three cannot cull single
+    // aircraft any more: the reconciler does, against the same frustum.
+    // Not in XR, for the reason above (every body is pushed there).
+    const cullBodies = !this.xrMode;
+    if (frustumGate || cullBodies) this.computeFrustum();
     // Camera-distance marker scale (aircraft/marker-scale.ts). Desktop
     // only: in XR the user scales the whole diorama by hand and the main
     // camera's position says nothing about where the headset is.
@@ -1678,6 +1698,7 @@ export class AircraftReconciler {
     if (viewScaleOn) this.camPos.copy(this.camera.position);
     this.iconPool.begin();
     this.altArena.begin();
+    this.bodyPool.begin();
 
     for (const a of snapshot.values()) {
       let entry = this.entries.get(a.hex);
@@ -1819,6 +1840,20 @@ export class AircraftReconciler {
         entry.icon.w = entry.iconBaseW * iv;
         entry.icon.h = entry.iconBaseH * iv;
       }
+      if (!entry.isSelected) {
+        BODY_CULL.center.copy(entry.cone.position);
+        BODY_CULL.radius = BODY_CULL_RADIUS * entry.cone.scale.x;
+        if (!cullBodies || this.frustum.intersectsSphere(BODY_CULL)) {
+          this.bodyPool.push(
+            entry.cone.geometry,
+            entry.cone.position,
+            entry.cone.quaternion,
+            entry.cone.scale,
+            entry.material.color,
+            opacity,
+          );
+        }
+      }
       // Icon alpha rides the per-instance RGBA attribute; the pool rebuild
       // below re-uploads every frame anyway, so no delta gating needed.
       entry.icon.a = opacity * groundIconFade(entry.lastViewScale);
@@ -1877,6 +1912,7 @@ export class AircraftReconciler {
     }
     this.iconPool.commit();
     this.altArena.commit();
+    this.bodyPool.commit();
   }
 
   get count(): number {

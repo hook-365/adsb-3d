@@ -1149,6 +1149,12 @@ if (initialSelectedHex) {
 
 let lastFrame = performance.now();
 // XR perf telemetry accumulators (see the presenting branch in tick).
+// Desktop perf log, opt-in with ?perf=1 (see the render branch in tick).
+const PERF_LOG = new URLSearchParams(window.location.search).get('perf') === '1';
+let perfMs = 0;
+let perfGlMs = 0;
+let perfLabelMs = 0;
+let perfFrames = 0;
 let xrPerfMs = 0;
 let xrPerfFrames = 0;
 let frames = 0;
@@ -1392,6 +1398,34 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     world.camera.focus = dist;
     stereoEffect.setEyeSeparation(dist * getSettings().stereoStrength * 0.0005);
     stereoEffect.render(world.scene, world.camera);
+  } else if (PERF_LOG) {
+    // ?perf=1: the desktop twin of the [xr] perf log above, with the frame
+    // split into its two renderers. The newest sample is also left on
+    // window.__adsb3dPerf for a remote inspector.
+    const t0 = performance.now();
+    world.renderer.render(world.scene, world.camera);
+    const t1 = performance.now();
+    labelRenderer.render(world.scene, world.camera);
+    perfGlMs += t1 - t0;
+    perfLabelMs += performance.now() - t1;
+    perfMs += dt;
+    perfFrames++;
+    if (perfMs >= 5000) {
+      const render = world.renderer.info.render;
+      const round = (v: number): number => Math.round(v * 10) / 10;
+      const sample = {
+        avgFrameMs: round(perfMs / perfFrames),
+        fps: Math.round(1000 / (perfMs / perfFrames)),
+        glMs: round(perfGlMs / perfFrames),
+        labelMs: round(perfLabelMs / perfFrames),
+        drawCalls: render.calls,
+        triangles: render.triangles,
+        aircraft: reconciler.count,
+      };
+      console.info('[perf]', sample);
+      (window as unknown as { __adsb3dPerf?: unknown }).__adsb3dPerf = sample;
+      perfMs = perfGlMs = perfLabelMs = perfFrames = 0;
+    }
   } else {
     world.renderer.render(world.scene, world.camera);
     labelRenderer.render(world.scene, world.camera);
