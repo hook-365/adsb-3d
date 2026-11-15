@@ -47,6 +47,8 @@ export const settingsStrings = {
   'settings.range_rings_desc': 'Anillos concéntricos de distancia cada 50 NM.',
   'settings.acars_pings': 'Pings de posición ACARS',
   'settings.acars_pings_desc': 'Marca en el mapa dónde se informa un mensaje ACARS con posición, incluso fuera del alcance ADS-B.',
+  'settings.route_line': 'Línea de ruta',
+  'settings.route_line_desc': 'Dibuja la ruta programada de la aeronave seleccionada como una línea de origen a destino. Solo se muestra cuando la ruta encaja con la posición de la aeronave.',
   'settings.section_map': 'Mapa',
   'settings.basemap': 'Mapa base',
   'settings.basemap_desc': 'Proveedor de teselas del mapa dibujado bajo la escena.',

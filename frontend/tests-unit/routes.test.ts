@@ -59,6 +59,8 @@ describe('normalizeRoute', () => {
       origin_name: 'Dallas Love Field',
       destination_name: 'Phoenix Sky Harbor',
       plausible: true,
+      origin_pos: { lat: DAL.lat, lon: DAL.lon },
+      destination_pos: { lat: PHX.lat, lon: PHX.lon },
     });
   });
 

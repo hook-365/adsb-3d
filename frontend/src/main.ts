@@ -54,6 +54,7 @@ import { mountPrecipLayer } from './world/precip-layer';
 import { mountSevereCells } from './world/severe-cells';
 import { mountLightning } from './world/lightning';
 import { mountAirspace } from './world/airspace';
+import { mountRouteLine } from './world/route-line';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
 import { mountLoadingToast } from './ui/loading-toast';
@@ -1067,6 +1068,7 @@ mountStorms(world.xrRoot);
 mountFreezingLevel(world.xrRoot);
 mountSevereCells(world.xrRoot);
 mountLightning(world.xrRoot);
+const routeLine = mountRouteLine(world.xrRoot);
 airspacePanel = mountAirspacePanel(() => store.snapshot.values());
 mountAirspace(world.xrRoot, {
   onSelect: (selection) => {
@@ -1280,6 +1282,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
       world.camera.updateProjectionMatrix();
     }
   }
+  routeLine.update(xrSelectedHex ? (store.snapshot.get(xrSelectedHex) ?? null) : null);
   const syncT0 = PERF_LOG ? performance.now() : 0;
   reconciler.syncFrame();
   if (PERF_LOG) perfSyncMs += performance.now() - syncT0;

@@ -48,6 +48,8 @@ export const settingsStrings = {
   'settings.range_rings_desc': 'Concentric distance rings every 50 NM.',
   'settings.acars_pings': 'ACARS position pings',
   'settings.acars_pings_desc': 'Ping the map where a positioned ACARS message is reported, even beyond ADS-B range.',
+  'settings.route_line': 'Route line',
+  'settings.route_line_desc': 'Draw the selected aircraft\'s scheduled route as a line from its origin to its destination. Shown only when the route fits where the aircraft is.',
 
   // Map section
   'settings.section_map': 'Map',

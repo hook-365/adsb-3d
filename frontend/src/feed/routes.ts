@@ -34,6 +34,20 @@ export interface RouteInfo {
   plausible: boolean;
   /** Every stop, in order, when the flight number covers more than one leg. */
   stops?: string[];
+  /** Where the current leg's endpoints are, when the route service says. */
+  origin_pos?: RoutePoint;
+  destination_pos?: RoutePoint;
+}
+
+export interface RoutePoint {
+  lat: number;
+  lon: number;
+}
+
+function airportPoint(a: RawAirport): RoutePoint | undefined {
+  return typeof a.lat === 'number' && typeof a.lon === 'number' && Number.isFinite(a.lat) && Number.isFinite(a.lon)
+    ? { lat: a.lat, lon: a.lon }
+    : undefined;
 }
 
 export interface RouteQuery {
@@ -174,6 +188,10 @@ export function normalizeRoute(entry: RawRouteEntry | undefined, lat: number, lo
   if (from.name) out.origin_name = from.name;
   if (to.name) out.destination_name = to.name;
   if (airports.length > 2) out.stops = airports.map(airportCode);
+  const fromPos = airportPoint(from);
+  const toPos = airportPoint(to);
+  if (fromPos) out.origin_pos = fromPos;
+  if (toPos) out.destination_pos = toPos;
   return out;
 }
 

@@ -444,6 +444,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   airspaceSpecial: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceTfr: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceLabels: 'labels are CSS overlays, never drawn in a headset',
+  routeLine: 'map decoration toggle; panel-only to keep the wrist pages lean',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

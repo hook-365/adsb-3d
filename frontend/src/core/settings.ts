@@ -247,6 +247,8 @@ export interface Settings {
   airspaceTfr: boolean;
   /** Name labels on the airspace volumes (also the click target for framing and the info card). */
   airspaceLabels: boolean;
+  /** Great-circle line along the selected aircraft's scheduled route (world/route-line.ts). */
+  routeLine: boolean;
   /**
    * UI language. 'auto' resolves navigator.language against the locales
    * registered in core/i18n.ts, falling back to English. Changing this
@@ -330,6 +332,7 @@ const DEFAULTS: Settings = {
   airspaceSpecial: false,
   airspaceTfr: false,
   airspaceLabels: true,
+  routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,
   altitudeExaggeration: '4',

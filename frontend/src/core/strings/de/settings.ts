@@ -47,6 +47,8 @@ export const settingsStrings = {
   'settings.range_rings_desc': 'Konzentrische Entfernungsringe alle 50 NM.',
   'settings.acars_pings': 'ACARS-Positions-Pings',
   'settings.acars_pings_desc': 'Markiert auf der Karte, wo eine ACARS-Nachricht mit Position gemeldet wird, auch außerhalb der ADS-B-Reichweite.',
+  'settings.route_line': 'Routenlinie',
+  'settings.route_line_desc': 'Zeichnet die planmäßige Route des ausgewählten Flugzeugs als Linie vom Start- zum Zielflughafen. Nur sichtbar, wenn die Route zur Position des Flugzeugs passt.',
   'settings.section_map': 'Karte',
   'settings.basemap': 'Basiskarte',
   'settings.basemap_desc': 'Kartenkachel-Anbieter unterhalb der Szene.',

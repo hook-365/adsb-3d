@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.
 - **Loading toast**: a note at the top of the screen names what is still loading (3D storms, weather radar, airspace, TFRs).
 
 ### Changed
