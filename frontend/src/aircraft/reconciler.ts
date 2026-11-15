@@ -121,6 +121,21 @@ function lineMaterial(params: ConstructorParameters<typeof LineMaterial>[0]): Li
   return m;
 }
 
+// Fat-line materials owned by other layers (approach paths, ...). They
+// have the same two obligations, so they sign up here and are kept in step
+// with the aircraft's own.
+const GUEST_LINE_MATERIALS: { material: LineMaterial; factor: number }[] = [];
+let lineWidthPx = 1;
+let lineHeightPx = 1;
+let lineBase = 2;
+
+/** Keep `material` sized with the drawing buffer; `factor` scales the shared base width. */
+export function registerLineMaterial(material: LineMaterial, factor = 1): void {
+  GUEST_LINE_MATERIALS.push({ material, factor });
+  material.resolution.set(lineWidthPx, lineHeightPx);
+  material.linewidth = lineBase * factor;
+}
+
 /**
  * Feed every LineMaterial the current drawing-buffer size (their px→clip
  * conversion needs it) and scale line width with vertical resolution so
@@ -130,7 +145,14 @@ function lineMaterial(params: ConstructorParameters<typeof LineMaterial>[0]): Li
  */
 export function setLineResolution(width: number, height: number): void {
   const base = Math.min(5, Math.max(1.6, (2 * height) / 1100));
+  lineWidthPx = width;
+  lineHeightPx = height;
+  lineBase = base;
   for (const m of LINE_MATERIALS) m.resolution.set(width, height);
+  for (const { material, factor } of GUEST_LINE_MATERIALS) {
+    material.resolution.set(width, height);
+    material.linewidth = base * factor;
+  }
   LINE_MAT_DEFAULT.linewidth = base;
   TRAIL_MAT_SOLID.linewidth = base;
   TRAIL_MAT_DASHED.linewidth = base;

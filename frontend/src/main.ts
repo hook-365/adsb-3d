@@ -1085,6 +1085,7 @@ mountAirspace(world.xrRoot, {
 });
 airportPanel = mountAirportPanel(() => store.snapshot.values());
 mountAirports(world.xrRoot, {
+  getTraffic: () => store.snapshot.values(),
   onSelect: (site, center) => {
     // Three miles across and a couple of thousand feet up frames a field.
     // frameBox also drops any aircraft selection, freeing the card's slot.

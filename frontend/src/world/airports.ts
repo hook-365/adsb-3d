@@ -2,15 +2,19 @@ import dataUrl from './runways-data.json?url';
 import {
   BufferAttribute,
   BufferGeometry,
+  Color,
   DoubleSide,
   Group,
-  LineBasicMaterial,
-  LineSegments,
   Mesh,
   MeshBasicMaterial,
   Vector3,
 } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import type { InstancedInterleavedBuffer, InterleavedBufferAttribute } from 'three';
+import { registerLineMaterial } from '../aircraft/reconciler';
 import { RANGE_NM, subscribeHome } from '../core/config';
 import { distanceFromHomeNm, toScene } from '../core/coords';
 import { t } from '../core/i18n';
@@ -21,6 +25,15 @@ import { DIORAMA_PLANES } from './diorama-clip';
 import { getMetar, setAirportWeatherWanted, subscribeAirportWeather } from './airport-weather';
 import { subscribeElevation } from './elevation';
 import { terrainActive, terrainSurface } from './tiles';
+import type { PathPoint } from './procedure-geometry';
+import {
+  finalInUse,
+  finalsAt,
+  hasProcedures,
+  loadProcedureIndex,
+  subscribeProcedures,
+  type TrafficSample,
+} from './procedures';
 
 // Airports layer: every runway where it lies, the approach path to the
 // lit hard-surface ones, and a name label on each airport.
@@ -36,10 +49,15 @@ import { terrainActive, terrainSurface } from './tiles';
 // so small strips may be missing.
 //
 // Runways are flat quads resting on the drawn terrain, merged into one
-// mesh; approach paths are one LineSegments. An approach is a straight
-// 3 degree descent to the threshold along the runway's own centreline: the
-// generic shape of an instrument approach, not that runway's published
-// procedure, and drawn for both ends whichever is in use.
+// mesh; approach paths are one LineSegments.
+//
+// Where the FAA publishes procedures for an airport (the US), each runway
+// end with an instrument approach gets that approach's real final segment
+// (world/procedures.ts): its fixes, crossing altitudes and course. A final
+// that live traffic is flying is drawn bright and the rest faint, so the
+// runways in use stand out. Everywhere else the path is generic: a
+// straight 3 degree descent along the centreline of each lit paved runway,
+// the usual shape of an approach and nothing more.
 //
 // Everything above the mount function is pure so it can be unit tested.
 
@@ -59,6 +77,13 @@ const MAX_LABELS = 24;
 const ELEVATION_SETTLE_MS = 1500;
 const RUNWAY_COLOR = 0xd7e0ea;
 const APPROACH_COLOR = 0x8fd3ff;
+/** Brightness of a final nobody is flying, of a generic path, and of one in use. */
+const APPROACH_IDLE = 0.4;
+const APPROACH_GENERIC = 0.5;
+const APPROACH_IN_USE = 1;
+/** Pieces per leg of a published final: the altitude curve bends a straight descent. */
+const FINAL_STEPS = 4;
+const IN_USE_CHECK_MS = 3000;
 
 export interface Runway {
   /** Idents of the two ends, low number first ("12L", "30R"). */
@@ -226,6 +251,8 @@ export function airportsActive(): boolean {
 export interface AirportsOptions {
   /** An airport's label was clicked. `center` is where it is in the scene. */
   onSelect?: (site: AirportSite, center: Vector3) => void;
+  /** Live traffic, for telling which finals are being flown. */
+  getTraffic?: () => Iterable<TrafficSample>;
 }
 
 export function mountAirports(parent: Group, options: AirportsOptions = {}): void {
@@ -247,16 +274,17 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -6,
   });
-  const approachMat = new LineBasicMaterial({
-    color: APPROACH_COLOR,
-    transparent: true,
-    opacity: 0.4,
-    depthWrite: false,
-    clippingPlanes: DIORAMA_PLANES,
-  });
+  // A fat line (1 px GL lines vanish against the map), with colour on the
+  // vertices so one draw can hold bright and faint finals.
+  const approachMat = new LineMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false });
+  approachMat.clippingPlanes = DIORAMA_PLANES;
+  registerLineMaterial(approachMat, 0.8);
 
+  /** Published finals in the approach geometry: where each one's vertices are. */
+  let finals: { points: PathPoint[]; start: number; count: number; inUse: boolean }[] = [];
+  const approachColor = new Color(APPROACH_COLOR);
   let runwayMesh: Mesh | null = null;
-  let approachLines: LineSegments | null = null;
+  let approachLines: LineSegments2 | null = null;
   /** ICAO → label element, so weather can tint a label without a rebuild. */
   const labelEls = new Map<string, HTMLElement>();
   let attached = false;
@@ -286,6 +314,31 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       if (category) el.dataset.category = category;
       else delete el.dataset.category;
     }
+  };
+
+  // Brighten the finals traffic is on. Only the colours of the finals whose
+  // state changed are rewritten; the geometry stands.
+  const markInUse = (): void => {
+    if (!approachLines || finals.length === 0 || !options.getTraffic) return;
+    const traffic = Array.from(options.getTraffic());
+    // Fat-line colours are one interleaved buffer: r g b for each vertex in order.
+    const buffer = (approachLines.geometry.getAttribute('instanceColorStart') as InterleavedBufferAttribute)
+      .data as InstancedInterleavedBuffer;
+    const colors = buffer.array as Float32Array;
+    let changed = false;
+    for (const final of finals) {
+      const inUse = finalInUse(final.points, traffic);
+      if (inUse === final.inUse) continue;
+      final.inUse = inUse;
+      const shade = inUse ? APPROACH_IN_USE : APPROACH_IDLE;
+      for (let i = final.start; i < final.start + final.count; i++) {
+        colors[i * 3] = approachColor.r * shade;
+        colors[i * 3 + 1] = approachColor.g * shade;
+        colors[i * 3 + 2] = approachColor.b * shade;
+      }
+      changed = true;
+    }
+    if (changed) buffer.needsUpdate = true;
   };
 
   const rebuild = (): void => {
@@ -321,31 +374,62 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       }
     }
 
+    finals = [];
     if (s.airportApproaches) {
       const lines: number[] = [];
-      const add = (path: [number, number, number][]): void => {
-        for (let i = 0; i + 1 < path.length; i++) {
-          for (const [lat, lon, altFt] of [path[i]!, path[i + 1]!]) {
-            toScene(lat, lon, altFt, tmp);
-            lines.push(tmp.x, tmp.y, tmp.z);
-          }
+      const shades: number[] = [];
+      const segment = (a: PathPoint | [number, number, number], b: PathPoint | [number, number, number], shade: number): void => {
+        for (const p of [a, b]) {
+          if (Array.isArray(p)) toScene(p[0], p[1], p[2], tmp);
+          else toScene(p.lat, p.lon, p.altFt ?? 0, tmp);
+          lines.push(tmp.x, tmp.y, tmp.z);
+          shades.push(approachColor.r * shade, approachColor.g * shade, approachColor.b * shade);
         }
       };
-      for (const { runways } of sites) {
+      for (const { airport, runways } of sites) {
+        if (hasProcedures(airport.icao)) {
+          // Published: the real final of each runway end that has one.
+          for (const { points } of finalsAt(airport.icao)) {
+            const start = lines.length / 3;
+            for (let i = 0; i + 1 < points.length; i++) {
+              const a = points[i]!;
+              const b = points[i + 1]!;
+              for (let k = 0; k < FINAL_STEPS; k++) {
+                const f0 = k / FINAL_STEPS;
+                const f1 = (k + 1) / FINAL_STEPS;
+                const at = (f: number): [number, number, number] => [
+                  a.lat + (b.lat - a.lat) * f,
+                  a.lon + (b.lon - a.lon) * f,
+                  (a.altFt ?? 0) + ((b.altFt ?? 0) - (a.altFt ?? 0)) * f,
+                ];
+                segment(at(f0), at(f1), APPROACH_IDLE);
+              }
+            }
+            finals.push({ points, start, count: lines.length / 3 - start, inUse: false });
+          }
+          continue;
+        }
         for (const r of runways) {
           if (!r.lighted || !r.hard) continue;
-          add(approachPath(r.lowLat, r.lowLon, r.lowElevFt, r.highLat, r.highLon));
-          add(approachPath(r.highLat, r.highLon, r.highElevFt, r.lowLat, r.lowLon));
+          for (const path of [
+            approachPath(r.lowLat, r.lowLon, r.lowElevFt, r.highLat, r.highLon),
+            approachPath(r.highLat, r.highLon, r.highElevFt, r.lowLat, r.lowLon),
+          ]) {
+            for (let i = 0; i + 1 < path.length; i++) segment(path[i]!, path[i + 1]!, APPROACH_GENERIC);
+          }
         }
       }
       if (lines.length > 0) {
-        const geom = new BufferGeometry();
-        geom.setAttribute('position', new BufferAttribute(new Float32Array(lines), 3));
-        approachLines = new LineSegments(geom, approachMat);
+        const geom = new LineSegmentsGeometry();
+        geom.setPositions(lines);
+        geom.setColors(shades);
+        approachLines = new LineSegments2(geom, approachMat);
+        approachLines.raycast = () => {};
         approachLines.renderOrder = 7;
         approachLines.frustumCulled = false;
         approachLines.userData = { kind: 'approaches' };
         group.add(approachLines);
+        markInUse();
       }
     }
 
@@ -395,6 +479,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       attached = false;
     }
     if (on) load();
+    if (on && getSettings().airportApproaches) void loadProcedureIndex();
     setAirportWeatherWanted(on && getSettings().airportWeather);
     rebuild();
   };
@@ -411,6 +496,10 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
     sync();
   });
   listeners.add(rebuild);
+  subscribeProcedures(rebuild);
+  setInterval(() => {
+    if (attached) markInUse();
+  }, IN_USE_CHECK_MS);
   subscribeAirportWeather(tint);
   subscribeHome(rebuild);
   // Runways rest on the terrain, which streams in after boot and after a
