@@ -148,6 +148,8 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Kartenkacheln eine Zoomstufe schärfer laden (4x so viele Kacheln bei ' +
     'gleicher Abdeckung). Kostet Bandbreite und Speicher; gilt auch am Desktop.',
+  'settings.detail_tiles': 'Schärfere Karte aus der Nähe',
+  'settings.detail_tiles_desc': 'Lädt feinere Kartenkacheln für den betrachteten Bereich, wenn die Kamera nah am Boden ist.',
   'settings.alt_exaggeration': 'Vertikaler Maßstab',
   'settings.alt_exaggeration_desc':
     'Wie stark die Höhe gegenüber der Entfernung überhöht wird. Maßstabsgetreu ' +

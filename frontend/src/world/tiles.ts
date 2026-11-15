@@ -353,7 +353,7 @@ interface LayerState {
 
 const layerStates = new WeakMap<Group, LayerState>();
 
-function createChunk(terrain: boolean, overlay: boolean): Chunk {
+function createChunk(terrain: boolean, overlay: boolean, patch = false): Chunk {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = CHUNK_TILES * CELL_PX;
   const texture = new CanvasTexture(canvas);
@@ -365,13 +365,20 @@ function createChunk(terrain: boolean, overlay: boolean): Chunk {
   // rings behind them; the flat map stays out of the depth buffer.
   // Overlays (radar) blend over the basemap and never write depth, so
   // the terrain beneath still occludes aircraft correctly.
+  // A detail patch lies on the basemap it sharpens. The basemap has already
+  // written the terrain's depth; the patch only has to win the depth test
+  // against it, which a polygon offset toward the camera settles (its finer
+  // mesh follows the ground a little differently from the coarse one).
   const material = new MeshBasicMaterial({
     map: texture,
-    depthWrite: terrain && !overlay,
+    depthWrite: terrain && !overlay && !patch,
     transparent: overlay,
     opacity: overlay ? 0.78 : 1,
     side: DoubleSide,
     clippingPlanes: DIORAMA_PLANES,
+    polygonOffset: patch,
+    polygonOffsetFactor: patch ? -4 : 0,
+    polygonOffsetUnits: patch ? -40 : 0,
   });
   return { ctx: canvas.getContext('2d')!, texture, material, mesh: null, pieces: new Map(), dirty: false };
 }
@@ -408,7 +415,8 @@ function rebuildChunk(group: Group, chunk: Chunk, key: string): void {
     chunk.mesh = new Mesh(geom, chunk.material);
     // Basemap first, then overlay tiles, then transparent scene chrome
     // (rings, trails, altitude lines).
-    chunk.mesh.renderOrder = chunk.material.transparent ? -9 : -10;
+    // The detail patch goes between the two.
+    chunk.mesh.renderOrder = chunk.material.transparent ? -9 : chunk.material.polygonOffset ? -9.5 : -10;
     chunk.mesh.userData = { kind: 'tile-chunk', chunk: key };
     group.add(chunk.mesh);
   }
@@ -426,6 +434,29 @@ export interface TileLayerOptions {
   overlay?: boolean;
   /** Frame id baked into the tile URL (radar: RainViewer's opaque frame id). */
   frame?: string;
+  /**
+   * Cover `rangeNm` around this point instead of the whole scope around
+   * home: the detail patch (world/detail-tiles.ts), a few finer tiles under
+   * the camera drawn over the basemap.
+   */
+  center?: { lat: number; lon: number };
+  rangeNm?: number;
+}
+
+/** Deepest zoom worth asking a provider for; the FAA chart scans stop early. */
+export function providerMaxZoom(provider: TileProvider): number {
+  switch (provider) {
+    case 'sectional':
+    case 'sectional_hybrid':
+    case 'helicopter':
+    case 'ifr_low':
+    case 'ifr_high':
+      return 11;
+    case 'hillshade':
+      return 13;
+    default:
+      return 16;
+  }
 }
 
 export function createTileLayer(options: TileLayerOptions = {}): Group {
@@ -436,14 +467,17 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   const overlay = options.overlay ?? false;
   const frame = options.frame;
   const terrain = terrainActive();
+  const patch = options.center !== undefined;
+  const centre = options.center ?? HOME;
+  const range = options.rangeNm ?? RANGE_NM;
 
   const group = new Group();
   group.name = `tiles-${provider}-z${zoom}`;
   const state: LayerState = { chunks: new Map(), flushTimer: undefined };
   layerStates.set(group, state);
 
-  const cx = lonToTileX(HOME.lon, zoom);
-  const cy = latToTileY(HOME.lat, zoom);
+  const cx = lonToTileX(centre.lon, zoom);
+  const cy = latToTileY(centre.lat, zoom);
   const cxFloor = Math.floor(cx);
   const cyFloor = Math.floor(cy);
 
@@ -451,7 +485,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
   // never at a tile boundary. Square-grid corners that can't come within a
   // tile of the range ring are skipped (~20% of the grid).
   const tileNm = tileNmAtHome(zoom);
-  const half = Math.ceil(RANGE_NM / tileNm) + 1;
+  const half = Math.ceil(range / tileNm) + 1;
   const gridX0 = cxFloor - half;
   const gridY0 = cyFloor - half;
   const nMax = Math.pow(2, zoom);
@@ -476,7 +510,9 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
       const y = cyFloor + dy;
       // Skip out-of-range tiles at world poles/wraps (z=8 has 256 tiles per side).
       if (x < 0 || y < 0 || x >= nMax || y >= nMax) continue;
-      if (tileDistanceNm(zoom, x, y) > RANGE_NM + tileNm) continue;
+      // A patch is a handful of tiles: keep the square. The scope-wide
+      // layer drops the corners the range ring never reaches.
+      if (!patch && tileDistanceNm(zoom, x, y) > RANGE_NM + tileNm) continue;
 
       const chunkX = Math.floor((x - gridX0) / CHUNK_TILES);
       const chunkY = Math.floor((y - gridY0) / CHUNK_TILES);
@@ -497,7 +533,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
         if (group.userData['disposed']) return;
         let chunk = state.chunks.get(chunkKey);
         if (!chunk) {
-          chunk = createChunk(terrain, overlay);
+          chunk = createChunk(terrain, overlay, patch);
           state.chunks.set(chunkKey, chunk);
         }
         chunk.ctx.drawImage(image, lx * CELL_PX, ly * CELL_PX, CELL_PX, CELL_PX);

@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Airports**: runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels. Toggles under Settings, Map.
 - **Airways, navaids and fixes** (US): low and high airways drawn at the heights they are flown, VORs and NDBs with frequencies, and the named fixes along the airways. Toggles under Settings, Map, Navigation.
+- **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.
 - **Airport card and weather**: click an airport for its runways, current METAR decoded and raw, the TAF, and the traffic at the field. Labels are coloured by flight category.
 - **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.

@@ -81,7 +81,8 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   ground). Close-up limits live in main.ts: orbit `minDistance` 1.5 NM,
   ground clearance 0.08 units, a near plane that shrinks with the
   camera's reach, zoom-to-cursor unless following, and spin and free
-  mode excluding each other. `tiles` (basemap; also
+  mode excluding each other. `detail-tiles` (a patch of finer tiles under a close camera, the
+  `center` / `rangeNm` options of `createTileLayer`), `tiles` (basemap; also
   `terrainSurface()`, the drawn-mesh height that ground anchors use),
   `labels`, `heatmap` (3D airway-density), `acars-pings` (transient map pings
   at ACARS-reported coordinates), `storms` (raymarched MRMS storm volume

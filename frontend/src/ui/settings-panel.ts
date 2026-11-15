@@ -270,6 +270,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'detailTiles',
+        label: t('settings.detail_tiles'),
+        description: t('settings.detail_tiles_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'weatherRadar',
         label: t('settings.weather_radar'),
         description: t('settings.weather_radar_desc'),
@@ -678,7 +684,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     { heading: t('settings.group_labels'), ids: ['aircraftLabels', 'labelDensity', 'acarsMessages'] },
   ],
   map: [
-    { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles'] },
+    { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles', 'detailTiles'] },
     {
       heading: t('settings.group_weather'),
       ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],

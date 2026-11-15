@@ -148,6 +148,8 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Carga el mapa base un nivel de zoom más nítido (4x más mosaicos para ' +
     'la misma cobertura). Cuesta ancho de banda y memoria; también se aplica en escritorio.',
+  'settings.detail_tiles': 'Mapa más nítido de cerca',
+  'settings.detail_tiles_desc': 'Cuando la cámara está cerca del suelo, carga teselas más detalladas de la zona que se está mirando.',
   'settings.alt_exaggeration': 'Escala vertical',
   'settings.alt_exaggeration_desc':
     'Cuánto se exagera la altitud respecto a la distancia en tierra. La escala ' +

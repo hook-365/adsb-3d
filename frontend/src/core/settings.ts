@@ -171,6 +171,8 @@ export interface Settings {
    * basemap detail is equally desirable zoomed in on a monitor.
    */
   hiResTiles: boolean;
+  /** A patch of finer map tiles under the camera when it is near the ground (world/detail-tiles.ts). */
+  detailTiles: boolean;
   /**
    * Side-by-side stereo rendering (left/right eye halves) for Google
    * Cardboard or a phone VR headset. CSS2D labels are hidden while on —
@@ -322,6 +324,7 @@ const DEFAULTS: Settings = {
   autoOrbitDirection: 'right',
   cameraMode: 'orbit',
   hiResTiles: false,
+  detailTiles: false,
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,

@@ -152,6 +152,8 @@ export const settingsStrings = {
   'settings.hi_res_tiles_desc':
     'Fetch the basemap one zoom level sharper (4x the tiles for the same ' +
     'coverage). Costs bandwidth and memory; applies on desktop too.',
+  'settings.detail_tiles': 'Sharper map up close',
+  'settings.detail_tiles_desc': 'When the camera is near the ground, load finer map tiles for the area it is looking at.',
   'settings.alt_exaggeration': 'Vertical scale',
   'settings.alt_exaggeration_desc':
     'How much altitude is exaggerated against ground distance. True scale ' +
