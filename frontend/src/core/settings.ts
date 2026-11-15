@@ -253,6 +253,8 @@ export interface Settings {
   airportApproaches: boolean;
   /** ICAO labels on airports (also the click target for framing one). */
   airportLabels: boolean;
+  /** Current weather at airports: label tint by flight category, METAR and TAF in the card. */
+  airportWeather: boolean;
   /** Great-circle line along the selected aircraft's scheduled route (world/route-line.ts). */
   routeLine: boolean;
   /**
@@ -341,6 +343,7 @@ const DEFAULTS: Settings = {
   airportRunways: false,
   airportApproaches: false,
   airportLabels: true,
+  airportWeather: true,
   routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,

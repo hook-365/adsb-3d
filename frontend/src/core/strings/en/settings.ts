@@ -208,6 +208,8 @@ export const settingsStrings = {
   'settings.airport_approaches_desc': 'A three-degree descent to each lit hard-surface runway, ten miles out. The general shape of an approach, not the published procedure.',
   'settings.airport_labels': 'Airport labels',
   'settings.airport_labels_desc': 'An ICAO code on each airport. Click one to fly the camera to it.',
+  'settings.airport_weather': 'Airport weather',
+  'settings.airport_weather_desc': 'Colour each airport label by flight category (VFR, MVFR, IFR, LIFR) and show the METAR and forecast in the airport card. From aviationweather.gov, refreshed every five minutes.',
   'settings.group_altitude': 'Altitude',
   'settings.group_camera': 'Camera',
   'settings.group_headset': 'Headset',

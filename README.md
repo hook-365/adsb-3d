@@ -76,6 +76,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **Temporary flight restrictions** (off by default, US only): active and upcoming TFRs (wildfires, stadiums, launches, VIP movements) drawn as volumes with the rest of the airspace, live from the FAA's TFR site through the container's own cached proxy and refreshed every ten minutes. Click a TFR's label for its NOTAM: type, location, limits, when it is in force and the published text. Not for navigation.
 - **Airspace that follows its hours**: special use airspace outside its published times of use is drawn fainter, and its info card says where the clock stands. Areas activated only by NOTAM, and schedules the app cannot read with certainty, are left as they are; it never guesses.
 - **Airports** (off by default): runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels, for the airports on the scope. Runway data from OurAirports, baked into the image.
+- **Airport weather and info card**: airport labels are coloured by flight category (VFR, MVFR, IFR, LIFR). Click one for the field's runways, the current METAR decoded and as published, the forecast (TAF), how many aircraft are at the field, and a button to move the Explore scope there. Weather comes from aviationweather.gov through the container's cached proxy.
 - **Route line**: select an aircraft and its scheduled route is drawn as a great-circle line from origin to destination, when the route fits where the aircraft is.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
@@ -423,6 +424,7 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 ## Credits
 
 - **FAA Aeronautical Information Services** ([ADDS open data](https://adds-faa.opendata.arcgis.com), published for public use) — Class Airspace and Special Use Airspace behind the 3D airspace (`frontend/src/world/airspace-data.json`). Simplified from the FAA originals, which the FAA does not warrant once modified; not for navigation.
+- **[aviationweather.gov](https://aviationweather.gov/data/api/)** (US National Weather Service) — METARs and TAFs for the airport card, proxied and cached by the container (five and fifteen minutes); nothing stored.
 - **FAA TFR site** ([tfr.faa.gov](https://tfr.faa.gov)) — the live temporary flight restrictions, proxied and cached by the container (list ten minutes, each NOTAM thirty); nothing stored.
 - **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`) and the runways of the airports layer (`frontend/src/world/runways-data.json`).
 - **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).

@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - **Airports**: runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels. Toggles under Settings, Map.
+- **Airport card and weather**: click an airport for its runways, current METAR decoded and raw, the TAF, and the traffic at the field. Labels are coloured by flight category.
 - **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.
 - **Loading toast**: a note at the top of the screen names what is still loading (3D storms, weather radar, airspace, TFRs).
 

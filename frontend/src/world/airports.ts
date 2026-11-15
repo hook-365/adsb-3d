@@ -18,6 +18,7 @@ import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getAirports, loadAirports, type Airport } from '../feed/explore-airports';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { getMetar, setAirportWeatherWanted, subscribeAirportWeather } from './airport-weather';
 import { subscribeElevation } from './elevation';
 import { terrainActive, terrainSurface } from './tiles';
 
@@ -256,6 +257,8 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
 
   let runwayMesh: Mesh | null = null;
   let approachLines: LineSegments | null = null;
+  /** ICAO → label element, so weather can tint a label without a rebuild. */
+  const labelEls = new Map<string, HTMLElement>();
   let attached = false;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   const tmp = new Vector3();
@@ -271,6 +274,17 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
     for (const child of Array.from(labelGroup.children)) {
       labelGroup.remove(child);
       if (child instanceof CSS2DObject) child.element.remove();
+    }
+    labelEls.clear();
+  };
+
+  // Flight category as a coloured dot on the label (VFR green, MVFR blue,
+  // IFR red, LIFR magenta: the convention every aviation weather map uses).
+  const tint = (): void => {
+    for (const [icao, el] of labelEls) {
+      const category = getSettings().airportWeather ? (getMetar(icao)?.category ?? null) : null;
+      if (category) el.dataset.category = category;
+      else delete el.dataset.category;
     }
   };
 
@@ -365,7 +379,9 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
         const label = new CSS2DObject(el);
         label.position.copy(center).setY(center.y + 0.25);
         labelGroup.add(label);
+        labelEls.set(airport.icao, el);
       }
+      tint();
     }
   };
 
@@ -379,12 +395,13 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       attached = false;
     }
     if (on) load();
+    setAirportWeatherWanted(on && getSettings().airportWeather);
     rebuild();
   };
 
   const layerKey = (): string => {
     const s = getSettings();
-    return `${s.airportRunways}|${s.airportApproaches}|${s.airportLabels}|${s.altitudeExaggeration}|${s.altitudeCurveBias}`;
+    return `${s.airportRunways}|${s.airportApproaches}|${s.airportLabels}|${s.airportWeather}|${s.altitudeExaggeration}|${s.altitudeCurveBias}`;
   };
   let lastKey = layerKey();
   subscribeSettings(() => {
@@ -394,6 +411,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
     sync();
   });
   listeners.add(rebuild);
+  subscribeAirportWeather(tint);
   subscribeHome(rebuild);
   // Runways rest on the terrain, which streams in after boot and after a
   // feed switch: place them again once it has settled.

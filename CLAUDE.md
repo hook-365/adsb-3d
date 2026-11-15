@@ -100,12 +100,15 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   the nginx `/tfr/list` and `/tfr/detail/` proxies of tfr.faa.gov; only
   fetched while `airspaceTfr` is on), `airports` (runways on the terrain,
   3 degree approach paths, ICAO labels) + `runways-data.json` (generated
-  from OurAirports by `scripts/build-runways.py`), `route-line` (great
+  from OurAirports by `scripts/build-runways.py`), `airport-weather`
+  (METARs around home and a TAF on request, from aviationweather.gov
+  through the nginx `/wx/` proxies; tints the airport labels), `route-line` (great
   circle of the selected aircraft's scheduled route).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
   `airspace-panel` (info card for a clicked airspace label; shares the
-  detail card's slot), `feed-selector`, `place-picker` (the one feed control: receivers, then
+  detail card's slot), `airport-panel` (the same for an airport label:
+  runways, METAR, TAF, traffic at the field), `feed-selector`, `place-picker` (the one feed control: receivers, then
   searchable Explore cities; every pick is a feed id), etc.
 - `interaction/` — `picking` (raycaster).
 - `main.ts` — wires everything together at boot.

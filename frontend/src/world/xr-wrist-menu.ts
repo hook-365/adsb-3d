@@ -448,6 +448,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   airportRunways: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airportApproaches: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airportLabels: 'labels are CSS overlays, never drawn in a headset',
+  airportWeather: 'shown on labels and in the airport card, both desktop-only',
 };
 
 /** Exported for the drift-guard test: no page may overflow its slots. */

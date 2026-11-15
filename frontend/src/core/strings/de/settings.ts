@@ -204,6 +204,8 @@ export const settingsStrings = {
   'settings.airport_approaches_desc': 'Ein Drei-Grad-Sinkflug zu jeder befeuerten Hartbelagpiste, ab zehn Meilen. Die allgemeine Form eines Anflugs, nicht das veröffentlichte Verfahren.',
   'settings.airport_labels': 'Flughafen-Beschriftung',
   'settings.airport_labels_desc': 'Ein ICAO-Code an jedem Flughafen. Ein Klick fliegt die Kamera dorthin.',
+  'settings.airport_weather': 'Flughafenwetter',
+  'settings.airport_weather_desc': 'Färbt jede Flughafen-Beschriftung nach Flugkategorie (VFR, MVFR, IFR, LIFR) und zeigt METAR und Vorhersage in der Flughafenkarte. Von aviationweather.gov, alle fünf Minuten aktualisiert.',
   'settings.group_altitude': 'Höhe',
   'settings.group_camera': 'Kamera',
   'settings.group_headset': 'Headset',

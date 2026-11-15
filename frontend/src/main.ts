@@ -57,6 +57,7 @@ import { mountAirspace } from './world/airspace';
 import { mountRouteLine } from './world/route-line';
 import { mountAirports } from './world/airports';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
+import { mountAirportPanel, type AirportPanel } from './ui/airport-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
 import { mountLoadingToast } from './ui/loading-toast';
 import { mountWhatsNew } from './ui/whats-new';
@@ -687,6 +688,7 @@ const linkZoomOffset = new Vector3();
 // Mounted further down, once the store and scene exist; selections made
 // before then have no panel to close.
 let airspacePanel: AirspacePanel | null = null;
+let airportPanel: AirportPanel | null = null;
 function frameBox(box: { center: Vector3; radius: number; yLo: number; yHi: number }): void {
   if (world.renderer.xr.isPresenting) return;
   if (xrSelectedHex !== null) {
@@ -792,7 +794,10 @@ function applySelection(hex: string | null): void {
   xrSelectedHex = hex;
   if (hex !== linkZoomHex) linkZoomHex = null;
   // The airspace card shares the detail card's slot: an aircraft takes it over.
-  if (hex !== null) airspacePanel?.hide();
+  if (hex !== null) {
+    airspacePanel?.hide();
+    airportPanel?.hide();
+  }
   // New target: drop the XR follow anchor so it re-captures at the new
   // aircraft's current spot instead of yanking the world across the room.
   xrFollowAnchor = null;
@@ -1074,12 +1079,19 @@ airspacePanel = mountAirspacePanel(() => store.snapshot.values());
 mountAirspace(world.xrRoot, {
   onSelect: (selection) => {
     frameBox(selection.frame);
+    airportPanel?.hide();
     airspacePanel?.show(selection);
   },
 });
+airportPanel = mountAirportPanel(() => store.snapshot.values());
 mountAirports(world.xrRoot, {
-  // Three miles across and a couple of thousand feet up frames a field.
-  onSelect: (_site, center) => frameBox({ center, radius: 3, yLo: center.y, yHi: center.y + 1 }),
+  onSelect: (site, center) => {
+    // Three miles across and a couple of thousand feet up frames a field.
+    // frameBox also drops any aircraft selection, freeing the card's slot.
+    frameBox({ center, radius: 3, yLo: center.y, yHi: center.y + 1 });
+    airspacePanel?.hide();
+    airportPanel?.show(site);
+  },
 });
 mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
 mountLoadingToast();

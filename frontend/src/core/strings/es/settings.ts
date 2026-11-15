@@ -204,6 +204,8 @@ export const settingsStrings = {
   'settings.airport_approaches_desc': 'Un descenso de tres grados hacia cada pista iluminada de superficie dura, desde diez millas. La forma general de una aproximación, no el procedimiento publicado.',
   'settings.airport_labels': 'Etiquetas de aeropuerto',
   'settings.airport_labels_desc': 'Un código OACI en cada aeropuerto. Pulsa uno para llevar la cámara hasta él.',
+  'settings.airport_weather': 'Meteorología de aeropuertos',
+  'settings.airport_weather_desc': 'Colorea cada etiqueta de aeropuerto según la categoría de vuelo (VFR, MVFR, IFR, LIFR) y muestra el METAR y el pronóstico en la ficha del aeropuerto. De aviationweather.gov, actualizado cada cinco minutos.',
   'settings.group_altitude': 'Altitud',
   'settings.group_camera': 'Cámara',
   'settings.group_headset': 'Visor',

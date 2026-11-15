@@ -1785,6 +1785,45 @@ body.xr-on .acars-toggle {
   outline: none;
 }
 
+/* Flight category, the colours every aviation weather map uses. */
+.aircraft-label.airport-label[data-category]::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--category);
+}
+[data-category="VFR"] { --category: #3ecf6e; }
+[data-category="MVFR"] { --category: #4a90ff; }
+[data-category="IFR"] { --category: #ff4d4d; }
+[data-category="LIFR"] { --category: #e056e0; }
+
+/* Airport card (ui/airport-panel.ts): the airspace card's surface, with
+   the flight category as its accent when one is reported. */
+.airspace-panel.airport-panel {
+  --airspace: var(--category, var(--fg-soft));
+}
+.airspace-panel .airport-explore {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--fg-bright);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.airspace-panel .airport-explore:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.airspace-panel .airport-explore[hidden] {
+  display: none;
+}
+
 /* "Green Bay, Austin Straubel International Airport Class C" would run
    across half the scope; the full name is one click away. */
 .aircraft-label.airspace-label > span {

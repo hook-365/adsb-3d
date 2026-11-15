@@ -342,6 +342,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'airportWeather',
+        label: t('settings.airport_weather'),
+        description: t('settings.airport_weather_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'airspaceControlled',
         label: t('settings.airspace_controlled'),
         description: t('settings.airspace_controlled_desc'),
@@ -654,7 +660,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
       ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
-    { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels'] },
+    { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels', 'airportWeather'] },
     { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],
