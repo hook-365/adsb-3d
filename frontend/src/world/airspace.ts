@@ -20,6 +20,7 @@ import { t } from '../core/i18n';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { fmtAltitude } from '../core/units';
 import {
+  ALL_KINDS,
   CONTROLLED_KINDS,
   SPECIAL_KINDS,
   airspaceTitle,
@@ -36,6 +37,7 @@ import {
 import { DIORAMA_PLANES } from './diorama-clip';
 import { elevationFtAt, subscribeElevation } from './elevation';
 import { terrainActive } from './tiles';
+import { getTfrs, setTfrsWanted, subscribeTfrs } from './tfr';
 
 // 3D airspace: US Class B, C and D and special use airspace drawn as the
 // volumes they are. Each published piece is a ground outline with a floor
@@ -62,6 +64,9 @@ export const AIRSPACE_COLORS: Readonly<Record<AirspaceKind, number>> = {
   P: 0xff3b3b,
   W: 0xffa040,
   A: 0xe8d44a,
+  // Not a chart colour (a TFR is drawn in red there too): it has to stand
+  // apart from the red of prohibited and restricted areas next to it.
+  TFR: 0xff2f6d,
 };
 
 const WALL_OPACITY = 0.07;
@@ -76,7 +81,11 @@ const ELEVATION_SETTLE_MS = 1500;
 
 export function airspaceKindsOn(): Set<AirspaceKind> {
   const s = getSettings();
-  return new Set([...(s.airspaceControlled ? CONTROLLED_KINDS : []), ...(s.airspaceSpecial ? SPECIAL_KINDS : [])]);
+  return new Set<AirspaceKind>([
+    ...(s.airspaceControlled ? CONTROLLED_KINDS : []),
+    ...(s.airspaceSpecial ? SPECIAL_KINDS : []),
+    ...(s.airspaceTfr ? (['TFR'] as const) : []),
+  ]);
 }
 
 export function airspaceActive(): boolean {
@@ -313,7 +322,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   const lineMats = new Map<AirspaceKind, Material>();
   const focusWallMats = new Map<AirspaceKind, MeshBasicMaterial>();
   const focusLineMats = new Map<AirspaceKind, LineBasicMaterial>();
-  for (const kind of [...CONTROLLED_KINDS, ...SPECIAL_KINDS]) {
+  for (const kind of ALL_KINDS) {
     const color = AIRSPACE_COLORS[kind];
     const wall = { color, transparent: true, side: DoubleSide, depthWrite: false, clippingPlanes: DIORAMA_PLANES };
     const line = { color, transparent: true, depthWrite: false, clippingPlanes: DIORAMA_PLANES };
@@ -394,7 +403,8 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
       list.reduce((a, b) => (limitsMsl(b, volumeGroundFt(b)).lo < limitsMsl(a, volumeGroundFt(a)).lo ? b : a));
     const ranked = Array.from(byName.values())
       .map((list) => ({ list, core: lowest(list), dist: Math.min(...list.map((v) => distanceToVolumeNm(v, HOME.lat, HOME.lon))) }))
-      .sort((a, b) => a.dist - b.dist);
+      // A TFR is the news on the map: it is labelled before anything charted.
+      .sort((a, b) => Number(b.core.kind === 'TFR') - Number(a.core.kind === 'TFR') || a.dist - b.dist);
     // A Class B or C sits among satellite Class D fields whose labels
     // would stack on top of it; the big one keeps the label and the
     // satellites stay as their dashed outlines.
@@ -455,7 +465,10 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     clearLabels();
     const all = getAirspace();
     const kinds = airspaceKindsOn();
-    nearby = all && kinds.size > 0 ? volumesNear(all, HOME.lat, HOME.lon, RANGE_NM, kinds) : [];
+    nearby = [
+      ...(all && kinds.size > 0 ? volumesNear(all, HOME.lat, HOME.lon, RANGE_NM, kinds) : []),
+      ...(kinds.has('TFR') ? getTfrs() : []),
+    ];
     for (const kind of kinds) {
       const layer = makeLayer(nearby.filter((v) => v.kind === kind), wallMats.get(kind)!, lineMats.get(kind)!, 8, group);
       if (layer) layers.push(layer);
@@ -485,7 +498,10 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
       parent.remove(group);
       attached = false;
     }
-    if (on && !getAirspace()) void loadAirspace();
+    // The generated file is only needed for the charted kinds.
+    const s = getSettings();
+    if ((s.airspaceControlled || s.airspaceSpecial) && !getAirspace()) void loadAirspace();
+    setTfrsWanted(s.airspaceTfr);
     rebuild();
   };
 
@@ -499,6 +515,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     sync();
   });
   subscribeAirspace(rebuild);
+  subscribeTfrs(rebuild);
   subscribeHome(rebuild);
   // "Above ground" limits need the terrain under them, which streams in
   // after boot and after a feed switch: rebuild once it has settled.

@@ -203,7 +203,8 @@ describe('committed FAA data file', () => {
   it('decodes completely and covers every kind the layer draws', () => {
     expect(volumes.length).toBe(raw.volumes.length);
     expect(volumes.length).toBeGreaterThan(2000);
-    expect(new Set(volumes.map((v) => v.kind))).toEqual(new Set(Object.keys(AIRSPACE_COLORS)));
+    // TFRs are the one live kind (world/tfr.ts); everything else is in the file.
+    expect(new Set(volumes.map((v) => v.kind))).toEqual(new Set(Object.keys(AIRSPACE_COLORS).filter((k) => k !== 'TFR')));
     for (const v of volumes) {
       expect(v.polygons.length).toBeGreaterThan(0);
       for (const poly of v.polygons) for (const ring of poly) expect(ring.length).toBeGreaterThanOrEqual(6);

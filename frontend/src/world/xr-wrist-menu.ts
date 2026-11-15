@@ -442,6 +442,7 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   weatherLightning: 'map decoration toggle gated on ENABLE_WEATHER3D; panel-only to keep the wrist pages lean',
   airspaceControlled: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceSpecial: 'map decoration toggle; panel-only to keep the wrist pages lean',
+  airspaceTfr: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceLabels: 'labels are CSS overlays, never drawn in a headset',
 };
 

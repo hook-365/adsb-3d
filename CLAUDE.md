@@ -87,7 +87,10 @@ No reactivity library. Examples: `core/settings.ts`, `core/theme.ts`,
   extruded between floor and ceiling; also feeds the detail card's
   Airspace row) + `airspace-volumes` (data model, point-in-volume, lazy
   loader) + `airspace-data.json` (generated from FAA open data by
-  `scripts/build-airspace.py`; regenerate, do not hand-edit).
+  `scripts/build-airspace.py`; regenerate, do not hand-edit) + `tfr`
+  (live US temporary flight restrictions as `kind: 'TFR'` volumes, from
+  the nginx `/tfr/list` and `/tfr/detail/` proxies of tfr.faa.gov; only
+  fetched while `airspaceTfr` is on).
 - `ui/` — DOM panels: `aircraft-list`, `aircraft-detail`, `settings-panel`,
   `time-controls`, `voice-panel`, `acars-panel`, `map-attribution`,
   `airspace-panel` (info card for a clicked airspace label; shares the

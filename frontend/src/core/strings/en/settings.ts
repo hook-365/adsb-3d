@@ -183,6 +183,8 @@ export const settingsStrings = {
   'settings.airspace_controlled_desc': 'US controlled airspace around airports as 3D volumes: a Class B shows as its stacked shelves. FAA data, US only, not for navigation.',
   'settings.airspace_special': 'Special use airspace',
   'settings.airspace_special_desc': 'US military operations areas and restricted, prohibited, warning and alert areas as 3D volumes. Many are active only at published times. FAA data, US only.',
+  'settings.airspace_tfr': 'Temporary flight restrictions',
+  'settings.airspace_tfr_desc': 'Active and upcoming US TFRs as 3D volumes: wildfires, stadiums, launches, VIP movements. Live from the FAA, refreshed every ten minutes. Not for navigation.',
   'settings.airspace_labels': 'Airspace labels',
   'settings.airspace_labels_desc': 'Name and limits on each airspace. Click a label to fly to that airspace and open its info card. Turn off when the labels crowd the map; the volumes stay.',
   'settings.tab_look': 'Look',

@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Temporary flight restrictions** (US): active and upcoming TFRs as 3D volumes, live from the FAA. Click a label for the NOTAM. Toggle under Settings, Map.
+
+### Fixed
+
+- **Ground icons** no longer turn jagged at a distance, most visible in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
+
 ---
 
 ## [0.14.0] - 2026-11-15

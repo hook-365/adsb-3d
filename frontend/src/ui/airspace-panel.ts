@@ -4,6 +4,7 @@ import { subscribeSettings } from '../core/settings';
 import {
   AIRSPACE_COLORS,
   airspaceActive,
+  airspaceKindsOn,
   airspaceLimits,
   countInside,
   pinAirspace,
@@ -27,7 +28,7 @@ export interface AirspacePanel {
   hide(): void;
 }
 
-const KIND_KEY = { B: 'b', C: 'c', D: 'd', MOA: 'moa', R: 'r', P: 'p', W: 'w', A: 'a' } as const satisfies Record<AirspaceKind, string>;
+const KIND_KEY = { B: 'b', C: 'c', D: 'd', MOA: 'moa', R: 'r', P: 'p', W: 'w', A: 'a', TFR: 'tfr' } as const satisfies Record<AirspaceKind, string>;
 const COUNT_INTERVAL_MS = 2000;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -78,10 +79,25 @@ export function mountAirspacePanel(getAircraft: () => Iterable<Aircraft>): Airsp
   const timesLabel = el('dt', undefined, t('misc.airspace_times'));
   const timesValue = el('dd', 'airspace-times');
   grid.append(limitsLabel, limitsValue, insideLabel, insideValue, timesLabel, timesValue);
+  // Temporary flight restrictions only: what the NOTAM says.
+  const tfrGrid = el('dl', 'grid airspace-tfr');
+  const tfrRow = (key: Parameters<typeof t>[0]): HTMLElement => {
+    const value = el('dd');
+    tfrGrid.append(el('dt', undefined, t(key)), value);
+    return value;
+  };
+  const tfrNotam = tfrRow('misc.tfr_notam');
+  const tfrType = tfrRow('misc.tfr_type');
+  const tfrPlace = tfrRow('misc.tfr_place');
+  const tfrStatus = tfrRow('misc.tfr_status');
+  const tfrPurposeHeading = el('h3', undefined, t('misc.tfr_purpose'));
+  const tfrPurpose = el('p', 'airspace-about');
+  const tfrTextHeading = el('h3', undefined, t('misc.tfr_text'));
+  const tfrText = el('pre', 'airspace-notam');
   const shelvesHeading = el('h3', undefined, t('misc.airspace_shelves'));
   const shelves = el('dl', 'grid airspace-shelves');
   const note = el('p', 'airspace-note', t('misc.airspace_note'));
-  root.append(header, kind, about, grid, shelvesHeading, shelves, note);
+  root.append(header, kind, about, grid, tfrGrid, shelvesHeading, shelves, tfrPurposeHeading, tfrPurpose, tfrTextHeading, tfrText, note);
   document.body.appendChild(root);
 
   let current: AirspaceSelection | null = null;
@@ -120,6 +136,24 @@ export function mountAirspacePanel(getAircraft: () => Iterable<Aircraft>): Airsp
     timesLabel.hidden = timesValue.hidden = times.length === 0;
     timesValue.textContent = times.join('\n');
 
+    const tfr = core.tfr ?? null;
+    timesLabel.textContent = t(tfr ? 'misc.tfr_times' : 'misc.airspace_times');
+    note.textContent = t(tfr ? 'misc.tfr_note' : 'misc.airspace_note');
+    tfrGrid.hidden = !tfr;
+    // Published times of use read better lowercased; a TFR's UTC stamps do not.
+    timesValue.style.textTransform = tfr ? 'none' : '';
+    tfrPurposeHeading.hidden = tfrPurpose.hidden = !tfr?.purpose;
+    tfrTextHeading.hidden = tfrText.hidden = !tfr?.text;
+    if (tfr) {
+      tfrNotam.textContent = tfr.notam;
+      tfrType.textContent = [airspaceTitle(tfr.type), tfr.rule].filter(Boolean).join(' · ');
+      tfrPlace.textContent = airspaceTitle(tfr.place);
+      const started = tfr.effective === null || tfr.effective <= Date.now();
+      tfrStatus.textContent = t(started ? 'misc.tfr_active' : 'misc.tfr_upcoming');
+      tfrPurpose.textContent = tfr.purpose;
+      tfrText.textContent = tfr.text;
+    }
+
     const rows = shelfRows(volumes);
     const showShelves = rows.length > 1;
     shelvesHeading.hidden = shelves.hidden = !showShelves;
@@ -145,7 +179,8 @@ export function mountAirspacePanel(getAircraft: () => Iterable<Aircraft>): Airsp
   // The volumes belong to the feed and the layer they were clicked in.
   subscribeHome(hide);
   subscribeSettings(() => {
-    if (!airspaceActive()) hide();
+    // The card's own kind may be switched off while others stay on.
+    if (!airspaceActive() || (current && !airspaceKindsOn().has(current.core.kind))) hide();
   });
 
   return { show, hide };

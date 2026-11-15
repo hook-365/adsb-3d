@@ -179,6 +179,8 @@ export const settingsStrings = {
   'settings.airspace_controlled_desc': 'Kontrollierter US-Luftraum um Flughäfen als 3D-Volumen: Klasse B erscheint als gestapelte Stufen. FAA-Daten, nur USA, nicht zur Navigation.',
   'settings.airspace_special': 'Sondernutzungsluftraum',
   'settings.airspace_special_desc': 'Militärische Übungsgebiete (MOA) sowie Beschränkungs-, Sperr-, Warn- und Alarmgebiete der USA als 3D-Volumen. Viele sind nur zu veröffentlichten Zeiten aktiv. FAA-Daten, nur USA.',
+  'settings.airspace_tfr': 'Zeitweilige Flugbeschränkungen',
+  'settings.airspace_tfr_desc': 'Aktive und angekündigte US-TFRs als 3D-Volumen: Waldbrände, Stadien, Raketenstarts, VIP-Bewegungen. Live von der FAA, alle zehn Minuten aktualisiert. Nicht zur Navigation.',
   'settings.airspace_labels': 'Luftraum-Beschriftung',
   'settings.airspace_labels_desc': 'Name und Grenzen an jedem Luftraum. Ein Klick auf eine Beschriftung fliegt zum Luftraum und öffnet seine Infokarte. Ausschalten, wenn die Beschriftungen die Karte überfüllen; die Volumen bleiben.',
   'settings.tab_look': 'Optik',

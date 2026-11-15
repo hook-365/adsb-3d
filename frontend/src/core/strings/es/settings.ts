@@ -179,6 +179,8 @@ export const settingsStrings = {
   'settings.airspace_controlled_desc': 'Espacio aéreo controlado de EE. UU. alrededor de aeropuertos como volúmenes 3D: la Clase B se ve como sus escalones apilados. Datos de la FAA, solo EE. UU., no apto para navegación.',
   'settings.airspace_special': 'Espacio aéreo de uso especial',
   'settings.airspace_special_desc': 'Áreas de operaciones militares (MOA) y zonas restringidas, prohibidas, de advertencia y de alerta de EE. UU. como volúmenes 3D. Muchas solo están activas en horarios publicados. Datos de la FAA, solo EE. UU.',
+  'settings.airspace_tfr': 'Restricciones temporales de vuelo',
+  'settings.airspace_tfr_desc': 'TFR de EE. UU. activas y anunciadas como volúmenes 3D: incendios, estadios, lanzamientos, desplazamientos VIP. En directo desde la FAA, actualizadas cada diez minutos. No apto para navegación.',
   'settings.airspace_labels': 'Etiquetas de espacio aéreo',
   'settings.airspace_labels_desc': 'Nombre y límites en cada espacio aéreo. Pulsa una etiqueta para volar hasta él y abrir su ficha. Desactívalas si saturan el mapa; los volúmenes se mantienen.',
   'settings.tab_look': 'Aspecto',

@@ -243,6 +243,8 @@ export interface Settings {
   airspaceControlled: boolean;
   /** US special use airspace (MOA, restricted, prohibited, warning, alert) as 3D volumes. */
   airspaceSpecial: boolean;
+  /** Active US temporary flight restrictions as 3D volumes (world/tfr.ts, live from the FAA). */
+  airspaceTfr: boolean;
   /** Name labels on the airspace volumes (also the click target for framing and the info card). */
   airspaceLabels: boolean;
   /**
@@ -326,6 +328,7 @@ const DEFAULTS: Settings = {
   weatherLightning: false,
   airspaceControlled: false,
   airspaceSpecial: false,
+  airspaceTfr: false,
   airspaceLabels: true,
   language: 'auto',
   altitudeCurveBias: 0,

@@ -1,4 +1,5 @@
 import dataUrl from './airspace-data.json?url';
+import type { TfrInfo } from './tfr';
 
 // Airspace volumes: the data model behind the 3D airspace layer
 // (world/airspace.ts) and the detail card's "Airspace" row.
@@ -13,12 +14,14 @@ import dataUrl from './airspace-data.json?url';
 // Everything above the loader is pure so it can be unit tested without a
 // scene: decoding, the nearby filter and point-in-volume.
 
-export type AirspaceKind = 'B' | 'C' | 'D' | 'MOA' | 'R' | 'P' | 'W' | 'A';
+export type AirspaceKind = 'B' | 'C' | 'D' | 'MOA' | 'R' | 'P' | 'W' | 'A' | 'TFR';
 
 /** Controlled airspace around airports. */
 export const CONTROLLED_KINDS: readonly AirspaceKind[] = ['B', 'C', 'D'];
 /** Special use airspace: MOA, restricted, prohibited, warning, alert. */
 export const SPECIAL_KINDS: readonly AirspaceKind[] = ['MOA', 'R', 'P', 'W', 'A'];
+/** Every kind the layer can draw; 'TFR' is live (world/tfr.ts), the rest come from the generated file. */
+export const ALL_KINDS: readonly AirspaceKind[] = [...CONTROLLED_KINDS, ...SPECIAL_KINDS, 'TFR'];
 
 export interface AirspaceVolume {
   name: string;
@@ -38,6 +41,8 @@ export interface AirspaceVolume {
   polygons: readonly (readonly (readonly number[])[])[];
   /** [west, south, east, north]. */
   bbox: readonly [number, number, number, number];
+  /** The NOTAM behind a temporary flight restriction (kind 'TFR' only). */
+  tfr?: TfrInfo;
 }
 
 interface RawVolume {
@@ -98,7 +103,7 @@ export function decodeVolumes(raw: unknown): AirspaceVolume[] {
 }
 
 /** Distance in NM from a point to a volume's bounding box (0 inside it). */
-export function distanceToVolumeNm(v: AirspaceVolume, lat: number, lon: number): number {
+export function distanceToVolumeNm(v: Pick<AirspaceVolume, 'bbox'>, lat: number, lon: number): number {
   const [west, south, east, north] = v.bbox;
   const dLat = lat < south ? south - lat : lat > north ? lat - north : 0;
   const dLon = lon < west ? west - lon : lon > east ? lon - east : 0;
@@ -180,7 +185,7 @@ export function volumesAt(
   return out;
 }
 
-const KEEP_UPPER = new Set(['MOA', 'ATCAA', 'AFB', 'NAS', 'AAF', 'ANGB', 'MCAS', 'NOLF', 'II', 'III', 'IV']);
+const KEEP_UPPER = new Set(['TFR', 'VIP', 'UAS', 'MOA', 'ATCAA', 'AFB', 'NAS', 'AAF', 'ANGB', 'MCAS', 'NOLF', 'II', 'III', 'IV']);
 
 /** "MINNEAPOLIS CLASS B" -> "Minneapolis Class B"; designators like "R-6904A" stay as published. */
 export function airspaceTitle(name: string): string {

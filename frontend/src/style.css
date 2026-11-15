@@ -1913,8 +1913,24 @@ body.xr-on .acars-toggle {
 .airspace-panel dt[hidden],
 .airspace-panel dd[hidden],
 .airspace-panel h3[hidden],
-.airspace-panel dl[hidden] {
+.airspace-panel dl[hidden],
+.airspace-panel p[hidden],
+.airspace-panel pre[hidden] {
   display: none;
+}
+
+/* A TFR's NOTAM as published: fixed-pitch capitals, wrapped to the card. */
+.airspace-panel .airspace-notam {
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-radius: 6px;
+  font: 10px/1.5 var(--font-mono, ui-monospace, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
 }
 
 .airspace-panel .airspace-times {

@@ -39,7 +39,7 @@ and translations count just as much as code.
 
 <img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
 
-- **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
+- **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards, plus live temporary flight restrictions; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
 - **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.
 - **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
 - **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
@@ -73,6 +73,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **3D storms** (weather-service, US only): NOAA MRMS merged reflectivity, 33 altitude slices cropped around whichever feed is active and raymarched as translucent storm volumes so you can see aircraft route around cells. One sidecar serves every feed; refreshes every 5 minutes; browsers get a few hundred KB at most. Cells end at their real **echo tops**, and the detail panel shows the storm top next to a nearby aircraft's altitude.
 - **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
 - **3D airspace** (off by default, US only; separate toggles for controlled airspace, special use airspace and the name labels): Class B, C and D and special use airspace (MOA, restricted, prohibited, warning, alert) drawn as volumes between their published floors and ceilings, so a Class B shows as its stacked shelves. Select an aircraft and the detail panel names the airspace it is in. Click an airspace's name label to fly the camera to it and open a card that explains it: what the class means and what entering takes, its limits, each shelf, published times of use, and how many aircraft are inside right now. Built from FAA open data baked into the image (`scripts/build-airspace.py` refreshes it); no extra container, no runtime calls to the FAA. Not for navigation.
+- **Temporary flight restrictions** (off by default, US only): active and upcoming TFRs (wildfires, stadiums, launches, VIP movements) drawn as volumes with the rest of the airspace, live from the FAA's TFR site through the container's own cached proxy and refreshed every ten minutes. Click a TFR's label for its NOTAM: type, location, limits, when it is in force and the published text. Not for navigation.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
 - **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
@@ -413,6 +414,8 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 ## Credits
 
+- **FAA Aeronautical Information Services** ([ADDS open data](https://adds-faa.opendata.arcgis.com), published for public use) — Class Airspace and Special Use Airspace behind the 3D airspace (`frontend/src/world/airspace-data.json`). Simplified from the FAA originals, which the FAA does not warrant once modified; not for navigation.
+- **FAA TFR site** ([tfr.faa.gov](https://tfr.faa.gov)) — the live temporary flight restrictions, proxied and cached by the container (list ten minutes, each NOTAM thirty); nothing stored.
 - **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`).
 - **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
 - **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),

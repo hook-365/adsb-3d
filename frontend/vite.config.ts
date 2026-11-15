@@ -18,6 +18,7 @@ export default defineConfig({
       '/acars-api': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
       '/tiles': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
       '/weather': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
+      '/tfr': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
       '/photos': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
       '/config.js': { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', changeOrigin: true },
       '/ws': { target: (process.env.DEV_BACKEND ?? 'http://localhost:8080').replace(/^http/, 'ws'), changeOrigin: true, ws: true }
