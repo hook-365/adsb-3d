@@ -143,6 +143,8 @@ const IN_USE_TRACK_DEG = 15;
 const IN_USE_OFFSET_NM = 1;
 /** Above the threshold by more than this, an aircraft is passing over, not landing. */
 const IN_USE_MAX_ABOVE_FT = 5000;
+/** A little over the range in degrees of latitude; longitude gets twice that, enough below 60 degrees north. */
+const BOX_DEG = (IN_USE_RANGE_NM / 60) * 1.05;
 
 /**
  * Is anyone flying this final right now? True when an aircraft is on the
@@ -160,6 +162,10 @@ export function finalInUse(final: readonly PathPoint[], traffic: Iterable<Traffi
     if (a.onGround || a.trackDeg === null) continue;
     if (a.altFt - floor > IN_USE_MAX_ABOVE_FT) continue;
     if (a.verticalRateFpm !== null && a.verticalRateFpm > 300) continue;
+    // A scope can hold hundreds of finals and a thousand aircraft, checked
+    // every few seconds: turn away everything not near this runway with two
+    // subtractions before any trigonometry.
+    if (Math.abs(a.lat - end.lat) > BOX_DEG || Math.abs(a.lon - end.lon) > BOX_DEG * 2) continue;
     const d = distanceNm(a.lat, a.lon, end.lat, end.lon);
     if (d > IN_USE_RANGE_NM) continue;
     const turn = Math.abs(((a.trackDeg - course + 540) % 360) - 180);
