@@ -1,0 +1,281 @@
+import { BufferAttribute, BufferGeometry, Group, LineBasicMaterial, LineSegments, Vector3 } from 'three';
+import { HOME, WINDS_ENABLED, subscribeHome } from '../core/config';
+import { toScene } from '../core/coords';
+import { t } from '../core/i18n';
+import { setLoading } from '../core/loading';
+import { getSettings, subscribeSettings } from '../core/settings';
+import { DIORAMA_PLANES } from './diorama-clip';
+
+// Winds aloft: the forecast wind at five heights over a grid of points
+// around the feed's home. Drawn as arrows at one chosen level, and read at
+// any position and altitude for the aircraft card's wind row.
+//
+// Source: Open-Meteo's forecast API through the nginx /wx/winds proxy,
+// cached an hour (ENABLE_WINDS_ALOFT; off by default, because their free
+// API is for non-commercial use). Each grid point counts against their
+// daily allowance, which is why the grid is 7 by 7 and no finer.
+//
+// It is a model forecast for the current hour on a 70 NM grid: good for
+// "there is a 90 knot jet from the west up there", not for the gust on
+// short final. Everything above the loader is pure.
+
+const WINDS_URL = '/wx/winds';
+const POLL_MS = 30 * 60 * 1000;
+/** Grid points per side and the spacing between them, NM. */
+export const GRID = 7;
+const SPACING_NM = 70;
+/** Pressure levels asked for, and the altitude each sits at in a standard atmosphere. */
+export const LEVELS: readonly { hPa: number; altFt: number }[] = [
+  { hPa: 850, altFt: 5000 },
+  { hPa: 700, altFt: 10000 },
+  { hPa: 500, altFt: 18000 },
+  { hPa: 300, altFt: 30000 },
+  { hPa: 250, altFt: 34000 },
+];
+const COLOR = 0xbfe6ff;
+/** Arrow length in NM per knot of wind, and its head as a fraction of that. */
+const NM_PER_KT = 0.28;
+const HEAD = 0.28;
+
+export interface Wind {
+  /** Degrees true the wind blows FROM. */
+  dirDeg: number;
+  speedKt: number;
+}
+
+export interface WindGrid {
+  /** South-west corner and spacing, degrees. */
+  lat0: number;
+  lon0: number;
+  dLat: number;
+  dLon: number;
+  /** [level][row south to north][column west to east] as east and north components, knots; NaN where missing. */
+  u: Float32Array[];
+  v: Float32Array[];
+}
+
+/** The grid's latitudes and longitudes around a point, rounded so a place always asks for the same grid. */
+export function gridAxes(lat: number, lon: number): { lats: number[]; lons: number[] } {
+  const round = (v: number): number => Math.round(v * 2) / 2;
+  const dLat = SPACING_NM / 60;
+  // From the rounded latitude, so nearby places get an identical grid.
+  const dLon = SPACING_NM / (60 * Math.max(0.2, Math.cos((round(lat) * Math.PI) / 180)));
+  const lat0 = round(lat - (dLat * (GRID - 1)) / 2);
+  const lon0 = round(lon - (dLon * (GRID - 1)) / 2);
+  const step = (v: number): number => Math.round(v * 100) / 100;
+  return {
+    lats: Array.from({ length: GRID }, (_, i) => step(Math.max(-89, Math.min(89, lat0 + dLat * i)))),
+    lons: Array.from({ length: GRID }, (_, i) => step(lon0 + dLon * i)),
+  };
+}
+
+/**
+ * Pure: Open-Meteo's answer (one object per requested point, in request
+ * order: every longitude of the first latitude, then the next) → a grid.
+ * Null when the answer is not the shape asked for.
+ */
+export function parseWinds(json: unknown, lats: readonly number[], lons: readonly number[]): WindGrid | null {
+  if (!Array.isArray(json) || json.length !== lats.length * lons.length) return null;
+  const n = lats.length * lons.length;
+  const u = LEVELS.map(() => new Float32Array(n).fill(Number.NaN));
+  const v = LEVELS.map(() => new Float32Array(n).fill(Number.NaN));
+  (json as { hourly?: Record<string, unknown> }[]).forEach((point, i) => {
+    LEVELS.forEach(({ hPa }, level) => {
+      const speed = (point?.hourly?.[`wind_speed_${hPa}hPa`] as unknown[] | undefined)?.[0];
+      const dir = (point?.hourly?.[`wind_direction_${hPa}hPa`] as unknown[] | undefined)?.[0];
+      if (typeof speed !== 'number' || typeof dir !== 'number') return;
+      // Blowing FROM dir: the air moves toward dir + 180.
+      const to = ((dir + 180) * Math.PI) / 180;
+      u[level]![i] = speed * Math.sin(to);
+      v[level]![i] = speed * Math.cos(to);
+    });
+  });
+  return {
+    lat0: lats[0]!,
+    lon0: lons[0]!,
+    dLat: lats.length > 1 ? lats[1]! - lats[0]! : 1,
+    dLon: lons.length > 1 ? lons[1]! - lons[0]! : 1,
+    u,
+    v,
+  };
+}
+
+function fromComponents(u: number, v: number): Wind | null {
+  if (!Number.isFinite(u) || !Number.isFinite(v)) return null;
+  const speedKt = Math.hypot(u, v);
+  // Back to "from": opposite the direction of travel.
+  const dirDeg = (((Math.atan2(u, v) * 180) / Math.PI + 180) % 360 + 360) % 360;
+  return { dirDeg, speedKt };
+}
+
+/**
+ * Pure: the wind at a position and altitude, interpolated across the grid
+ * and between levels (components, not angles, so 350 and 010 average to
+ * north). Null outside the grid's footprint or where data is missing.
+ * Below the lowest level and above the highest, that level's wind is used.
+ */
+export function windAt(grid: WindGrid, lat: number, lon: number, altFt: number): Wind | null {
+  const fx = (lon - grid.lon0) / grid.dLon;
+  const fy = (lat - grid.lat0) / grid.dLat;
+  if (fx < 0 || fy < 0 || fx > GRID - 1 || fy > GRID - 1) return null;
+  const x0 = Math.min(GRID - 2, Math.floor(fx));
+  const y0 = Math.min(GRID - 2, Math.floor(fy));
+  const tx = fx - x0;
+  const ty = fy - y0;
+  const sample = (arr: Float32Array): number => {
+    const a = arr[y0 * GRID + x0]!;
+    const b = arr[y0 * GRID + x0 + 1]!;
+    const c = arr[(y0 + 1) * GRID + x0]!;
+    const d = arr[(y0 + 1) * GRID + x0 + 1]!;
+    return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+  };
+  let lower = 0;
+  while (lower < LEVELS.length - 2 && altFt > LEVELS[lower + 1]!.altFt) lower++;
+  const lo = LEVELS[lower]!;
+  const hi = LEVELS[lower + 1]!;
+  const f = Math.max(0, Math.min(1, (altFt - lo.altFt) / (hi.altFt - lo.altFt)));
+  const u = sample(grid.u[lower]!) * (1 - f) + sample(grid.u[lower + 1]!) * f;
+  const v = sample(grid.v[lower]!) * (1 - f) + sample(grid.v[lower + 1]!) * f;
+  return fromComponents(u, v);
+}
+
+/**
+ * Pure: the wind along and across a track. Positive `headKt` is a headwind
+ * (negative a tailwind); positive `crossKt` is from the right.
+ */
+export function windComponents(wind: Wind, trackDeg: number): { headKt: number; crossKt: number } {
+  const angle = ((wind.dirDeg - trackDeg) * Math.PI) / 180;
+  return { headKt: wind.speedKt * Math.cos(angle), crossKt: wind.speedKt * Math.sin(angle) };
+}
+
+export function windsActive(): boolean {
+  return WINDS_ENABLED && getSettings().windsAloft;
+}
+
+// ── Loader ──────────────────────────────────────────────────────────
+
+let grid: WindGrid | null = null;
+let timer: ReturnType<typeof setInterval> | undefined;
+let generation = 0;
+const listeners = new Set<() => void>();
+
+/** The loaded grid, or null while the layer is off or loading. */
+export function getWinds(): WindGrid | null {
+  return grid;
+}
+
+export function subscribeWinds(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function publish(next: WindGrid | null): void {
+  if (next === grid) return;
+  grid = next;
+  for (const fn of listeners) fn();
+}
+
+async function poll(): Promise<void> {
+  const mine = ++generation;
+  const first = grid === null;
+  if (first) setLoading('winds', t('settings.winds_aloft'));
+  try {
+    const { lats, lons } = gridAxes(HOME.lat, HOME.lon);
+    // One point per (lat, lon) pair, row by row, as parseWinds expects.
+    const latArg = lats.flatMap((la) => lons.map(() => la)).join(',');
+    const lonArg = lats.flatMap(() => lons).join(',');
+    const res = await fetch(`${WINDS_URL}?lat=${latArg}&lon=${lonArg}`);
+    const next = res.ok ? parseWinds(await res.json(), lats, lons) : null;
+    if (mine !== generation || !windsActive()) return;
+    if (next) publish(next);
+  } catch {
+    // Offline or over the allowance: keep what is shown.
+  } finally {
+    if (first) setLoading('winds', null);
+  }
+}
+
+function syncPolling(): void {
+  const on = windsActive();
+  if (on && timer === undefined) {
+    timer = setInterval(() => void poll(), POLL_MS);
+    void poll();
+  } else if (!on && timer !== undefined) {
+    clearInterval(timer);
+    timer = undefined;
+    generation++;
+    publish(null);
+  }
+}
+
+export function mountWinds(parent: Group): void {
+  const material = new LineBasicMaterial({
+    color: COLOR,
+    transparent: true,
+    opacity: 0.75,
+    depthWrite: false,
+    clippingPlanes: DIORAMA_PLANES,
+  });
+  let arrows: LineSegments | null = null;
+  const a = new Vector3();
+  const b = new Vector3();
+
+  const dispose = (): void => {
+    if (!arrows) return;
+    arrows.removeFromParent();
+    arrows.geometry.dispose();
+    arrows = null;
+  };
+
+  const rebuild = (): void => {
+    dispose();
+    if (!grid || !windsActive()) return;
+    const level = Math.max(0, LEVELS.findIndex((l) => String(l.hPa) === getSettings().windsLevel));
+    const altFt = LEVELS[level]!.altFt;
+    const positions: number[] = [];
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        const u = grid.u[level]![row * GRID + col]!;
+        const v = grid.v[level]![row * GRID + col]!;
+        if (!Number.isFinite(u) || !Number.isFinite(v) || Math.hypot(u, v) < 3) continue;
+        toScene(grid.lat0 + grid.dLat * row, grid.lon0 + grid.dLon * col, altFt, a);
+        // Scene x is east and z is south: the arrow points where the air is going.
+        const dx = u * NM_PER_KT;
+        const dz = -v * NM_PER_KT;
+        b.set(a.x + dx, a.y, a.z + dz);
+        positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        // Two barbs back from the tip, 25 degrees either side.
+        for (const turn of [0.44, -0.44]) {
+          const cos = Math.cos(Math.PI + turn);
+          const sin = Math.sin(Math.PI + turn);
+          positions.push(b.x, b.y, b.z, b.x + (dx * cos - dz * sin) * HEAD, b.y, b.z + (dx * sin + dz * cos) * HEAD);
+        }
+      }
+    }
+    if (positions.length === 0) return;
+    const geom = new BufferGeometry();
+    geom.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+    arrows = new LineSegments(geom, material);
+    arrows.frustumCulled = false;
+    arrows.renderOrder = 6;
+    arrows.userData = { kind: 'winds' };
+    parent.add(arrows);
+  };
+
+  subscribeWinds(rebuild);
+  let lastKey = '';
+  subscribeSettings(() => {
+    syncPolling();
+    const s = getSettings();
+    const key = `${s.windsAloft}|${s.windsLevel}|${s.altitudeExaggeration}|${s.altitudeCurveBias}`;
+    if (key === lastKey) return;
+    lastKey = key;
+    rebuild();
+  });
+  subscribeHome(() => {
+    if (!windsActive()) return;
+    publish(null);
+    void poll();
+  });
+  syncPolling();
+}

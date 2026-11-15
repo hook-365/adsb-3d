@@ -59,6 +59,7 @@ import { mountAirports } from './world/airports';
 import { mountProcedureLayer } from './world/procedure-layer';
 import { mountNavData } from './world/navdata';
 import { mountDetailTiles } from './world/detail-tiles';
+import { mountWinds } from './world/winds';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountAirportPanel, type AirportPanel } from './ui/airport-panel';
 import { mountEmergencyToasts } from './ui/emergency-toast';
@@ -1087,6 +1088,7 @@ mountAirspace(world.xrRoot, {
   },
 });
 mountNavData(world.xrRoot);
+mountWinds(world.xrRoot);
 const detailTiles = mountDetailTiles(world.xrRoot);
 const procedureLayer = mountProcedureLayer(world.xrRoot);
 airportPanel = mountAirportPanel(() => store.snapshot.values(), {

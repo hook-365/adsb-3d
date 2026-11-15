@@ -229,7 +229,10 @@ All deploy-time config is environment variables. `entrypoint.sh` renders
 features get dummy upstreams so the generated nginx config is always valid.
 
 - Feature flags: `ENABLE_HISTORICAL`, `ENABLE_ACARS`, `ENABLE_WEATHER3D`,
-  `ENABLE_VOICE` — all default `false`. `EXPLORE_PROVIDER` (flyitalyadsb
+  `ENABLE_VOICE`, `ENABLE_WINDS_ALOFT` — all default `false`. Winds aloft
+  need no sidecar: nginx proxies Open-Meteo at `/wx/winds` (hourly cache;
+  `WINDS_API_KEY` switches to their paid endpoint) and `world/winds.ts`
+  draws arrows and feeds the aircraft card's wind row. `EXPLORE_PROVIDER` (flyitalyadsb
   with `EXPLORE_API_KEY`, or keyless adsb.lol / adsb.fi / airplanes.live)
   turns on the Explore feed (`EXPLORE_FALLBACK_PROVIDER` names a second
   one nginx switches to while the first fails) and `EXPLORE_POLL_S` (default 10) its poll

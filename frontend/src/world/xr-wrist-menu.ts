@@ -445,6 +445,8 @@ export const WRIST_MENU_EXCLUDED: Readonly<Partial<Record<keyof Settings, string
   airspaceTfr: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airspaceLabels: 'labels are CSS overlays, never drawn in a headset',
   routeLine: 'map decoration toggle; panel-only to keep the wrist pages lean',
+  windsAloft: 'map decoration toggle; panel-only to keep the wrist pages lean',
+  windsLevel: 'goes with windsAloft; panel-only',
   detailTiles: 'desktop close-up only; never built in a headset',
   airwaysLow: 'map decoration toggle; panel-only to keep the wrist pages lean',
   airwaysHigh: 'map decoration toggle; panel-only to keep the wrist pages lean',

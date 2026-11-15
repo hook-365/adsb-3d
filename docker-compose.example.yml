@@ -42,6 +42,8 @@ services:
       - ENABLE_HISTORICAL=false       # true to enable historical playback
       - ENABLE_ACARS=false            # true to enable ACARS (needs acars-service)
       - ENABLE_WEATHER3D=false        # true for 3D storms (needs weather-service, US only)
+      - ENABLE_WINDS_ALOFT=false      # true for winds aloft (Open-Meteo, non-commercial free tier)
+      # - WINDS_API_KEY=              # optional Open-Meteo key for commercial use
       - HIDE_TOWER=false              # true to hide home tower (privacy)
       # ── Global Explore (pick any city via a community aggregator) ─────
       # One provider per deployment; all four answer in readsb format. Feed

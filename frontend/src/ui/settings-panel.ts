@@ -9,7 +9,7 @@ import {
 } from '../core/settings';
 import { t } from '../core/i18n';
 import { MOBILE_BREAKPOINT_PX, setAircraftListExpanded } from './panel-toggle';
-import { WEATHER3D_ENABLED } from '../core/config';
+import { WEATHER3D_ENABLED, WINDS_ENABLED } from '../core/config';
 import { subscribeUpdateInfo } from '../core/update-check';
 import { isBasemapAvailable } from '../core/basemaps';
 import { THEME_OPTIONS } from '../core/theme';
@@ -119,6 +119,12 @@ export const PANEL_EXCLUDED_KEYS: Record<string, string> = {
         weatherFreezingLevel: 'row is gated on ENABLE_WEATHER3D (weather-service)',
         weatherSevere: 'row is gated on ENABLE_WEATHER3D (weather-service)',
         weatherLightning: 'row is gated on ENABLE_WEATHER3D (weather-service)',
+      }),
+  ...(WINDS_ENABLED
+    ? {}
+    : {
+        windsAloft: 'row is gated on ENABLE_WINDS_ALOFT',
+        windsLevel: 'row is gated on ENABLE_WINDS_ALOFT',
       }),
 };
 
@@ -316,6 +322,29 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         label: t('settings.range_rings'),
         description: t('settings.range_rings_desc'),
       },
+      ...(WINDS_ENABLED
+        ? [
+            {
+              kind: 'toggle' as const,
+              key: 'windsAloft' as const,
+              label: t('settings.winds_aloft'),
+              description: t('settings.winds_aloft_desc'),
+            },
+            {
+              kind: 'choice' as const,
+              key: 'windsLevel' as const,
+              label: t('settings.winds_level'),
+              description: t('settings.winds_level_desc'),
+              options: [
+                { value: '850', label: '5,000 ft' },
+                { value: '700', label: '10,000 ft' },
+                { value: '500', label: 'FL180' },
+                { value: '300', label: 'FL300' },
+                { value: '250', label: 'FL340' },
+              ],
+            },
+          ]
+        : []),
       {
         kind: 'toggle',
         key: 'acarsPings',
@@ -687,7 +716,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles', 'detailTiles'] },
     {
       heading: t('settings.group_weather'),
-      ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning'],
+      ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning', 'windsAloft', 'windsLevel'],
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
     { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels', 'airportWeather'] },

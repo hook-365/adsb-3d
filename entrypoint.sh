@@ -365,6 +365,7 @@ BASE_PATH_JS=$(_js_escape "${BASE_PATH:-}")
 ENABLE_HISTORICAL_JS=$(_bool "${ENABLE_HISTORICAL:-false}")
 ENABLE_ACARS_JS=$(_bool "${ENABLE_ACARS:-false}")
 ENABLE_WEATHER3D_JS=$(_bool "${ENABLE_WEATHER3D:-false}")
+ENABLE_WINDS_ALOFT_JS=$(_bool "${ENABLE_WINDS_ALOFT:-false}")
 ENABLE_VOICE_JS=$(_bool "${ENABLE_VOICE:-false}")
 ENABLE_TERRAIN_JS=$(_bool "${ENABLE_TERRAIN:-true}")
 HIDE_TOWER_JS=$(_bool "${HIDE_TOWER:-false}")
@@ -472,6 +473,30 @@ EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
 export EXPLORE_API_KEY EXPLORE_DISABLED_DIRECTIVE EXPLORE_POLL_S EXPLORE_UPSTREAM_HOST EXPLORE_UPSTREAM_PATH EXPLORE_AUTH_DIRECTIVE
 export EXPLORE_FALLBACK_HOST EXPLORE_FALLBACK_PATH EXPLORE_FALLBACK_AUTH_DIRECTIVE EXPLORE_FALLBACK_DIRECTIVE EXPLORE_FALLBACK_DISABLED_DIRECTIVE
 
+# ── Winds aloft (ENABLE_WINDS_ALOFT) ──────────────────────────────────────
+# Forecast winds at altitude from Open-Meteo, proxied and cached for an
+# hour at /wx/winds. Off by default: their free API is for non-commercial
+# use, with a daily call allowance per deployment, and asks for on-screen
+# credit (the app adds it while the layer is on). WINDS_API_KEY switches to
+# their paid endpoint; the key stays in nginx and never reaches a browser.
+WINDS_DISABLED_DIRECTIVE="return 404;"
+WINDS_UPSTREAM_HOST="api.open-meteo.com"
+WINDS_KEY_ARG=""
+if [ "${ENABLE_WINDS_ALOFT_JS}" = "true" ]; then
+    WINDS_DISABLED_DIRECTIVE=""
+    if [ -n "${WINDS_API_KEY:-}" ]; then
+        if echo "${WINDS_API_KEY}" | grep -qE '^[A-Za-z0-9_-]+$'; then
+            WINDS_UPSTREAM_HOST="customer-api.open-meteo.com"
+            WINDS_KEY_ARG="&apikey=${WINDS_API_KEY}"
+            echo "Winds aloft enabled - /wx/winds proxied to ${WINDS_UPSTREAM_HOST} (with API key)"
+        else
+            echo "[WARNING] WINDS_API_KEY has unexpected characters; ignoring it and using the free endpoint"
+        fi
+    fi
+    [ -z "${WINDS_KEY_ARG}" ] && echo "Winds aloft enabled - /wx/winds proxied to ${WINDS_UPSTREAM_HOST} (free tier, non-commercial)"
+fi
+export WINDS_DISABLED_DIRECTIVE WINDS_UPSTREAM_HOST WINDS_KEY_ARG
+
 # Generate config.js from environment variables
 cat > /usr/share/nginx/html/config.js <<EOF
 // Auto-generated configuration from environment variables
@@ -532,6 +557,12 @@ window.ACARS_CONFIG = {
 // frontend polls /weather-api/volume.
 window.WEATHER3D_CONFIG = {
     enabled: ${ENABLE_WEATHER3D_JS}
+};
+
+// Winds aloft (Open-Meteo forecast through the /wx/winds proxy). When
+// enabled, the settings panel shows the "Winds aloft" rows.
+window.WINDS_CONFIG = {
+    enabled: ${ENABLE_WINDS_ALOFT_JS}
 };
 
 // Voice scanner configuration (VHF AM aviation voice).
@@ -977,7 +1008,7 @@ export DNS_RESOLVER
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${ADSB3D_USER_AGENT} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_HOST} ${EXPLORE_FALLBACK_PATH} ${EXPLORE_FALLBACK_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_DIRECTIVE} ${EXPLORE_FALLBACK_DISABLED_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${ADSB3D_USER_AGENT} ${WINDS_DISABLED_DIRECTIVE} ${WINDS_UPSTREAM_HOST} ${WINDS_KEY_ARG} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_HOST} ${EXPLORE_FALLBACK_PATH} ${EXPLORE_FALLBACK_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_DIRECTIVE} ${EXPLORE_FALLBACK_DISABLED_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then

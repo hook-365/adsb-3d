@@ -51,6 +51,12 @@ export const WEATHER3D_ENABLED: boolean =
   typeof window !== 'undefined' &&
   (window as { WEATHER3D_CONFIG?: { enabled?: boolean } }).WEATHER3D_CONFIG?.enabled === true;
 
+// Winds aloft come from Open-Meteo through the /wx/winds proxy
+// (ENABLE_WINDS_ALOFT); off unless the deploy turned them on.
+export const WINDS_ENABLED: boolean =
+  typeof window !== 'undefined' &&
+  (window as { WINDS_CONFIG?: { enabled?: boolean } }).WINDS_CONFIG?.enabled === true;
+
 // Scene scale: 1 unit = 1 nautical mile horizontally. Vertical exaggeration
 // (4x by default: enough to read, not enough to turn terrain into cliffs) is the altitudeExaggeration
 // setting, applied in core/coords.ts.

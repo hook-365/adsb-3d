@@ -65,4 +65,8 @@ export const detailStrings = {
   'detail.storm_top_value': '{alt} in der Nähe',
   'detail.lightning': 'Blitze',
   'detail.airspace': 'Luftraum',
+  'detail.wind': 'Wind',
+  'detail.wind_value': '{dir}° mit {kt} kt',
+  'detail.wind_head': 'Gegenwind {kt} kt',
+  'detail.wind_tail': 'Rückenwind {kt} kt',
 } as const;

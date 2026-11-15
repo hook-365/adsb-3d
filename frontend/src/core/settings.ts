@@ -263,6 +263,10 @@ export interface Settings {
   /** VORs and NDBs, and the named fixes along the airways. */
   navaids: boolean;
   fixes: boolean;
+  /** Forecast winds aloft: arrows at one level and a wind row on the aircraft card (world/winds.ts). */
+  windsAloft: boolean;
+  /** Pressure level the arrows are drawn at, hPa. */
+  windsLevel: '850' | '700' | '500' | '300' | '250';
   /** Great-circle line along the selected aircraft's scheduled route (world/route-line.ts). */
   routeLine: boolean;
   /**
@@ -357,6 +361,8 @@ const DEFAULTS: Settings = {
   airwaysHigh: false,
   navaids: false,
   fixes: false,
+  windsAloft: false,
+  windsLevel: '300',
   routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,

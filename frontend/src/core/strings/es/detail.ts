@@ -65,4 +65,8 @@ export const detailStrings = {
   'detail.storm_top_value': '{alt} cerca',
   'detail.lightning': 'Rayos',
   'detail.airspace': 'Espacio aéreo',
+  'detail.wind': 'Viento',
+  'detail.wind_value': '{dir}° a {kt} kt',
+  'detail.wind_head': 'viento de cara {kt} kt',
+  'detail.wind_tail': 'viento de cola {kt} kt',
 } as const;

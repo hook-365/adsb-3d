@@ -13,6 +13,7 @@ import { stormsActive } from '../world/storms';
 import { getField, subscribeField } from '../world/weather-fields';
 import { lightningActive, lightningNear } from '../world/lightning';
 import { airspaceFor, airspaceSummary } from '../world/airspace';
+import { getWinds, windAt, windComponents, windsActive } from '../world/winds';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
 
@@ -167,6 +168,8 @@ export function createAircraftDetail(
   const lightningEl = document.getElementById('detail-lightning')!;
   const airspaceLabelEl = document.getElementById('detail-airspace-label')!;
   const airspaceEl = document.getElementById('detail-airspace')!;
+  const windLabelEl = document.getElementById('detail-wind-label')!;
+  const windEl = document.getElementById('detail-wind')!;
   const vrateEl = document.getElementById('detail-vrate')!;
   const spdEl = document.getElementById('detail-spd')!;
   const hdgEl = document.getElementById('detail-hdg')!;
@@ -446,6 +449,20 @@ export function createAircraftDetail(
     // (one line per volume); the same call highlights those volumes.
     const inside = airspaceFor(a);
     setRow(airspaceLabelEl, airspaceEl, t('detail.airspace'), inside.length ? inside.map(airspaceSummary).join('\n') : null);
+
+    // Forecast wind where the aircraft is (winds aloft layer), and how much
+    // of it is on the nose or the tail.
+    const windGrid = windsActive() && !a.onGround ? getWinds() : null;
+    const wind = windGrid ? windAt(windGrid, a.lat, a.lon, a.altFt) : null;
+    let windText: string | null = null;
+    if (wind) {
+      windText = t('detail.wind_value', { dir: String(Math.round(wind.dirDeg) % 360).padStart(3, '0'), kt: Math.round(wind.speedKt) });
+      if (a.trackDeg !== null) {
+        const head = Math.round(windComponents(wind, a.trackDeg).headKt);
+        if (Math.abs(head) >= 3) windText += ` · ${t(head > 0 ? 'detail.wind_head' : 'detail.wind_tail', { kt: Math.abs(head) })}`;
+      }
+    }
+    setRow(windLabelEl, windEl, t('detail.wind'), windText);
 
     const groundFt = elevationFtAt(a.lat, a.lon);
     altEl.textContent = a.onGround
