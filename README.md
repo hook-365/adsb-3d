@@ -17,7 +17,9 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 **[Live demo →](https://adsb3d.hook.technology)** — explore a running instance in your browser.
 
-![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
+[![Arrivals and departures threading the stacked shelves of the Minneapolis Class B airspace, drawn in 3D](Airspace.jpg)](https://github.com/hook-365/adsb-3d/releases/download/v0.14.0/adsb-3d-airspace.mp4)
+
+New in v0.14: airspace in 3D. Click the image for a short clip.
 
 ## Built with the community
 
@@ -49,6 +51,8 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 [releases page](https://github.com/hook-365/adsb-3d/releases).
 
 ## What you get
+
+![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
 
 - **Live mode**: per-second updates, tar1090 altitude colours on cones, trails, ground icons and labels. Click an aircraft for photo, route, airframe and autopilot data. Filter pills (`All / Air / Ground / Mil / Emerg`) drive the list and the scene. Mobile-friendly.
 

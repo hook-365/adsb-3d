@@ -10,29 +10,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [0.14.0] - 2026-11-14
+## [0.14.0] - 2026-11-15
 
 ### Added
 
-- **3D airspace** (US only): Class B, C and D and special use airspace drawn as volumes between their floors and ceilings, so a Class B shows as its stacked shelves. Three toggles under Settings, Map: controlled airspace, special use airspace, and the name labels. FAA data, not for navigation.
-- **Airspace info card**: click an airspace label to fly the camera to it and open a card explaining it: what the class means, its limits, each shelf, times of use, and how many aircraft are inside. The detail panel also names the airspace a selected aircraft is in.
-- **US city search** in Explore: type any US city over 15,000 people (about 3,100 of them, from GeoNames) and jump to it.
-- **Airport search** in Explore: type an ICAO or IATA code or an airport name ("KMSP", "ATW", "heathrow") to centre on that airport. About 6,000 airports from OurAirports.
-- **Minneapolis** in Explore, and every curated city is now searchable by the airport codes serving it ("msp", "ord", "lhr").
-- **`EXPLORE_FALLBACK_PROVIDER`**: a second Explore provider that takes over automatically while the first is failing. Both are credited in the attribution line.
-- **Data scripts** for self-hosters and contributors: `scripts/build-airspace.py`, `build-cities.py` and `build-airports.py` regenerate the three committed data files from FAA, GeoNames and OurAirports.
+- **3D airspace** (US only): Class B, C, D and special use airspace drawn as volumes. Toggles under Settings, Map. Not for navigation.
+- **Airspace info card**: click an airspace label to frame it and see its limits, shelves and who is inside.
+- **US city search** in Explore: about 3,100 cities.
+- **Airport search** in Explore: ICAO or IATA code or name ("KMSP", "ATW").
+- **Minneapolis** in Explore; curated cities match their airport codes ("msp").
+- **`EXPLORE_FALLBACK_PROVIDER`**: a second Explore provider that takes over while the first fails.
+- **Data scripts**: `scripts/build-airspace.py`, `build-cities.py` and `build-airports.py` regenerate the bundled data.
 
 ### Changed
 
-- **One feed picker**: receivers and Explore places share a single searchable list instead of a dropdown plus a separate city button.
-- **Closer camera**: zoom to within a mile or so of the ground, the wheel zooms toward the cursor, and the free camera slows down near the ground.
-- **Spin and the free camera exclude each other**: starting a spin switches back to orbit, and switching to the free camera stops a spin.
-- **Phones**: opening settings closes the aircraft list and the other way round, since each fills the screen.
-- The docked title card is only as wide as its content unless the ACARS panel is open under it.
+- **One feed picker**: receivers and Explore places in a single searchable list.
+- **Closer camera**: zoom to near ground level, wheel zooms to the cursor, free camera slows near the ground.
+- **Spin** switches back to orbit; the free camera stops a spin.
+- **Phones**: settings and the aircraft list no longer open on top of each other.
+- The docked title card is only as wide as its content.
 
 ### Fixed
 
-- **Lightning**: a white square no longer flickers at the centre of the scope whenever a strike is live, strikes from the previous feed no longer reappear after a feed switch, and flashes are round glows instead of hard squares.
+- **Lightning**: no more white square flickering at the centre of the scope.
+- **Weather**: 3D storms no longer drag the frame rate down up close, and clear skies cost nothing.
 
 ---
 
