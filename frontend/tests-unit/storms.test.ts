@@ -88,3 +88,13 @@ describe('buildKmLut', () => {
     expect(lut[4]).toBeCloseTo(19);
   });
 });
+
+describe('volumeHasEcho', () => {
+  it('is false for a clear-sky volume and true once any cell reaches the ramp', async () => {
+    const { volumeHasEcho } = await import('../src/world/storms');
+    const clear = new Uint8Array(1000).fill(5);
+    expect(volumeHasEcho(clear)).toBe(false);
+    clear[777] = 30;
+    expect(volumeHasEcho(clear)).toBe(true);
+  });
+});

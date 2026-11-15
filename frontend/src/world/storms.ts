@@ -5,6 +5,7 @@ import {
   Data3DTexture,
   FloatType,
   LinearFilter,
+  Matrix4,
   Mesh,
   NearestFilter,
   RedFormat,
@@ -64,8 +65,14 @@ const LUT_SIZE = 2048;
 const RAMP_SIZE = 64;
 /** dBZ spanned by the ramp texture: index = dBZ / RAMP_MAX_DBZ. */
 const RAMP_MAX_DBZ = 80;
+/** Below this the ramp is fully transparent (its first stop is 18 dBZ, and
+ * the ramp texture's linear filter starts fading in just under it). */
+const CLEAR_AIR_DBZ = 16;
 const STEPS_DESKTOP = 64;
 const STEPS_XR = 32;
+/** While the camera is moving: the eye forgives a coarser march in motion,
+ * and this is when a dropped frame shows. Full quality returns at rest. */
+const STEPS_MOVING = 40;
 
 export interface VolumeManifest {
   time: number;
@@ -254,32 +261,45 @@ void main() {
     vec3 p = vCamObj + dir * t;
     // x: west→east. z: -north, so the north edge (z = -0.5) is row 0.
     // y: scene height → texture layer via the altitude-curve LUT.
-    float w = texture(uHeightLut, vec2(p.y + 0.5, 0.5)).r;
-    float dbz = texture(uVolume, vec3(p.x + 0.5, p.z + 0.5, w)).r * 255.0;
+    float w = textureLod(uHeightLut, vec2(p.y + 0.5, 0.5), 0.0).r;
+    float dbz = textureLod(uVolume, vec3(p.x + 0.5, p.z + 0.5, w), 0.0).r * 255.0;
+    t += stepLen;
+    // Most of the box is clear air, which the ramp draws as nothing: stop
+    // here and save the three lookups below. This is most of the march's
+    // cost when a storm fills the screen.
+    if (dbz < ${CLEAR_AIR_DBZ.toFixed(1)}) continue;
     if (uHasTop > 0.5) {
       vec2 tuv = (p.xz + 0.5) * uTopUv.xy + uTopUv.zw;
-      float topKm = texture(uTop, tuv).r * 25.5;
-      float km = texture(uKmLut, vec2(p.y + 0.5, 0.5)).r;
+      float topKm = textureLod(uTop, tuv, 0.0).r * 25.5;
+      float km = textureLod(uKmLut, vec2(p.y + 0.5, 0.5), 0.0).r;
       // Half a kilometre of grace: EchoTop is itself a 0.5 km stepped product.
-      if (topKm > 0.0 && km > topKm + 0.5) dbz = 0.0;
+      if (topKm > 0.0 && km > topKm + 0.5) continue;
     }
-    vec4 c = texture(uRamp, vec2(dbz / ${RAMP_MAX_DBZ.toFixed(1)}, 0.5));
+    vec4 c = textureLod(uRamp, vec2(dbz / ${RAMP_MAX_DBZ.toFixed(1)}, 0.5), 0.0);
     float a = 1.0 - exp(-c.a * uDensity * stepLen);
     rgb += (1.0 - acc) * a * c.rgb;
     acc += (1.0 - acc) * a;
     if (acc > 0.95) break;
-    t += stepLen;
   }
   if (acc <= 0.002) discard;
   fragColor = vec4(rgb, acc);
 }
 `;
 
+/** Pure: does the volume hold anything the ramp would draw? A clear-sky
+ * volume is all below the threshold, and marching it costs a full-screen
+ * shader pass (twice over in a headset) to draw nothing. */
+export function volumeHasEcho(dbz: Uint8Array, minDbz = CLEAR_AIR_DBZ): boolean {
+  for (let i = 0; i < dbz.length; i++) if (dbz[i]! >= minDbz) return true;
+  return false;
+}
+
 export function mountStorms(parent: Group): void {
   let manifest: VolumeManifest | null = null;
   let mesh: Mesh | null = null;
   let material: ShaderMaterial | null = null;
   let volumeTex: Data3DTexture | null = null;
+  let hasEcho = false;
   let lutTex: DataTexture | null = null;
   let kmLutTex: DataTexture | null = null;
   let topTex: DataTexture | null = null;
@@ -295,6 +315,7 @@ export function mountStorms(parent: Group): void {
   rampTex.magFilter = LinearFilter;
   rampTex.needsUpdate = true;
   const tmp = new Vector3();
+  const lastView = new Matrix4();
 
   const dispose = (): void => {
     if (mesh) {
@@ -345,7 +366,8 @@ export function mountStorms(parent: Group): void {
   /** Box transform + height LUT from the manifest bounds; HOME-relative. */
   const place = (): void => {
     dispose();
-    if (!stormsActive() || !manifest || !volumeTex) return;
+    // Clear skies: keep the volume but draw nothing, so it costs nothing.
+    if (!stormsActive() || !manifest || !volumeTex || !hasEcho) return;
     const { bounds, heightsKm, nz } = manifest;
     const layerY = heightsKm.map((km) => toScene(HOME.lat, HOME.lon, km * FT_PER_KM, tmp).y);
     const yBottom = layerY[0]!;
@@ -391,8 +413,11 @@ export function mountStorms(parent: Group): void {
     mesh.frustumCulled = false;
     mesh.userData = { kind: 'storms' };
     applyTop();
-    mesh.onBeforeRender = (renderer: WebGLRenderer): void => {
-      if (material) material.uniforms.uSteps!.value = renderer.xr.isPresenting ? STEPS_XR : STEPS_DESKTOP;
+    mesh.onBeforeRender = (renderer: WebGLRenderer, _scene, camera): void => {
+      if (!material) return;
+      const moving = !camera.matrixWorld.equals(lastView);
+      lastView.copy(camera.matrixWorld);
+      material.uniforms.uSteps!.value = renderer.xr.isPresenting ? STEPS_XR : moving ? STEPS_MOVING : STEPS_DESKTOP;
     };
     parent.add(mesh);
   };
@@ -418,6 +443,7 @@ export function mountStorms(parent: Group): void {
       tex.needsUpdate = true;
       volumeTex?.dispose();
       volumeTex = tex;
+      hasEcho = volumeHasEcho(buf);
       manifest = next;
       place();
     } catch {

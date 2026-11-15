@@ -114,14 +114,24 @@ export function mountPrecipLayer(parent: Group): void {
     }
   };
 
-  const paint = (rate: FieldGrid): void => {
+  /** Paints the texture; false when there is no precipitation to show. */
+  const paint = (rate: FieldGrid): boolean => {
     const type = getField('preciptype');
+    const pixels = paintPrecip(rate, type);
+    let any = false;
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] !== 0) {
+        any = true;
+        break;
+      }
+    }
+    if (!any) return false;
     canvas.width = rate.nx;
     canvas.height = rate.ny;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return false;
     const img = ctx.createImageData(rate.nx, rate.ny);
-    img.data.set(paintPrecip(rate, type));
+    img.data.set(pixels);
     ctx.putImageData(img, 0, 0);
     if (!texture) {
       texture = new CanvasTexture(canvas);
@@ -132,6 +142,7 @@ export function mountPrecipLayer(parent: Group): void {
     } else {
       texture.needsUpdate = true;
     }
+    return true;
   };
 
   /** Draped grid over the field bounds: one vertex per cell, on the drawn terrain plus a hair. */
@@ -191,7 +202,13 @@ export function mountPrecipLayer(parent: Group): void {
       if (wasCovered !== covered) notify();
       return;
     }
-    paint(rate);
+    if (!paint(rate)) {
+      // Dry everywhere: a fully transparent sheet would still be drawn
+      // across the whole scope. Coverage stands, so RainViewer stays off.
+      dispose();
+      if (wasCovered !== covered) notify();
+      return;
+    }
     const key = `${rate.nx}x${rate.ny}@${rate.bounds.west},${rate.bounds.north}`;
     if (!mesh || key !== lastKey) {
       lastKey = key;
