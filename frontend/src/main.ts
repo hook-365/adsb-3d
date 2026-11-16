@@ -57,6 +57,7 @@ import { mountAirspace } from './world/airspace';
 import { mountRouteLine } from './world/route-line';
 import { mountAirports } from './world/airports';
 import { mountProcedureLayer } from './world/procedure-layer';
+import { updateLabelYield } from './world/label-yield';
 import { mountNavData } from './world/navdata';
 import { mountDetailTiles } from './world/detail-tiles';
 import { mountWinds } from './world/winds';
@@ -132,6 +133,8 @@ const controls = attachControls(world.camera, world.renderer);
 // Exactly one of the two drives the camera each frame; see setCameraMode.
 const freeCam = new FreeCamera(world.camera, world.renderer.domElement);
 const labelRenderer = createLabelRenderer();
+const LABEL_YIELD_MS = 120;
+let lastLabelYieldMs = 0;
 
 // Auto-orbit (issue #6), desktop half: OrbitControls already has
 // autoRotate/autoRotateSpeed built in, and it orbits controls.target —
@@ -1337,7 +1340,14 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // CSS2D labels are never rendered while presenting (the render branch
   // below skips labelRenderer), so the LOD pass would be pure wasted
   // frustum math + DOM writes there.
-  if (!world.renderer.xr.isPresenting) reconciler.updateLabelLOD();
+  if (!world.renderer.xr.isPresenting) {
+    reconciler.updateLabelLOD();
+    // Ground labels step aside for an aircraft passing in front of them.
+    if (frameTime - lastLabelYieldMs > LABEL_YIELD_MS) {
+      lastLabelYieldMs = frameTime;
+      updateLabelYield(world.camera, window.innerWidth, window.innerHeight, (fn) => reconciler.forEachBody(fn));
+    }
+  }
   if (reconciler.count !== lastAircraftCount) {
     lastAircraftCount = reconciler.count;
     const text = t('main.aircraft_count', { n: reconciler.count });

@@ -1552,6 +1552,17 @@ export class AircraftReconciler {
     return entry ? entry.cone.position.clone() : null;
   }
 
+  /**
+   * Visit every aircraft body with its position and drawn radius (scene
+   * units), as of the last syncFrame. Read-only: for passes that need to
+   * know where the aircraft are on screen (world/label-yield.ts).
+   */
+  forEachBody(fn: (position: Vector3, radius: number) => void): void {
+    for (const entry of this.entries.values()) {
+      if (entry.group.visible) fn(entry.cone.position, BODY_CULL_RADIUS * entry.cone.scale.x);
+    }
+  }
+
   /** Raycast hit-test against aircraft pick proxies. Returns the closest hex or null. */
   pick(raycaster: Raycaster): string | null {
     // intersectObject(root, true) walks the whole subtree which costs us

@@ -16,6 +16,7 @@ import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { yieldToAircraft } from './label-yield';
 import { subscribeElevation } from './elevation';
 import { terrainActive, terrainSurface } from './tiles';
 
@@ -154,6 +155,7 @@ export function mountNavData(parent: Group): void {
   group.name = 'navdata';
   const labelGroup = new Group();
   group.add(labelGroup);
+  yieldToAircraft(labelGroup);
 
   const line = { transparent: true, depthWrite: false, clippingPlanes: DIORAMA_PLANES };
   const lowMat = new LineBasicMaterial({ ...line, color: LOW_COLOR, opacity: 0.3 });

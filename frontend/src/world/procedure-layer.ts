@@ -9,6 +9,7 @@ import { distanceFromHomeNm, toScene } from '../core/coords';
 import { subscribeSettings } from '../core/settings';
 import { runwaysOf, type Runway } from './airports';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { yieldToAircraft } from './label-yield';
 import {
   distanceNm,
   segmentGeometry,
@@ -132,6 +133,7 @@ export function mountProcedureLayer(parent: Group): ProcedureLayer {
   group.name = 'procedure';
   const labelGroup = new Group();
   group.add(labelGroup);
+  yieldToAircraft(labelGroup);
   parent.add(group);
 
   const solidMat = new LineMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });

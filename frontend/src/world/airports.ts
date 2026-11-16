@@ -22,6 +22,7 @@ import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { getAirports, loadAirports, type Airport } from '../feed/explore-airports';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { yieldToAircraft } from './label-yield';
 import { getMetar, setAirportWeatherWanted, subscribeAirportWeather } from './airport-weather';
 import { subscribeElevation } from './elevation';
 import { terrainActive, terrainSurface } from './tiles';
@@ -261,6 +262,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
   group.name = 'airports';
   const labelGroup = new Group();
   group.add(labelGroup);
+  yieldToAircraft(labelGroup);
 
   // Runways are part of the ground. They are opaque and drawn straight
   // after the basemap, before any aircraft: a polygon offset lets them win

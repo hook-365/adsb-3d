@@ -108,7 +108,7 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   loader, range-fetch of one airport from `procedures.pack`, runways in
   use) + `procedure-geometry` (pure: ARINC 424 legs to polylines; legs
   that end on a condition are flagged approximate and drawn dashed) +
-  `procedure-layer` (the one procedure picked in the airport card),
+  `procedure-layer` (the one procedure picked in the airport card), `label-yield` (fades a ground label while a nearer aircraft overlaps it on screen; a layer opts its label group in with `yieldToAircraft`),
   `navdata` (US airways at the heights they are flown, navaids and fixes)
   + `navdata.json` (generated from the same CIFP edition by
   `scripts/build-navdata.py`), `route-line` (great

@@ -1767,6 +1767,12 @@ body.xr-on .acars-toggle {
   opacity: 0.9;
 }
 
+/* A ground label with an aircraft passing in front of it (world/label-yield.ts). */
+.aircraft-label.yielding {
+  opacity: 0.12 !important;
+  pointer-events: none !important;
+}
+
 /* Airport labels (world/airports.ts): the ICAO code on the field. */
 .aircraft-label.airport-label {
   color: var(--fg-bright);

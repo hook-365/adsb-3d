@@ -39,6 +39,7 @@ import {
   type AirspaceVolume,
 } from './airspace-volumes';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { yieldToAircraft } from './label-yield';
 import { elevationFtAt, subscribeElevation } from './elevation';
 import { terrainActive } from './tiles';
 import { getTfrs, setTfrsWanted, subscribeTfrs } from './tfr';
@@ -384,6 +385,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   focusGroup.name = 'airspace-focus';
   const labelGroup = new Group();
   group.add(focusGroup, labelGroup);
+  yieldToAircraft(labelGroup);
 
   const wallMats = new Map<AirspaceKind, MeshBasicMaterial>();
   const lineMats = new Map<AirspaceKind, Material>();
