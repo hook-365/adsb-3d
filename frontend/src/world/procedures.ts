@@ -1,5 +1,4 @@
-import indexUrl from './procedures-index.json?url';
-import packUrl from './procedures.pack?url';
+import { cifpSource } from './cifp-source';
 import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import {
@@ -23,6 +22,9 @@ import {
 //   procedures.pack        every airport's complete procedures, one gzipped
 //       JSON chunk each, end to end. Only the clicked airport's bytes are
 //       fetched (an HTTP range request) and unpacked in the browser.
+//
+// Both come from the app's own bundle, or from a newer edition the
+// container fetched (world/cifp-source.ts).
 //
 // The FAA does not copyright the CIFP and provides it as is. Nothing here
 // is for navigation, and the data goes out of date every 28 days: the
@@ -147,34 +149,39 @@ const IN_USE_MAX_ABOVE_FT = 5000;
 const BOX_DEG = (IN_USE_RANGE_NM / 60) * 1.05;
 
 /**
- * Is anyone flying this final right now? True when an aircraft is on the
- * approach side of the threshold within 12 NM, within a mile of the final
- * course, tracking within 15 degrees of it, not climbing, and low enough to
- * be landing.
+ * How far out on this final an aircraft is (NM from the threshold) and how
+ * far off its centreline, or null when it is not flying it: it must be on the approach side within 12 NM,
+ * within a mile of the final course, tracking within 15 degrees of it, not
+ * climbing, and low enough to be landing.
  */
-export function finalInUse(final: readonly PathPoint[], traffic: Iterable<TrafficSample>): boolean {
-  if (final.length < 2) return false;
+export function finalFit(final: readonly PathPoint[], a: TrafficSample): { nm: number; offNm: number } | null {
+  if (final.length < 2) return null;
   const end = final[final.length - 1]!;
   const before = final[final.length - 2]!;
+  if (a.onGround || a.trackDeg === null) return null;
+  if (a.altFt - (end.altFt ?? 0) > IN_USE_MAX_ABOVE_FT) return null;
+  if (a.verticalRateFpm !== null && a.verticalRateFpm > 300) return null;
+  // A scope can hold hundreds of finals and a thousand aircraft, checked
+  // every few seconds: turn away everything not near this runway with two
+  // subtractions before any trigonometry.
+  if (Math.abs(a.lat - end.lat) > BOX_DEG || Math.abs(a.lon - end.lon) > BOX_DEG * 2) return null;
+  const d = distanceNm(a.lat, a.lon, end.lat, end.lon);
+  if (d > IN_USE_RANGE_NM) return null;
   const course = bearing(before.lat, before.lon, end.lat, end.lon);
-  const floor = end.altFt ?? 0;
+  const turn = Math.abs(((a.trackDeg - course + 540) % 360) - 180);
+  if (turn > IN_USE_TRACK_DEG) return null;
+  // Bearing from the aircraft to the threshold against the final course
+  // gives how far off the centreline it is, and that it is still inbound.
+  const off = (((bearing(a.lat, a.lon, end.lat, end.lon) - course + 540) % 360) - 180) * (Math.PI / 180);
+  if (Math.cos(off) <= 0) return null;
+  const offNm = Math.abs(Math.sin(off)) * d;
+  return offNm <= IN_USE_OFFSET_NM ? { nm: d, offNm } : null;
+}
+
+/** Is anyone flying this final right now? */
+export function finalInUse(final: readonly PathPoint[], traffic: Iterable<TrafficSample>): boolean {
   for (const a of traffic) {
-    if (a.onGround || a.trackDeg === null) continue;
-    if (a.altFt - floor > IN_USE_MAX_ABOVE_FT) continue;
-    if (a.verticalRateFpm !== null && a.verticalRateFpm > 300) continue;
-    // A scope can hold hundreds of finals and a thousand aircraft, checked
-    // every few seconds: turn away everything not near this runway with two
-    // subtractions before any trigonometry.
-    if (Math.abs(a.lat - end.lat) > BOX_DEG || Math.abs(a.lon - end.lon) > BOX_DEG * 2) continue;
-    const d = distanceNm(a.lat, a.lon, end.lat, end.lon);
-    if (d > IN_USE_RANGE_NM) continue;
-    const turn = Math.abs(((a.trackDeg - course + 540) % 360) - 180);
-    if (turn > IN_USE_TRACK_DEG) continue;
-    // Bearing from the aircraft to the threshold against the final course
-    // gives how far off the centreline it is, and that it is still inbound.
-    const off = (((bearing(a.lat, a.lon, end.lat, end.lon) - course + 540) % 360) - 180) * (Math.PI / 180);
-    if (Math.cos(off) <= 0) continue;
-    if (Math.abs(Math.sin(off)) * d <= IN_USE_OFFSET_NM) return true;
+    if (finalFit(final, a) !== null) return true;
   }
   return false;
 }
@@ -214,7 +221,8 @@ export function loadProcedureIndex(): Promise<void> {
   if (index) return Promise.resolve();
   if (!loading) {
     setLoading('procedures', t('settings.airport_approaches'));
-    loading = fetch(indexUrl)
+    loading = cifpSource()
+      .then((source) => fetch(source.indexUrl))
       .then((res) => {
         if (!res.ok) throw new Error(`procedure index: HTTP ${res.status}`);
         return res.json() as Promise<unknown>;
@@ -243,6 +251,7 @@ export function loadAirportDetail(icao: string): Promise<AirportDetail | null> {
   let pending = details.get(icao);
   if (!pending) {
     pending = (async (): Promise<AirportDetail | null> => {
+      const { packUrl } = await cifpSource();
       const res = await fetch(packUrl, { headers: { Range: `bytes=${entry.o}-${entry.o + entry.n - 1}` } });
       // 206 is the slice asked for. A server that ignores ranges answers 200
       // with the whole pack: still usable, just the long way round.

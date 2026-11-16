@@ -240,6 +240,16 @@ function load(): void {
     .finally(() => setLoading('airports', null));
 }
 
+/** Fetch the runway table if nothing has yet (the layer does this itself when it is on). */
+export function loadRunways(): void {
+  load();
+}
+
+export function subscribeRunways(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 /** Runways of one airport, when the layer's data has loaded. */
 export function runwaysOf(icao: string): readonly Runway[] {
   return runwayTable?.get(icao) ?? [];

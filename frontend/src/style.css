@@ -1834,6 +1834,16 @@ body.xr-on .acars-toggle {
   padding: 0 2px;
 }
 
+/* Wind speed, knots, on each winds-aloft arrow (world/winds.ts). */
+.aircraft-label.wind-label {
+  color: #dff2ff;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 10px;
+  text-shadow: 0 0 3px #000, 0 0 2px #000;
+}
+
 /* Fix names along a drawn procedure (world/procedure-layer.ts). */
 .aircraft-label.procedure-fix {
   display: flex;
@@ -2115,6 +2125,12 @@ body.xr-on .airspace-panel {
 /* One line per containing volume in the detail card. */
 #panel-detail .detail-airspace {
   white-space: pre-line;
+}
+
+/* What the aircraft is doing (world/activity.ts): the card's headline row. */
+#panel-detail .detail-activity {
+  color: var(--accent);
+  white-space: normal;
 }
 
 /* Idle chrome while the spin runs (ui/idle-chrome.ts): HUD, status bar
@@ -3216,6 +3232,25 @@ body.chrome-idle .settings-button {
   .detail-pill {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 155px);
   }
+}
+/* The airport card's pill (ui/airport-panel.ts) sits above the aircraft's,
+   since both can be up at once. */
+.detail-pill.airport-pill {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 140px);
+  border-color: color-mix(in srgb, #ffd166 45%, transparent);
+}
+.detail-pill.airport-pill .pill-stats {
+  color: #ffd166;
+}
+@media (max-width: 600px) {
+  .detail-pill.airport-pill {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 199px);
+  }
+}
+.airspace-panel .airspace-buttons {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 #panel-detail .detail-share:hover {
   color: var(--fg);

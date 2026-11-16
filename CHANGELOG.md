@@ -16,12 +16,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Winds aloft** (`ENABLE_WINDS_ALOFT`, off by default): forecast wind as arrows at a chosen height, and a wind row on the aircraft card with its head or tail wind. From Open-Meteo, proxied and cached hourly.
 - **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.
+- **What an aircraft is doing**: the aircraft card's first row says it in words, such as "Final for runway 12R at KMSP · 5 NM out", "KKILR4 arrival into KMSP · next GREAK", "Taxiing at KMSP" or "Holding or circling". Inferred from its track, the runways and the published procedures.
+- **Procedure data stays current**: the container rebuilds it from each new 28-day FAA edition by itself (`ENABLE_DATA_REFRESH`, default on), so approaches, airways and navaids no longer wait for a new image.
 - **Airport card and weather**: click an airport for its runways, current METAR decoded and raw, the TAF, and the traffic at the field. Labels are coloured by flight category.
 - **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.
 - **Loading toast**: a note at the top of the screen names what is still loading (3D storms, weather radar, airspace, TFRs).
 
 ### Changed
 
+- **Airport card** can be minimized to a pill. A drawn approach, arrival or departure stays up while it is, and while you select aircraft; closing the card clears it.
+- **Winds aloft** draw as filled arrows with the speed in knots on each, in place of thin lines.
 - **Special use airspace follows its published hours**: MOAs and restricted areas outside their times of use are drawn fainter, and the info card says where the clock stands. Areas activated only by NOTAM are left as they were.
 - **Busy scopes are much faster**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
 - **Labels are cheaper to move**: the camera turning over a busy scope no longer repaints every label.

@@ -56,6 +56,8 @@ describe('normalizeRoute', () => {
     expect(normalizeRoute(entry, 33.1, -104)).toEqual({
       origin: 'DAL',
       destination: 'PHX',
+      origin_icao: DAL.icao,
+      destination_icao: PHX.icao,
       origin_name: 'Dallas Love Field',
       destination_name: 'Phoenix Sky Harbor',
       plausible: true,

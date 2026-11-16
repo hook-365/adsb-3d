@@ -37,6 +37,9 @@ export interface RouteInfo {
   /** Where the current leg's endpoints are, when the route service says. */
   origin_pos?: RoutePoint;
   destination_pos?: RoutePoint;
+  /** ICAO codes of the endpoints (origin and destination prefer the IATA code people know). */
+  origin_icao?: string;
+  destination_icao?: string;
 }
 
 export interface RoutePoint {
@@ -185,6 +188,8 @@ export function normalizeRoute(entry: RawRouteEntry | undefined, lat: number, lo
     destination: airportCode(to),
     plausible: !!entry?.plausible,
   };
+  if (from.icao) out.origin_icao = from.icao;
+  if (to.icao) out.destination_icao = to.icao;
   if (from.name) out.origin_name = from.name;
   if (to.name) out.destination_name = to.name;
   if (airports.length > 2) out.stops = airports.map(airportCode);

@@ -14,6 +14,7 @@ import { getField, subscribeField } from '../world/weather-fields';
 import { lightningActive, lightningNear } from '../world/lightning';
 import { airspaceFor, airspaceSummary } from '../world/airspace';
 import { getWinds, windAt, windComponents, windsActive } from '../world/winds';
+import { activityOf, subscribeActivity, type Activity } from '../world/activity';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
 
@@ -168,6 +169,8 @@ export function createAircraftDetail(
   const lightningEl = document.getElementById('detail-lightning')!;
   const airspaceLabelEl = document.getElementById('detail-airspace-label')!;
   const airspaceEl = document.getElementById('detail-airspace')!;
+  const activityLabelEl = document.getElementById('detail-activity-label')!;
+  const activityEl = document.getElementById('detail-activity')!;
   const windLabelEl = document.getElementById('detail-wind-label')!;
   const windEl = document.getElementById('detail-wind')!;
   const vrateEl = document.getElementById('detail-vrate')!;
@@ -281,8 +284,8 @@ export function createAircraftDetail(
         const target = a.callsign;
         void ensureRoute({ callsign: target, lat: a.lat, lon: a.lon }).then(() => {
           if (selectedHex && store.snapshot.get(selectedHex)?.callsign === target) {
-            const sa = store.snapshot.get(selectedHex);
-            if (sa) updateRoute(sa);
+            // The whole card: the activity row reads the route too.
+            render();
           }
         });
       }
@@ -389,6 +392,40 @@ export function createAircraftDetail(
     }
   }
 
+  function activityText(act: Activity): string {
+    switch (act.kind) {
+      case 'parked':
+        return act.icao ? t('detail.act_parked_at', { apt: act.icao }) : t('detail.act_parked');
+      case 'taxi':
+        return act.icao ? t('detail.act_taxi_at', { apt: act.icao }) : t('detail.act_taxi');
+      case 'runway':
+        return t('detail.act_runway', { rw: act.runway, apt: act.icao });
+      case 'landing':
+        return t('detail.act_landing', { apt: act.icao });
+      case 'final':
+        return t('detail.act_final', { rw: act.runway, apt: act.icao, dist: fmtDistance(act.nm) });
+      case 'star':
+      case 'sid': {
+        const text = t(act.kind === 'star' ? 'detail.act_star' : 'detail.act_sid', { id: act.id, apt: act.icao });
+        return act.next ? `${text} · ${t('detail.act_next', { fix: act.next })}` : text;
+      }
+      case 'holding':
+        return t('detail.act_holding');
+      case 'departing':
+        return t('detail.act_departing', { apt: act.icao });
+      case 'arriving':
+        return t('detail.act_arriving', { apt: act.icao, dist: fmtDistance(act.nm) });
+      case 'cruise':
+        return t('detail.act_cruise');
+      case 'climb':
+        return t('detail.act_climb');
+      case 'descent':
+        return t('detail.act_descent');
+      case 'level':
+        return t('detail.act_level');
+    }
+  }
+
   function render(): void {
     if (!selectedHex) {
       root.hidden = true;
@@ -444,6 +481,11 @@ export function createAircraftDetail(
     const strikes = lightningActive() ? lightningNear(a.lat, a.lon) : Number.NaN;
     setRow(lightningLabelEl, lightningEl, t('detail.lightning'),
       Number.isFinite(strikes) && strikes > 0 ? t('misc.lightning_nearby', { rate: strikes.toFixed(strikes < 1 ? 2 : 1) }) : null);
+
+    // What it is doing, inferred from its track, the runways and the
+    // published procedures (world/activity.ts).
+    const route = a.callsign ? (getRoute(a.callsign) ?? null) : null;
+    setRow(activityLabelEl, activityEl, t('detail.activity'), activityText(activityOf(a, store.trails(a.hex) ?? [], route)));
 
     // Airspace the aircraft is inside while the 3D airspace layer is on
     // (one line per volume); the same call highlights those volumes.
@@ -651,6 +693,9 @@ export function createAircraftDetail(
   }
 
   store.subscribe(render);
+  subscribeActivity(() => {
+    if (selectedHex) render();
+  });
 
   // ACARS messages arrive out-of-band from the store, but the panel only
   // re-renders on store snapshots. Hook the acars store + the settings

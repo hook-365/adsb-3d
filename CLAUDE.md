@@ -108,7 +108,7 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   loader, range-fetch of one airport from `procedures.pack`, runways in
   use) + `procedure-geometry` (pure: ARINC 424 legs to polylines; legs
   that end on a condition are flagged approximate and drawn dashed) +
-  `procedure-layer` (the one procedure picked in the airport card), `label-yield` (fades a ground label while a nearer aircraft overlaps it on screen; a layer opts its label group in with `yieldToAircraft`),
+  `procedure-layer` (the one procedure picked in the airport card), `activity` (what the selected aircraft is doing: parked, on final for a runway, on a named arrival or departure, holding; pure inference plus a lazy loader, shown as the detail card's first row), `label-yield` (fades a ground label while a nearer aircraft overlaps it on screen; a layer opts its label group in with `yieldToAircraft`),
   `navdata` (US airways at the heights they are flown, navaids and fixes)
   + `navdata.json` (generated from the same CIFP edition by
   `scripts/build-navdata.py`), `route-line` (great
@@ -253,6 +253,13 @@ features get dummy upstreams so the generated nginx config is always valid.
   releases API once a day and writes `/update.json`; `core/update-check.ts`
   polls it and the settings panel shows a badge when it is newer. Browsers
   never contact GitHub, so no CSP change and no viewer IPs leave the site.
+  `ENABLE_DATA_REFRESH` (default `true`): the FAA CIFP data (procedures,
+  navdata) is replaced every 28 days. The image carries the generator
+  scripts and python3; the entrypoint runs `refresh-cifp.py --serve`
+  daily, which rebuilds the data under `/cifp/` when the FAA's current
+  edition is newer than the image's `cifp-edition.json`;
+  `world/cifp-source.ts` then reads `/cifp/` instead of the bundle. Same
+  scripts as the bundled data, so the format always matches.
 - Multi-feed: flat `FEEDN_*` env vars; the entrypoint synthesizes per-feed
   nginx proxy blocks. Slot 1 is always the local feed.
 - Security posture: nginx ships conservative security headers
@@ -310,8 +317,8 @@ Generated data (committed; regenerate, never hand-edit; stdlib Python):
 (OurAirports), `scripts/build-runways.py` → `world/runways-data.json`
 (OurAirports; run after build-airports, it keeps that file's airports),
 `scripts/build-procedures.py` → `world/procedures-index.json` +
-`world/procedures.pack` and `scripts/build-navdata.py` →
-`world/navdata.json` (both FAA CIFP; a new edition every 28 days, and
+`world/procedures.pack` + `world/cifp-edition.json` and `scripts/build-navdata.py` →
+`world/navdata.json` (both FAA CIFP, run together by `scripts/refresh-cifp.py`; a new edition every 28 days, and
 the airport card shows the cycle and says when it is out of date). The airspace and airports files are fetched as hashed
 assets (`?url`) on first use; the city list is bundled because feed boot
 resolves `?place=` synchronously.
