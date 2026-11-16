@@ -299,3 +299,52 @@ describe('cadence change', () => {
     expect(s!.lat).toBeLessThan(lastLat - 1e-6);
   });
 });
+
+describe('MotionTracker display clock', () => {
+  // An aircraft flying north at a steady rate, one fix per `gaps` entry,
+  // delivered as it is emitted. Samples at 20 fps throughout; returns every
+  // displayed latitude.
+  function fly(gaps: number[]): number[] {
+    const store = new AircraftStore();
+    let now = 100_000;
+    const tr = new MotionTracker(store, { nowFn: () => now });
+    const out: number[] = [];
+    let emitted = now;
+    const push = (): void => {
+      store.syncFromFeed([ac('a', { lat: (emitted - 100_000) / 100_000, lastUpdateMs: emitted, lastSeenMs: emitted })]);
+    };
+    push();
+    for (const gap of gaps) {
+      const until = emitted + gap;
+      for (; now < until; now += 50) {
+        const s = tr.sample('a', now);
+        if (s) out.push(s.lat);
+      }
+      emitted = until;
+      now = until;
+      push();
+    }
+    return out;
+  }
+
+  const steps = (lats: number[]): number[] => lats.slice(1).map((v, i) => v - lats[i]!);
+
+  it('never moves an aircraft backward when fixes arrive unevenly', () => {
+    const lats = fly([10_000, 10_000, 19_000, 10_000, 11_000, 20_000, 10_000, 10_000, 14_000, 10_000]);
+    expect(lats.length).toBeGreaterThan(500);
+    expect(Math.min(...steps(lats))).toBeGreaterThanOrEqual(0);
+  });
+
+  it('does not jump after waiting on a late fix', () => {
+    const lats = fly([10_000, 10_000, 10_000, 20_000, 10_000, 10_000, 10_000]);
+    // 50 ms of flight at this speed is 0.0005 degrees; the clock may run up
+    // to 1.6 times fast to catch up, never more.
+    expect(Math.max(...steps(lats))).toBeLessThanOrEqual(0.0005 * 1.6 + 1e-9);
+  });
+
+  it('settles back to real time once the fixes are regular again', () => {
+    const lats = fly([10_000, 10_000, 20_000, ...Array.from({ length: 12 }, () => 10_000)]);
+    const last = steps(lats).slice(-100);
+    for (const d of last) expect(d).toBeCloseTo(0.0005, 5);
+  });
+});

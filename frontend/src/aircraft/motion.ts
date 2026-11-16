@@ -11,6 +11,13 @@ import type { AircraftStore } from './store';
 // adaptive). Late data freezes the aircraft at its newest fix — we never
 // extrapolate into guessed space — and a bracket gap far beyond the
 // aircraft's usual cadence snaps instead of slow-gliding across it.
+//
+// Display time is a clock of its own per aircraft, not "now minus the
+// delay" recomputed each frame: that target jitters with every tick and
+// would step the aircraft back and forth with it, and after a late fix it
+// sits past the start of the new bracket, which was a pause and then a
+// jump. The clock only ever runs forward, a little faster or slower to
+// stay near the target, and resumes from where it was held.
 
 export interface Fix {
   lat: number;
@@ -43,6 +50,19 @@ const RING_SIZE = 4;
 export const CADENCE_RESEED_RUN = 3;
 const GAP_EMA_ALPHA = 0.3;
 const OFFSET_EMA_ALPHA = 0.2;
+// The display clock (see MotionTracker.sample). Its target moves a little
+// every tick as the cadence and offset estimates settle, and stops being
+// reachable whenever a fix is late; the clock closes the difference by
+// running slightly fast or slow rather than stepping.
+/** Error that changes the clock's rate by 100%, ms: a 1 s error is closed at about 25% over or under real time. */
+export const CLOCK_SLEW_MS = 4_000;
+/** Slowest and fastest the clock runs. Never zero or less: displayed time does not go backward. */
+export const CLOCK_MIN_RATE = 0.5;
+export const CLOCK_MAX_RATE = 1.6;
+/** Further than this from its target, the clock is simply set: not drift, a real discontinuity. */
+export const CLOCK_RESET_MS = 30_000;
+/** Longer than this between samples (off screen, tab hidden) and the clock starts over. */
+const CLOCK_IDLE_MS = 1_000;
 
 /** Shortest-arc angular difference b−a in (−180, 180]. */
 function arcDelta(a: number, b: number): number {
@@ -122,6 +142,9 @@ export class MotionTracker {
   private readonly gapEmaMs = new Map<string, number>();
   // Consecutive rejected (coverage-gap-sized) gaps per aircraft.
   private readonly outlierRun = new Map<string, number>();
+  // Per-aircraft display clock: the display time last shown and the wall
+  // time it was shown at.
+  private readonly clocks = new Map<string, { displayMs: number; wallMs: number }>();
   // sample() result, reused across calls: valid until the next sample().
   private readonly scratch: SampledFix = { lat: 0, lon: 0, altFt: 0, trackDeg: null, ms: 0 };
   // Wall-clock minus fix-clock, EMA across all pushes. Absorbs feed clock
@@ -146,6 +169,7 @@ export class MotionTracker {
         this.rings.clear();
         this.gapEmaMs.clear();
         this.outlierRun.clear();
+        this.clocks.clear();
       }
       return;
     }
@@ -154,6 +178,7 @@ export class MotionTracker {
         this.rings.delete(hex);
         this.gapEmaMs.delete(hex);
         this.outlierRun.delete(hex);
+        this.clocks.delete(hex);
       }
     }
     // Newest fix timestamp pushed during this notify. All records in one
@@ -232,8 +257,25 @@ export class MotionTracker {
     const ema = this.gapEmaMs.get(hex);
     if (ema === undefined || ema <= 0) return null;
     const delay = Math.min(MAX_DELAY_MS, Math.max(MIN_DELAY_MS, DELAY_FACTOR * ema));
-    const displayMs = nowMs - (this.offsetEmaMs ?? 0) - delay;
+    const target = nowMs - (this.offsetEmaMs ?? 0) - delay;
+    const newestMs = ring[ring.length - 1]!.ms;
+    let clock = this.clocks.get(hex);
+    const dt = clock ? nowMs - clock.wallMs : -1;
+    if (!clock || dt < 0 || dt > CLOCK_IDLE_MS || Math.abs(target - clock.displayMs) > CLOCK_RESET_MS) {
+      if (!clock) {
+        clock = { displayMs: target, wallMs: nowMs };
+        this.clocks.set(hex, clock);
+      }
+      clock.displayMs = target;
+    } else {
+      const rate = Math.min(CLOCK_MAX_RATE, Math.max(CLOCK_MIN_RATE, 1 + (target - clock.displayMs) / CLOCK_SLEW_MS));
+      clock.displayMs += dt * rate;
+    }
+    clock.wallMs = nowMs;
+    // Held at the newest fix until the next one arrives; the clock waits
+    // there, so the next leg starts from its beginning instead of part-way.
+    if (clock.displayMs > newestMs) clock.displayMs = newestMs;
     const snapGap = Math.max(SNAP_GAP_FACTOR * ema, MIN_SNAP_GAP_MS);
-    return sampleRing(ring, snapGap, displayMs, this.scratch);
+    return sampleRing(ring, snapGap, clock.displayMs, this.scratch);
   }
 }
