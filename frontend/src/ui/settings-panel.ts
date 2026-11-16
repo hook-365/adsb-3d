@@ -76,7 +76,15 @@ interface ButtonRow {
     update: (s: { label?: string; description?: string; disabled?: boolean }) => void,
   ) => () => void;
 }
-type SettingsRow = ToggleRow | ChoiceRow | RangeRow | ButtonRow;
+/** Free text, saved when the field is left or Enter is pressed. */
+interface TextRow {
+  kind: 'text';
+  key: keyof Settings;
+  label: string;
+  description?: string;
+  placeholder?: string;
+}
+type SettingsRow = ToggleRow | ChoiceRow | RangeRow | ButtonRow | TextRow;
 
 // Full display labels per basemap. Record<Basemap, …> so extending
 // BASEMAP_VALUES without labelling the new entry here fails to compile
@@ -243,6 +251,25 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         key: 'acarsMessages',
         label: t('settings.acars_messages'),
         description: t('settings.acars_messages_desc'),
+      },
+      {
+        kind: 'text',
+        key: 'alertWatchlist',
+        label: t('settings.alert_watchlist'),
+        description: t('settings.alert_watchlist_desc'),
+        placeholder: 'N123AB, RCH*, a1b2c3',
+      },
+      {
+        kind: 'toggle',
+        key: 'alertMilitary',
+        label: t('settings.alert_military'),
+        description: t('settings.alert_military_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'alertSound',
+        label: t('settings.alert_sound'),
+        description: t('settings.alert_sound_desc'),
       },
     ],
   },
@@ -729,6 +756,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     { heading: t('settings.group_marker'), ids: ['aircraftShape', 'smoothMotion', 'groundSprites', 'altitudeLines'] },
     { heading: t('settings.group_trails'), ids: ['historyTrails', 'trailLength'] },
     { heading: t('settings.group_labels'), ids: ['aircraftLabels', 'labelDensity', 'acarsMessages'] },
+    { heading: t('settings.group_alerts'), ids: ['alertWatchlist', 'alertMilitary', 'alertSound'] },
   ],
   map: [
     { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles', 'detailTiles'] },
@@ -1056,6 +1084,22 @@ export function mountSettingsPanel(): void {
               if (s.description !== undefined && descEl) descEl.textContent = s.description;
             });
           }
+        } else if (row.kind === 'text') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'settings-text';
+          input.spellcheck = false;
+          input.autocomplete = 'off';
+          input.maxLength = 400;
+          if (row.placeholder) input.placeholder = row.placeholder;
+          input.value = String(getSettings()[row.key] ?? '');
+          input.addEventListener('change', () => {
+            updateSettings({ [row.key]: input.value.trim() } as Partial<Settings>);
+          });
+          rowEl.appendChild(input);
+          inputSyncs.push((s) => {
+            if (document.activeElement !== input) input.value = String(s[row.key] ?? '');
+          });
         } else if (row.kind === 'button') {
           // Action row — a button on the right, sized like the other inputs.
           // Initial state from the row config; subscribe() (if provided) can

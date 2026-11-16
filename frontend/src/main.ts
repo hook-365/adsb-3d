@@ -66,7 +66,7 @@ import { mountDetailTiles } from './world/detail-tiles';
 import { mountWinds } from './world/winds';
 import { mountAirspacePanel, type AirspacePanel } from './ui/airspace-panel';
 import { mountAirportPanel, type AirportPanel } from './ui/airport-panel';
-import { mountEmergencyToasts } from './ui/emergency-toast';
+import { mountAlerts } from './ui/alerts';
 import { mountLoadingToast } from './ui/loading-toast';
 import { mountWhatsNew } from './ui/whats-new';
 import { mountShapeChip } from './ui/shape-chip';
@@ -1132,7 +1132,7 @@ mountAirports(world.xrRoot, {
     airportPanel?.show(site);
   },
 });
-mountEmergencyToasts(store, (hex) => aircraftList.setSelected(hex));
+mountAlerts(store, (hex) => aircraftList.setSelected(hex));
 mountLoadingToast();
 mountWhatsNew();
 

@@ -253,6 +253,12 @@ export interface Settings {
   airspaceCenters: boolean;
   /** Pilot reports of turbulence, icing and weather as markers at the height they were made (world/pireps.ts). */
   pireps: boolean;
+  /** Two short tones when an aircraft declares an emergency (ui/alerts.ts). */
+  alertSound: boolean;
+  /** Also alert when a military aircraft comes onto the scope. */
+  alertMilitary: boolean;
+  /** Callsigns, registrations or hex codes to alert on; see parseWatchlist in core/alerts.ts. */
+  alertWatchlist: string;
   /** Taxiways, aprons, terminals and gates of the airport the camera is close to (world/airport-ground.ts; OpenStreetMap). */
   airportGround: boolean;
   /** Runways drawn where they lie (world/airports.ts; OurAirports data). */
@@ -362,6 +368,9 @@ const DEFAULTS: Settings = {
   airspaceCenters: false,
   pireps: false,
   airportGround: true,
+  alertSound: false,
+  alertMilitary: false,
+  alertWatchlist: '',
   airportRunways: false,
   airportApproaches: false,
   airportLabels: true,
