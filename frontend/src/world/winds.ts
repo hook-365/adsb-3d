@@ -1,13 +1,16 @@
-import { BufferAttribute, BufferGeometry, Group, LineBasicMaterial, LineSegments, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { HOME, WINDS_ENABLED, subscribeHome } from '../core/config';
 import { toScene } from '../core/coords';
 import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { yieldToAircraft } from './label-yield';
 
 // Winds aloft: the forecast wind at five heights over a grid of points
-// around the feed's home. Drawn as arrows at one chosen level, and read at
+// around the feed's home. Drawn as flat arrows with the speed in knots, at
+// the height of the one chosen level, and read at
 // any position and altitude for the aircraft card's wind row.
 //
 // Source: Open-Meteo's forecast API through the nginx /wx/winds proxy,
@@ -33,9 +36,14 @@ export const LEVELS: readonly { hPa: number; altFt: number }[] = [
   { hPa: 250, altFt: 34000 },
 ];
 const COLOR = 0xbfe6ff;
-/** Arrow length in NM per knot of wind, and its head as a fraction of that. */
-const NM_PER_KT = 0.28;
-const HEAD = 0.28;
+/** Arrow length: a floor so light winds still read, then NM per knot, capped short of the next grid point. */
+const MIN_ARROW_NM = 6;
+const NM_PER_KT = 0.3;
+const MAX_ARROW_NM = 46;
+/** Half widths of the shaft and the head, and the head's longest length, NM. */
+const SHAFT_HALF_NM = 1.1;
+const HEAD_HALF_NM = 3.4;
+const HEAD_NM = 8;
 
 export interface Wind {
   /** Degrees true the wind blows FROM. */
@@ -208,19 +216,55 @@ function syncPolling(): void {
   }
 }
 
+/**
+ * Pure: the flat arrow for one wind, as triangle vertices [x, z] in scene
+ * units around its grid point (x east, z south). It points where the air
+ * is going and its length grows with speed, up to MAX_ARROW_NM.
+ */
+export function arrowOutline(u: number, v: number): [number, number][] {
+  const kt = Math.hypot(u, v);
+  const len = Math.min(MAX_ARROW_NM, MIN_ARROW_NM + kt * NM_PER_KT);
+  const ex = u / kt;
+  const ez = -v / kt;
+  // Perpendicular, for the widths.
+  const px = -ez;
+  const pz = ex;
+  const head = Math.min(len * 0.45, HEAD_NM);
+  const at = (along: number, across: number): [number, number] => [ex * along + px * across, ez * along + pz * across];
+  const tail = -len / 2;
+  const neck = len / 2 - head;
+  const s = SHAFT_HALF_NM;
+  const h = HEAD_HALF_NM;
+  return [
+    // Shaft, two triangles.
+    at(tail, -s), at(neck, -s), at(neck, s),
+    at(tail, -s), at(neck, s), at(tail, s),
+    // Head.
+    at(neck, -h), at(len / 2, 0), at(neck, h),
+  ];
+}
+
 export function mountWinds(parent: Group): void {
-  const material = new LineBasicMaterial({
+  const material = new MeshBasicMaterial({
     color: COLOR,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.5,
+    side: DoubleSide,
     depthWrite: false,
     clippingPlanes: DIORAMA_PLANES,
   });
-  let arrows: LineSegments | null = null;
+  const labelGroup = new Group();
+  labelGroup.name = 'winds-labels';
+  parent.add(labelGroup);
+  yieldToAircraft(labelGroup);
+  let arrows: Mesh | null = null;
   const a = new Vector3();
-  const b = new Vector3();
 
   const dispose = (): void => {
+    for (const child of Array.from(labelGroup.children)) {
+      labelGroup.remove(child);
+      if (child instanceof CSS2DObject) child.element.remove();
+    }
     if (!arrows) return;
     arrows.removeFromParent();
     arrows.geometry.dispose();
@@ -237,27 +281,26 @@ export function mountWinds(parent: Group): void {
       for (let col = 0; col < GRID; col++) {
         const u = grid.u[level]![row * GRID + col]!;
         const v = grid.v[level]![row * GRID + col]!;
-        if (!Number.isFinite(u) || !Number.isFinite(v) || Math.hypot(u, v) < 3) continue;
+        const kt = Math.hypot(u, v);
+        if (!Number.isFinite(kt) || kt < 3) continue;
+        // Drawn at the height of the level the forecast is for.
         toScene(grid.lat0 + grid.dLat * row, grid.lon0 + grid.dLon * col, altFt, a);
-        // Scene x is east and z is south: the arrow points where the air is going.
-        const dx = u * NM_PER_KT;
-        const dz = -v * NM_PER_KT;
-        b.set(a.x + dx, a.y, a.z + dz);
-        positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
-        // Two barbs back from the tip, 25 degrees either side.
-        for (const turn of [0.44, -0.44]) {
-          const cos = Math.cos(Math.PI + turn);
-          const sin = Math.sin(Math.PI + turn);
-          positions.push(b.x, b.y, b.z, b.x + (dx * cos - dz * sin) * HEAD, b.y, b.z + (dx * sin + dz * cos) * HEAD);
-        }
+        for (const [x, z] of arrowOutline(u, v)) positions.push(a.x + x, a.y, a.z + z);
+        const el = document.createElement('div');
+        el.className = 'aircraft-label wind-label';
+        el.textContent = String(Math.round(kt));
+        const label = new CSS2DObject(el);
+        label.position.copy(a);
+        labelGroup.add(label);
       }
     }
     if (positions.length === 0) return;
     const geom = new BufferGeometry();
     geom.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-    arrows = new LineSegments(geom, material);
+    arrows = new Mesh(geom, material);
     arrows.frustumCulled = false;
     arrows.renderOrder = 6;
+    arrows.raycast = () => {};
     arrows.userData = { kind: 'winds' };
     parent.add(arrows);
   };

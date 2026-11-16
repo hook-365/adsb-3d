@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { GRID, LEVELS, gridAxes, parseWinds, windAt, windComponents } from '../src/world/winds';
+import { GRID, LEVELS, arrowOutline, gridAxes, parseWinds, windAt, windComponents } from '../src/world/winds';
 
 /** An Open-Meteo answer where every point has the same wind at every level. */
 function uniform(lats: number[], lons: number[], speed: number, dir: number, over: Record<number, [number, number]> = {}) {
@@ -87,5 +87,22 @@ describe('windComponents', () => {
     const north = windComponents(west, 360);
     expect(north.headKt).toBeCloseTo(0, 6);
     expect(north.crossKt).toBeCloseTo(-80, 6); // from the left
+  });
+});
+
+describe('arrowOutline', () => {
+  it('points where the air is going: a west wind (u east) heads east', () => {
+    const tri = arrowOutline(40, 0);
+    const tip = tri[7]!;
+    expect(tip[0]).toBeGreaterThan(0);
+    expect(tip[1]).toBeCloseTo(0);
+  });
+  it('a south wind (v north) heads north, which is negative z', () => {
+    expect(arrowOutline(0, 40)[7]![1]).toBeLessThan(0);
+  });
+  it('grows with speed and stops short of the next grid point', () => {
+    const len = (kt: number): number => arrowOutline(kt, 0)[7]![0] * 2;
+    expect(len(80)).toBeGreaterThan(len(20));
+    expect(len(400)).toBeLessThan(70);
   });
 });
