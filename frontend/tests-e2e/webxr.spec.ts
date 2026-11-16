@@ -17,14 +17,11 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-// The settings panel's sections are collapsible (only "Aircraft" opens by
-// default), so tests must expand "Stereo / VR" before reaching the Enter
-// VR / Enter AR buttons. Idempotent: only clicks when collapsed.
+// The settings panel is tabbed and opens on another tab, so tests must
+// pick the "View" tab (id `xr`) before reaching the Enter VR / Enter AR
+// buttons. Idempotent: clicking the selected tab is a no-op.
 async function openXrSection(page: Page): Promise<void> {
-  const toggle = page.locator('.settings-section-toggle:has-text("Stereo / VR")');
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
-    await toggle.click();
-  }
+  await page.locator('.settings-tab[data-tab="xr"]').click();
 }
 
 // /config.js is normally rendered by entrypoint.sh from env vars at

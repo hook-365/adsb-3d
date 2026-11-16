@@ -975,6 +975,8 @@ export function mountSettingsPanel(): void {
     tab.type = 'button';
     tab.className = 'settings-tab';
     tab.setAttribute('role', 'tab');
+    // Stable hook for the e2e suite; the label is translated.
+    tab.dataset.tab = section.id;
     tab.textContent = TAB_LABELS[section.id] ?? section.heading;
     tab.title = section.heading;
     tab.addEventListener('click', () => {

@@ -257,7 +257,8 @@ export function runwaysOf(icao: string): readonly Runway[] {
 
 export function airportsActive(): boolean {
   const s = getSettings();
-  return s.airportRunways || s.airportApproaches;
+  // Labels stand on their own: they are the way into the airport card.
+  return s.airportRunways || s.airportApproaches || s.airportLabels;
 }
 
 export interface AirportsOptions {

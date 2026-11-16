@@ -8,11 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.15.0] - 2026-11-16
+
 Airports, published procedures and a busy scope at about twice the frame rate. Click an airport label for its card; click an aircraft to see what it is doing.
 
 ### Added
 
-- **Airports**: runways drawn where they lie and ICAO labels coloured by flight category (VFR, MVFR, IFR, LIFR). Click a label for the airport card: runways with the wind on each (which end it favours, headwind and crosswind), the METAR decoded and raw, the TAF, radio frequencies, and the traffic at the field. The card minimizes to a pill. Labels are on by default; runways and approach paths are toggles under Settings, Map.
+- **Airports**: runways drawn where they lie and ICAO labels coloured by flight category (VFR, MVFR, IFR, LIFR). Click a label for the airport card: runways with the wind on each (which end it favours, headwind and crosswind), the METAR decoded and raw, the TAF, radio frequencies, and the traffic at the field. The card minimizes to a pill. Runways and labels are on by default; approach paths are a toggle under Settings, Map.
 - **Airport ground detail**: zoom in on any of 420 major airports for its taxiways, aprons, terminals and gate numbers (OpenStreetMap). On by default.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach in place of a generic three-degree path, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. It stays drawn while the card is minimized. From the FAA's CIFP, cycle shown in the card. Not for navigation.
 - **Runways in use worldwide**: outside the US, approach paths brighten from traffic lined up on the runway.
@@ -29,6 +33,7 @@ Airports, published procedures and a busy scope at about twice the frame rate. C
 ### Changed
 
 - **Busy scopes are about twice as fast**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)). With about 800 aircraft on a desktop, draw calls fell from 742 to 83 and the frame rate went from 20 to 39 fps.
+- **New defaults for new installs**: 3D terrain is on, the altitude scale is 1x (true scale) instead of 4x, and airspace labels are off. Existing browsers keep their settings.
 - **Sharper map by default**: high-res tiles are now on for new installs, and a new patch of finer tiles follows the camera when it is near the ground. Both are toggles under Settings, Map.
 - **Special use airspace follows its published hours**: MOAs and restricted areas outside their times of use are drawn fainter, and the info card says where the clock stands. Areas activated only by NOTAM are left as they were.
 - **Labels are cheaper to move**: the camera turning over a busy scope no longer repaints every label.

@@ -95,7 +95,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **Close-up views**: the camera goes down to within a mile or so of the ground and the wheel zooms toward the cursor, so an airport, a ridge or an airspace shelf can be inspected from beside it.
 - **Themes**: Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast, or `Auto` from your system preference. The 3D scene re-tints live.
 - **Languages**: English, German, Spanish (machine-drafted pending native review; corrections welcome).
-- **3D terrain** (opt-in): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
+- **3D terrain** (on by default): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
 - **VR / AR**: WebXR with laser-pointer controllers, a wrist menu with full settings parity, comfort locomotion, AR scope placement and the diorama clip box. Quest 3 tested; demo in [VR & AR](#vr--ar). Side-by-side stereo for anything without WebXR.
 - **Basemaps**: OpenStreetMap, OpenTopoMap, ESRI relief and satellite, FAA charts, and CARTO Dark / Voyager with your own free `CARTO_API_KEY` (browser-direct, as [their terms](https://carto.com/legal/basemap-terms/) require). Attribution always on screen. High-res mode (one zoom level deeper) and a sharper patch of tiles under a close-up camera are both on by default.
 
@@ -252,7 +252,7 @@ condition for some of them.
 | `EXPLORE_API_KEY` | — | API key for `flyitalyadsb` (setting it alone selects that provider) |
 | `EXPLORE_FALLBACK_PROVIDER` | — | A second provider from the same list, used automatically while `EXPLORE_PROVIDER` is failing. See [Explore](#explore-any-city) |
 | `EXPLORE_POLL_S` | `10` | Seconds between Explore polls and the per-city cache window; a free key allows 30 requests a minute |
-| `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
+| `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users can also turn it off per-browser) |
 | `ENABLE_UPDATE_CHECK` | `true` | The container asks GitHub once a day for the latest release and the settings panel shows a badge when it is newer. Runs server-side only (one request per deployment per day, no viewer IPs); `false` disables it entirely |
 | `ENABLE_DATA_REFRESH` | `true` | The container asks the FAA once a day whether a new edition of its procedure data is out (approaches, arrivals, departures, airways, navaids; one every 28 days) and, when it is, downloads it (about 9 MB) and rebuilds the app's copy, a few seconds of work. Runs server-side only (no viewer IPs); `false` keeps the copy built into the image, which the airport card marks out of date once its 28 days are up |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |

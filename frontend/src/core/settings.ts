@@ -364,14 +364,14 @@ const DEFAULTS: Settings = {
   airspaceControlled: false,
   airspaceSpecial: false,
   airspaceTfr: false,
-  airspaceLabels: true,
+  airspaceLabels: false,
   airspaceCenters: false,
   pireps: false,
   airportGround: true,
   alertSound: false,
   alertMilitary: false,
   alertWatchlist: '',
-  airportRunways: false,
+  airportRunways: true,
   airportApproaches: false,
   airportLabels: true,
   airportWeather: true,
@@ -384,10 +384,10 @@ const DEFAULTS: Settings = {
   routeLine: true,
   language: 'auto',
   altitudeCurveBias: 0,
-  altitudeExaggeration: '4',
-  // Off by default: an extra ~25 tile fetches + displaced geometry that
-  // deserves an opt-in, and flat remains the familiar baseline look.
-  terrain3d: false,
+  altitudeExaggeration: '1',
+  // On by default, at true scale (altitudeExaggeration '1'). The settings
+  // toggle and ENABLE_TERRAIN are the opt-outs.
+  terrain3d: true,
 };
 
 const STORAGE_KEY = 'adsb3d_settings_v1';
