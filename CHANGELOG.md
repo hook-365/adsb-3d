@@ -8,34 +8,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+Airports, published procedures and a busy scope at about twice the frame rate. Click an airport label for its card; click an aircraft to see what it is doing.
+
 ### Added
 
-- **Airports**: runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels. Toggles under Settings, Map.
-- **Airways, navaids and fixes** (US): low and high airways drawn at the heights they are flown, VORs and NDBs with frequencies, and the named fixes along the airways. Toggles under Settings, Map, Navigation.
-- **Airspace in the headset**: a wrist-menu page for airspace, TFRs, runways and approaches, and airspace names drawn in VR and AR.
-- **Winds aloft** (`ENABLE_WINDS_ALOFT`, off by default): forecast wind as arrows at a chosen height, and a wind row on the aircraft card with its head or tail wind. From Open-Meteo, proxied and cached hourly.
-- **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
-- **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.
+- **Airports**: runways drawn where they lie and ICAO labels coloured by flight category (VFR, MVFR, IFR, LIFR). Click a label for the airport card: runways with the wind on each (which end it favours, headwind and crosswind), the METAR decoded and raw, the TAF, radio frequencies, and the traffic at the field. The card minimizes to a pill. Labels are on by default; runways and approach paths are toggles under Settings, Map.
+- **Airport ground detail**: zoom in on any of 420 major airports for its taxiways, aprons, terminals and gate numbers (OpenStreetMap). On by default.
+- **Published procedures** (US): each runway end draws the real final of its instrument approach in place of a generic three-degree path, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. It stays drawn while the card is minimized. From the FAA's CIFP, cycle shown in the card. Not for navigation.
+- **Runways in use worldwide**: outside the US, approach paths brighten from traffic lined up on the runway.
 - **What an aircraft is doing**: the aircraft card's first row says it in words, such as "Final for runway 12R at KMSP · 5 NM out", "KKILR4 arrival into KMSP · next GREAK", "Taxiing at KMSP" or "Holding or circling". Inferred from its track, the runways and the published procedures.
-- **Airport ground detail**: zoom in on a major airport for its taxiways, aprons, terminals and gate numbers (OpenStreetMap). On by default.
-- **Frequencies** on the airport card: ATIS, clearance, ground, tower, approach, departure.
-- **Pilot reports**: turbulence and icing reports from the last two hours as markers at the height they were made; click one for the report as filed.
-- **Centre boundaries** (US): outlines of the control centres, and a Centre row on the aircraft card.
-- **Wind on each runway**: the airport card shows which end the reported wind favours, with its headwind and crosswind.
-- **Airspeed**: with winds aloft on, the aircraft card estimates true airspeed and Mach from ground speed and the wind.
-- **Runways in use worldwide**: outside the US, approach paths brighten and the aircraft card says "Final for runway 34L" from traffic lined up on the runway.
-- **Procedure data stays current**: the container rebuilds it from each new 28-day FAA edition by itself (`ENABLE_DATA_REFRESH`, default on), so approaches, airways and navaids no longer wait for a new image.
-- **Airport card and weather**: click an airport for its runways, current METAR decoded and raw, the TAF, and the traffic at the field. Labels are coloured by flight category.
-- **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.
+- **Alerts**: emergency toasts are now kept in a log behind a small pill at the top of the screen, so one you missed is still there; click an entry to select the aircraft. New triggers: squawks 7400 (unmanned, lost link) and 7777 (military intercept), a watchlist of callsigns, registrations or hex codes (`RCH*` matches any ending), and optionally military aircraft coming onto the scope. An emergency sound is available, off by default. Settings, Aircraft, Alerts.
+- **Route line**: the selected aircraft's scheduled route is drawn from its origin to its destination.
+- **Airways, navaids and fixes** (US): low and high airways at the heights they are flown, VORs and NDBs with frequencies, and the named fixes along the airways. Toggles under Settings, Map, Navigation.
+- **Centre boundaries** (US): outlines of the control centres as a toggle, and a Centre row on the aircraft card saying whose airspace it is in.
+- **Winds aloft** (`ENABLE_WINDS_ALOFT`, off by default): forecast wind as filled arrows at a chosen height with the speed on each. The aircraft card gains a wind row with the head or tail wind, and an estimate of true airspeed and Mach. From Open-Meteo, proxied and cached hourly.
+- **Pilot reports** (toggle): turbulence and icing reports from the last two hours as markers at the height they were made; click one for the report as filed. Mostly a US product.
+- **Airspace in the headset**: a wrist-menu page for airspace, TFRs, runways and approaches, and airspace names drawn in VR and AR.
 - **Loading toast**: a note at the top of the screen names what is still loading (3D storms, weather radar, airspace, TFRs).
 
 ### Changed
 
-- **Airport card** can be minimized to a pill. A drawn approach, arrival or departure stays up while it is, and while you select aircraft; closing the card clears it.
-- **Sharper map by default**: high-res tiles and the close-up detail patch are now on for new installs.
-- **Winds aloft** draw as filled arrows with the speed in knots on each, in place of thin lines.
+- **Busy scopes are about twice as fast**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)). With about 800 aircraft on a desktop, draw calls fell from 742 to 83 and the frame rate went from 20 to 39 fps.
+- **Sharper map by default**: high-res tiles are now on for new installs, and a new patch of finer tiles follows the camera when it is near the ground. Both are toggles under Settings, Map.
 - **Special use airspace follows its published hours**: MOAs and restricted areas outside their times of use are drawn fainter, and the info card says where the clock stands. Areas activated only by NOTAM are left as they were.
-- **Busy scopes are much faster**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
 - **Labels are cheaper to move**: the camera turning over a busy scope no longer repaints every label.
 - **`?perf=1`** logs frame time and draw calls to the console every five seconds.
 
@@ -43,10 +38,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Aircraft on the ground sit on the ground** with 3D terrain on. Parked and taxiing aircraft, low traffic, trails, approach paths and the selection ring no longer hover over the map up close.
 - **Smooth motion** no longer pauses and jumps, or steps backward, when position updates arrive unevenly; aircraft speed up or slow down slightly instead.
-- **Close-up map tiles** are no longer cut through by blurry angular patches of the far-zoom map; they now lie on the same surface as the map under them.
 - **Ground labels** (airports, navaids, fixes, airspace) fade while an aircraft passes in front of them, instead of covering it.
 - **Labels** no longer flicker at the view edge or the label-density fade while the camera moves.
-- **3D storms**: finer sampling inside the storm removes the grain seen in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)); clear air around and above it is skipped.
+- **3D storms**: finer sampling inside the storm reduces the grain seen in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)); clear air around and above it is skipped. In a headset the storm no longer paints over the selected aircraft's card.
+
+### For self-hosters
+
+- **Procedure data stays current**: the container rebuilds approaches, airways and navaids from each new 28-day FAA edition by itself (`ENABLE_DATA_REFRESH`, default on), so they no longer wait for a new image. Set it to `false` to keep the data the image shipped with.
+- **Larger image**: about 120 MB, up from about 75 MB. It now carries Python for the data refresh and the airport data.
+- **New outbound requests from the container**, all cached and none from browsers: aviationweather.gov (METAR, TAF, pilot reports), the FAA (one check a day for a new data edition), and Open-Meteo only when winds aloft are enabled.
 
 ---
 
