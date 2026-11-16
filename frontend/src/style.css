@@ -1844,6 +1844,67 @@ body.xr-on .acars-toggle {
   text-shadow: 0 0 3px #000, 0 0 2px #000;
 }
 
+/* Gate numbers on the apron (world/airport-ground.ts). */
+.aircraft-label.gate-label {
+  color: #cfe0f5;
+  background: color-mix(in srgb, var(--panel-base-alt) 55%, transparent);
+  border: none;
+  padding: 0 3px;
+  font-size: 9px;
+}
+
+/* Names of the control centres along their boundaries (world/artcc.ts). */
+.aircraft-label.centre-label {
+  color: #c6d4e2;
+  border-color: color-mix(in srgb, #9fb4c8 45%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 60%, transparent);
+  font-size: 9px;
+}
+
+/* Pilot reports (world/pireps.ts): coloured by how bad it was; click for the report as filed. */
+.aircraft-label.pirep-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-family: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  color: #b8e6c1;
+  border-color: color-mix(in srgb, #7bd88f 45%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 78%, transparent);
+  font-size: 9px;
+}
+.aircraft-label.pirep-label[data-severity='1'] {
+  color: #ffe08a;
+  border-color: color-mix(in srgb, #ffd166 55%, transparent);
+}
+.aircraft-label.pirep-label[data-severity='2'] {
+  color: #ffb070;
+  border-color: color-mix(in srgb, #ff9442 65%, transparent);
+}
+.aircraft-label.pirep-label[data-severity='3'],
+.aircraft-label.pirep-label[data-urgent] {
+  color: #ff8a8a;
+  border-color: #ff5d5d;
+}
+.aircraft-label.pirep-label .pirep-raw {
+  display: none;
+  max-width: 260px;
+  white-space: normal;
+  text-align: left;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--fg);
+}
+.aircraft-label.pirep-label.open .pirep-raw {
+  display: block;
+}
+/* An opened report reads over its neighbours (the renderer sets z-index inline). */
+.aircraft-label.pirep-label.open {
+  z-index: 100000 !important;
+}
+
 /* Fix names along a drawn procedure (world/procedure-layer.ts). */
 .aircraft-label.procedure-fix {
   display: flex;

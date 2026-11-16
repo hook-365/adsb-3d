@@ -57,6 +57,9 @@ import { mountAirspace } from './world/airspace';
 import { mountRouteLine } from './world/route-line';
 import { mountAirports } from './world/airports';
 import { mountProcedureLayer } from './world/procedure-layer';
+import { mountAirportGround } from './world/airport-ground';
+import { mountCentres } from './world/artcc';
+import { mountPireps } from './world/pireps';
 import { updateLabelYield } from './world/label-yield';
 import { mountNavData } from './world/navdata';
 import { mountDetailTiles } from './world/detail-tiles';
@@ -1095,6 +1098,9 @@ mountAirspace(world.xrRoot, {
 mountNavData(world.xrRoot);
 mountWinds(world.xrRoot);
 const detailTiles = mountDetailTiles(world.xrRoot);
+const airportGround = mountAirportGround(world.xrRoot);
+mountCentres(world.xrRoot);
+mountPireps(world.xrRoot);
 const procedureLayer = mountProcedureLayer(world.xrRoot);
 airportPanel = mountAirportPanel(() => store.snapshot.values(), {
   onProcedure: (site, pick) => {
@@ -1335,14 +1341,14 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   routeLine.update(xrSelectedHex ? (store.snapshot.get(xrSelectedHex) ?? null) : null);
   // Finer map tiles under whatever the camera is close to. Orbiting, that
   // is the orbit target; flying free, the ground below the camera.
-  detailTiles.update(
-    frameTime,
-    world.renderer.xr.isPresenting
-      ? null
-      : freeMode
-        ? { x: world.camera.position.x, z: world.camera.position.z, distance: world.camera.position.y - freeCam.groundY }
-        : { x: controls.target.x, z: controls.target.z, distance: world.camera.position.distanceTo(controls.target) },
-  );
+  const closeFocus = world.renderer.xr.isPresenting
+    ? null
+    : freeMode
+      ? { x: world.camera.position.x, z: world.camera.position.z, distance: world.camera.position.y - freeCam.groundY }
+      : { x: controls.target.x, z: controls.target.z, distance: world.camera.position.distanceTo(controls.target) };
+  detailTiles.update(frameTime, closeFocus);
+  // Taxiways, aprons and gates of the airport being looked at up close.
+  airportGround.update(frameTime, closeFocus);
   const syncT0 = PERF_LOG ? performance.now() : 0;
   reconciler.syncFrame();
   if (PERF_LOG) perfSyncMs += performance.now() - syncT0;

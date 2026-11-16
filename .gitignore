@@ -55,3 +55,6 @@ frontend/tsconfig.tsbuildinfo
 Screenshot.jpg
 Screenshot*.png
 recordings/
+
+# Answers kept between runs of scripts/build-airport-ground.py
+.cache/

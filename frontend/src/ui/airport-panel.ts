@@ -1,3 +1,4 @@
+import { formatMhz, frequenciesOf } from '../world/frequencies';
 import { t } from '../core/i18n';
 import { subscribeHome } from '../core/config';
 import { getSettings, subscribeSettings } from '../core/settings';
@@ -192,11 +193,14 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
   const taf = el('pre', 'airspace-notam');
   const runwaysHeading = el('h3', undefined, t('misc.airport_runways'));
   const runways = el('dl', 'grid airspace-shelves');
+  const frequenciesHeading = el('h3', undefined, t('misc.airport_frequencies'));
+  const frequencies = el('dl', 'grid airspace-shelves');
+  frequenciesHeading.hidden = frequencies.hidden = true;
   const procedures = el('div', 'airport-procedures');
   const explore = el('button', 'airport-explore', t('misc.airport_explore'));
   explore.type = 'button';
   const note = el('p', 'airspace-note', t('misc.airport_note'));
-  root.append(header, name, grid, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, procedures, explore, note);
+  root.append(header, name, grid, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, frequenciesHeading, frequencies, procedures, explore, note);
   document.body.appendChild(root);
 
   let current: AirportSite | null = null;
@@ -350,6 +354,16 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
 
     refreshWeather();
     refreshProcedures();
+    frequenciesHeading.hidden = frequencies.hidden = true;
+    const wanted = airport.icao;
+    void frequenciesOf(wanted).then((list) => {
+      if (current?.airport.icao !== wanted || list.length === 0) return;
+      frequencies.replaceChildren();
+      for (const f of list) {
+        frequencies.append(el('dt', undefined, f.kind), el('dd', undefined, f.name ? `${formatMhz(f.mhz)} · ${f.name}` : formatMhz(f.mhz)));
+      }
+      frequenciesHeading.hidden = frequencies.hidden = false;
+    });
     // The card can list procedures whether or not approach paths are drawn.
     void loadProcedureIndex();
     taf.textContent = t('misc.airport_taf_loading');

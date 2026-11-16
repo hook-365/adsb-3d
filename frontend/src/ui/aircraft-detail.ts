@@ -14,6 +14,7 @@ import { getField, subscribeField } from '../world/weather-fields';
 import { lightningActive, lightningNear } from '../world/lightning';
 import { airspaceFor, airspaceSummary } from '../world/airspace';
 import { airspeed, getWinds, windAt, windComponents, windsActive } from '../world/winds';
+import { centreAt, centresActive, getCentres, subscribeCentres } from '../world/artcc';
 import { activityOf, subscribeActivity, type Activity } from '../world/activity';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
@@ -173,6 +174,8 @@ export function createAircraftDetail(
   const activityEl = document.getElementById('detail-activity')!;
   const windLabelEl = document.getElementById('detail-wind-label')!;
   const windEl = document.getElementById('detail-wind')!;
+  const centerLabelEl = document.getElementById('detail-center-label')!;
+  const centerEl = document.getElementById('detail-center')!;
   const tasLabelEl = document.getElementById('detail-tas-label')!;
   const tasEl = document.getElementById('detail-tas')!;
   const vrateEl = document.getElementById('detail-vrate')!;
@@ -494,6 +497,12 @@ export function createAircraftDetail(
     const inside = airspaceFor(a);
     setRow(airspaceLabelEl, airspaceEl, t('detail.airspace'), inside.length ? inside.map(airspaceSummary).join('\n') : null);
 
+    // The control centre whose airspace it is in, while those are drawn. Where
+    // it is, not who it is talking to.
+    const centres = centresActive() ? getCentres() : null;
+    const centre = centres ? centreAt(centres, a.lat, a.lon) : null;
+    setRow(centerLabelEl, centerEl, t('detail.center'), centre ? t('detail.center_value', { name: centre.name, id: centre.id }) : null);
+
     // Forecast wind where the aircraft is (winds aloft layer), and how much
     // of it is on the nose or the tail.
     const windGrid = windsActive() && !a.onGround ? getWinds() : null;
@@ -703,6 +712,9 @@ export function createAircraftDetail(
   }
 
   store.subscribe(render);
+  subscribeCentres(() => {
+    if (selectedHex) render();
+  });
   subscribeActivity(() => {
     if (selectedHex) render();
   });

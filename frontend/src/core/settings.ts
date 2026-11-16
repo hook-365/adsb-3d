@@ -249,6 +249,12 @@ export interface Settings {
   airspaceTfr: boolean;
   /** Name labels on the airspace volumes (also the click target for framing and the info card). */
   airspaceLabels: boolean;
+  /** Outlines of the US air route traffic control centres (world/artcc.ts). */
+  airspaceCenters: boolean;
+  /** Pilot reports of turbulence, icing and weather as markers at the height they were made (world/pireps.ts). */
+  pireps: boolean;
+  /** Taxiways, aprons, terminals and gates of the airport the camera is close to (world/airport-ground.ts; OpenStreetMap). */
+  airportGround: boolean;
   /** Runways drawn where they lie (world/airports.ts; OurAirports data). */
   airportRunways: boolean;
   /** A 3 degree approach path to each lit hard-surface runway end. */
@@ -327,8 +333,8 @@ const DEFAULTS: Settings = {
   autoOrbit: 0,
   autoOrbitDirection: 'right',
   cameraMode: 'orbit',
-  hiResTiles: false,
-  detailTiles: false,
+  hiResTiles: true,
+  detailTiles: true,
   stereo: false,
   stereoStrength: 50,
   vrScale: 0.01,
@@ -353,6 +359,9 @@ const DEFAULTS: Settings = {
   airspaceSpecial: false,
   airspaceTfr: false,
   airspaceLabels: true,
+  airspaceCenters: false,
+  pireps: false,
+  airportGround: true,
   airportRunways: false,
   airportApproaches: false,
   airportLabels: true,

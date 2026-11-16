@@ -17,6 +17,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.
 - **What an aircraft is doing**: the aircraft card's first row says it in words, such as "Final for runway 12R at KMSP · 5 NM out", "KKILR4 arrival into KMSP · next GREAK", "Taxiing at KMSP" or "Holding or circling". Inferred from its track, the runways and the published procedures.
+- **Airport ground detail**: zoom in on a major airport for its taxiways, aprons, terminals and gate numbers (OpenStreetMap). On by default.
+- **Frequencies** on the airport card: ATIS, clearance, ground, tower, approach, departure.
+- **Pilot reports**: turbulence and icing reports from the last two hours as markers at the height they were made; click one for the report as filed.
+- **Centre boundaries** (US): outlines of the control centres, and a Centre row on the aircraft card.
 - **Wind on each runway**: the airport card shows which end the reported wind favours, with its headwind and crosswind.
 - **Airspeed**: with winds aloft on, the aircraft card estimates true airspeed and Mach from ground speed and the wind.
 - **Runways in use worldwide**: outside the US, approach paths brighten and the aircraft card says "Final for runway 34L" from traffic lined up on the runway.
@@ -28,6 +32,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - **Airport card** can be minimized to a pill. A drawn approach, arrival or departure stays up while it is, and while you select aircraft; closing the card clears it.
+- **Sharper map by default**: high-res tiles and the close-up detail patch are now on for new installs.
 - **Winds aloft** draw as filled arrows with the speed in knots on each, in place of thin lines.
 - **Special use airspace follows its published hours**: MOAs and restricted areas outside their times of use are drawn fainter, and the info card says where the clock stands. Areas activated only by NOTAM are left as they were.
 - **Busy scopes are much faster**: aircraft bodies are drawn in one batch per shape and all trails in one, instead of a draw per aircraft ([#18](https://github.com/hook-365/adsb-3d/issues/18)).
@@ -36,6 +41,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Aircraft on the ground sit on the ground** with 3D terrain on. Parked and taxiing aircraft, low traffic, trails, approach paths and the selection ring no longer hover over the map up close.
 - **Ground labels** (airports, navaids, fixes, airspace) fade while an aircraft passes in front of them, instead of covering it.
 - **Labels** no longer flicker at the view edge or the label-density fade while the camera moves.
 - **3D storms**: finer sampling inside the storm removes the grain seen in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)); clear air around and above it is skipped.

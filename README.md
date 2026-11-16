@@ -80,6 +80,10 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **Airways, navaids and fixes** (off by default, US only): low airways (Victor and T routes) drawn at 8,000 ft and high ones (Jet and Q routes) at flight level 330, so cruising traffic follows the lines at its own height; VORs and NDBs with their identifiers and frequencies; and the named fixes along the airways. From the FAA's CIFP, baked into the image. Not for navigation.
 - **Published instrument procedures** (US): with approach paths on, each runway end draws the real final segment of its instrument approach (fixes, crossing altitudes, glide angle), and a final that live traffic is established on is drawn brighter, so the runways in use stand out. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it in full with its fixes and altitude limits. Curved RNP legs and DME arcs are drawn as published; vectors, climbs, holds and missed approaches are dashed approximations. From the FAA's CIFP, baked into the image; the card shows the edition and says when it is out of date. Not for navigation.
 - **Airport weather and info card**: airport labels are coloured by flight category (VFR, MVFR, IFR, LIFR). Click one for the field's runways, the current METAR decoded and as published, the forecast (TAF), how many aircraft are at the field, and a button to move the Explore scope there. Weather comes from aviationweather.gov through the container's cached proxy.
+- **Airport ground detail** (on by default): zoom in on a major airport and its taxiways, aprons, terminal buildings and gate numbers are drawn under the runways. OpenStreetMap data, pre-built for the largest airports and baked into the image; only the airport in view is fetched.
+- **Frequencies**: the airport card lists the field's ATIS, clearance, ground, tower, approach and departure frequencies (OurAirports).
+- **Pilot reports** (off by default): turbulence, icing and weather reported by pilots in the last two hours, marked where and how high they were and coloured by severity. Click one for the report as filed. From aviationweather.gov; mostly a US product.
+- **Centre boundaries** (off by default, US): outlines of the air route traffic control centres, and a Centre row on the aircraft card saying whose airspace it is in.
 - **Route line**: select an aircraft and its scheduled route is drawn as a great-circle line from origin to destination, when the route fits where the aircraft is.
 
 - **Emergency alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Live only, no sound.
@@ -93,7 +97,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **Languages**: English, German, Spanish (machine-drafted pending native review; corrections welcome).
 - **3D terrain** (opt-in): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
 - **VR / AR**: WebXR with laser-pointer controllers, a wrist menu with full settings parity, comfort locomotion, AR scope placement and the diorama clip box. Quest 3 tested; demo in [VR & AR](#vr--ar). Side-by-side stereo for anything without WebXR.
-- **Basemaps**: OpenStreetMap, OpenTopoMap, ESRI relief and satellite, FAA charts, and CARTO Dark / Voyager with your own free `CARTO_API_KEY` (browser-direct, as [their terms](https://carto.com/legal/basemap-terms/) require). Attribution always on screen. Optional high-res mode fetches one zoom level deeper.
+- **Basemaps**: OpenStreetMap, OpenTopoMap, ESRI relief and satellite, FAA charts, and CARTO Dark / Voyager with your own free `CARTO_API_KEY` (browser-direct, as [their terms](https://carto.com/legal/basemap-terms/) require). Attribution always on screen. High-res mode (one zoom level deeper) and a sharper patch of tiles under a close-up camera are both on by default.
 
 ![The same view over Salt Lake City on four basemaps: satellite, hillshade, FAA sectional, and topo, with 3D terrain at x12](Basemaps.jpg)
 
@@ -420,6 +424,9 @@ result:
 | `scripts/build-cities.py` | `frontend/src/feed/explore-cities.json` | GeoNames `cities15000` (CC BY 4.0) | Rarely |
 | `scripts/build-airports.py` | `frontend/src/feed/explore-airports.json` | OurAirports `airports.csv` (public domain) | When airports or codes change |
 | `scripts/build-runways.py` | `frontend/src/world/runways-data.json` | OurAirports `runways.csv` (public domain) | After `build-airports.py`, or when runways change |
+| `scripts/build-frequencies.py` | `frontend/src/world/frequencies-data.json` | OurAirports `airport-frequencies.csv` (public domain) | With the runways |
+| `scripts/build-artcc.py` | `frontend/src/world/artcc-data.json` | FAA open data, Airspace Boundary (public domain) | Rarely; with the airspace file |
+| `scripts/build-airport-ground.py` | `frontend/src/world/airport-ground-index.json`, `airport-ground.pack` | OpenStreetMap through the Overpass API (ODbL) | Occasionally. Slow: the public Overpass servers are often busy, so it retries and resumes from `.cache/` |
 | `scripts/build-procedures.py` | `frontend/src/world/procedures-index.json`, `procedures.pack` | FAA CIFP (not copyrighted) | Every 28 days, when a new edition is effective |
 | `scripts/build-navdata.py` | `frontend/src/world/navdata.json` | FAA CIFP (not copyrighted) | With `build-procedures.py` |
 | `scripts/refresh-cifp.py` | runs the two above from one download | FAA CIFP | Before a release. Running containers run the same script daily for themselves (`ENABLE_DATA_REFRESH`) |
@@ -436,9 +443,10 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 - **FAA Aeronautical Information Services** ([ADDS open data](https://adds-faa.opendata.arcgis.com), published for public use) — Class Airspace and Special Use Airspace behind the 3D airspace (`frontend/src/world/airspace-data.json`). Simplified from the FAA originals, which the FAA does not warrant once modified; not for navigation.
 - **FAA CIFP** ([Coded Instrument Flight Procedures](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/cifp/), not copyrighted) — the instrument approaches, arrivals and departures, and the airways, navaids and fixes. Provided by the FAA as is, with no warranty; this project simplifies it and it must not be used for navigation.
 - **[Open-Meteo](https://open-meteo.com)** (CC BY 4.0) — forecast winds aloft, when `ENABLE_WINDS_ALOFT` is on; proxied and cached hourly by the container and credited on screen. Their free API is for non-commercial use.
-- **[aviationweather.gov](https://aviationweather.gov/data/api/)** (US National Weather Service) — METARs and TAFs for the airport card, proxied and cached by the container (five and fifteen minutes); nothing stored.
+- **[aviationweather.gov](https://aviationweather.gov/data/api/)** (US National Weather Service) — METARs and TAFs for the airport card, and pilot reports, proxied and cached by the container (five and fifteen minutes); nothing stored.
 - **FAA TFR site** ([tfr.faa.gov](https://tfr.faa.gov)) — the live temporary flight restrictions, proxied and cached by the container (list ten minutes, each NOTAM thirty); nothing stored.
 - **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`) and the runways of the airports layer (`frontend/src/world/runways-data.json`).
+- **OpenStreetMap contributors** ([openstreetmap.org/copyright](https://www.openstreetmap.org/copyright), ODbL 1.0) — the taxiways, aprons, terminals and gates of the airport ground detail (`frontend/src/world/airport-ground.pack`), credited on screen while the layer is on.
 - **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
 - **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),
   GPL v2+) — SVG aircraft shape catalog and the altitude → color palette.

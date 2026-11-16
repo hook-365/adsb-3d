@@ -1,4 +1,5 @@
 import { windsActive } from '../world/winds';
+import { airportGroundActive } from '../world/airport-ground';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { subscribeHome } from '../core/config';
 import { basemapAttribution, effectiveBasemap } from '../core/basemaps';
@@ -21,6 +22,8 @@ const RAINVIEWER_LINK =
 const NLDN_SUFFIX = ' (lightning: NLDN)';
 const WINDS_LINK =
   'winds <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>)';
+const GROUND_LINK =
+  'airport detail <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>';
 const MRMS_WEATHER_LINK =
   'weather <a href="https://www.nssl.noaa.gov/projects/mrms/" target="_blank" rel="noopener">NOAA MRMS</a>';
 const MRMS_LINK =
@@ -41,6 +44,8 @@ export function mountMapAttribution(): void {
     if (lightningActive()) html += NLDN_SUFFIX;
     // Open-Meteo's data is CC BY 4.0: credit and a licence link while it is shown.
     if (windsActive()) html += `, ${WINDS_LINK}`;
+    // Taxiways and gates are OpenStreetMap's whatever the basemap is: ODbL asks for the credit.
+    if (airportGroundActive() && !html.includes('openstreetmap.org')) html += `, ${GROUND_LINK}`;
     // Explore feed data is CC BY-SA: the credit is a licence condition,
     // same as CARTO's. subscribeHome fires on every feed switch.
     if (isExploreFeedId(getActiveFeed().id)) html += `, ${exploreAttribution()}`;

@@ -365,6 +365,24 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'airportGround',
+        label: t('settings.airport_ground'),
+        description: t('settings.airport_ground_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'pireps',
+        label: t('settings.pireps'),
+        description: t('settings.pireps_desc'),
+      },
+      {
+        kind: 'toggle',
+        key: 'airspaceCenters',
+        label: t('settings.airspace_centers'),
+        description: t('settings.airspace_centers_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'airportApproaches',
         label: t('settings.airport_approaches'),
         description: t('settings.airport_approaches_desc'),
@@ -716,12 +734,12 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     { heading: t('settings.group_basemap'), ids: ['basemap', 'terrain3d', 'hiResTiles', 'detailTiles'] },
     {
       heading: t('settings.group_weather'),
-      ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning', 'windsAloft', 'windsLevel'],
+      ids: ['weatherRadar', 'weatherStorms3d', 'weatherFreezingLevel', 'weatherSevere', 'weatherLightning', 'pireps', 'windsAloft', 'windsLevel'],
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
-    { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportApproaches', 'airportLabels', 'airportWeather'] },
+    { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportGround', 'airportApproaches', 'airportLabels', 'airportWeather'] },
     { heading: t('settings.group_navigation'), ids: ['airwaysLow', 'airwaysHigh', 'navaids', 'fixes'] },
-    { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceLabels'] },
+    { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceCenters', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],
   xr: [
