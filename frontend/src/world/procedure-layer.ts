@@ -5,7 +5,7 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { registerLineMaterial } from '../aircraft/reconciler';
 import { RANGE_NM, subscribeHome } from '../core/config';
-import { distanceFromHomeNm, toScene } from '../core/coords';
+import { distanceFromHomeNm } from '../core/coords';
 import { subscribeSettings } from '../core/settings';
 import { runwaysOf, type Runway } from './airports';
 import { DIORAMA_PLANES } from './diorama-clip';
@@ -19,6 +19,7 @@ import {
   type Segment,
 } from './procedure-geometry';
 import { getProcedureIndex, loadAirportDetail, type ProcedureKind } from './procedures';
+import { toSceneSeated } from './tiles';
 
 // The one procedure the user picked in the airport card, drawn in full:
 // an approach with its transitions and missed approach, an arrival or a
@@ -188,7 +189,7 @@ export function mountProcedureLayer(parent: Group): ProcedureLayer {
     let yLo = Infinity;
     let yHi = -Infinity;
     const vertex = (bucket: { pos: number[]; col: number[] }, p: PathPoint, shade: number): void => {
-      toScene(p.lat, p.lon, p.altFt ?? fallback, tmp);
+      toSceneSeated(p.lat, p.lon, p.altFt ?? fallback, tmp);
       bucket.pos.push(tmp.x, tmp.y, tmp.z);
       bucket.col.push(r * shade, g * shade, b * shade);
       if (tmp.x < minX) minX = tmp.x;
@@ -255,7 +256,7 @@ export function mountProcedureLayer(parent: Group): ProcedureLayer {
         el.append(limit);
       }
       const label = new CSS2DObject(el);
-      toScene(fix.lat, fix.lon, fix.altFt ?? fallback, tmp);
+      toSceneSeated(fix.lat, fix.lon, fix.altFt ?? fallback, tmp);
       label.position.copy(tmp);
       labelGroup.add(label);
     }

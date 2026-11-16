@@ -229,6 +229,39 @@ export function terrainSurface(lat: number, lon: number, out: Vector3): Vector3 
   return out;
 }
 
+/** Height over the ground, scene units, across which an altitude is eased down onto the drawn terrain. */
+const SEAT_BLEND = 0.5;
+/** Above this much clearance nothing is eased, feet: a cheap test before the terrain is sampled. */
+const SEAT_CHECK_FT = 8000;
+
+/**
+ * The height to draw something whose true altitude maps to scene `y`, over
+ * drawn ground at `groundY` (terrainSurface). The terrain mesh is drawn
+ * BASEMAP_DROP_Y below the elevations it is built from, which nobody sees
+ * from fifty miles out and which leaves a parked aircraft hovering 2,000 ft
+ * over the apron from one mile. So: on or below the true surface means on
+ * the drawn one; from there the offset fades out over SEAT_BLEND of height,
+ * and above that an altitude is drawn where it is. Continuous and always
+ * rising, so a landing has no step in it.
+ */
+export function seatedY(y: number, groundY: number): number {
+  if (!terrainActive()) return Math.max(y, groundY);
+  const above = y - (groundY - BASEMAP_DROP_Y);
+  if (above <= 0) return groundY;
+  if (above >= SEAT_BLEND) return y;
+  return y + BASEMAP_DROP_Y * (1 - above / SEAT_BLEND);
+}
+
+const tmpSeat = new Vector3();
+
+/** toScene(), eased onto the drawn terrain near the ground (see seatedY). For trails and paths that aircraft fly down to a runway. */
+export function toSceneSeated(lat: number, lon: number, altFt: number, out: Vector3): Vector3 {
+  toScene(lat, lon, altFt, out);
+  if (!terrainActive() || altFt - elevationFtAt(lat, lon) > SEAT_CHECK_FT) return out;
+  out.y = seatedY(out.y, terrainSurface(lat, lon, tmpSeat).y);
+  return out;
+}
+
 /** One tile's geometry, in chunk-atlas UV space, waiting to be merged. */
 interface TilePiece {
   positions: Float32Array;

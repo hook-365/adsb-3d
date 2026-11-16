@@ -28,7 +28,7 @@ import type { Aircraft } from '../core/types';
 import { AircraftStore, TRAIL_CAPACITY } from './store';
 import { toScene } from '../core/coords';
 import { subscribeElevation } from '../world/elevation';
-import { terrainActive, terrainSurface } from '../world/tiles';
+import { seatedY, terrainActive, terrainSurface, toSceneSeated } from '../world/tiles';
 
 // Elevation tiles decode asynchronously; until they land, ground anchors
 // sample 0 (sea level) and sit far below real terrain in high-elevation
@@ -396,6 +396,9 @@ const EMERGENCY_RING_MATERIAL = new MeshBasicMaterial({
   depthWrite: false,
   side: DoubleSide,
   clippingPlanes: DIORAMA_PLANES,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -8,
 });
 
 // Per-entry materials (selection ring + ping ring) — tracked in Sets so the
@@ -614,6 +617,11 @@ function buildEntry(a: Aircraft): RenderEntry {
     depthWrite: false,
     side: DoubleSide,
     clippingPlanes: DIORAMA_PLANES,
+    // The ring lies almost on the terrain: win the depth test against it
+    // without having to hover (same trick as the ground icons).
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -8,
   });
   SELECTION_MATERIALS.add(selectionMaterial);
   const selectionRing = new Mesh(SELECTION_RING_GEOMETRY, selectionMaterial);
@@ -774,6 +782,19 @@ function refreshLabel(entry: RenderEntry, a: Aircraft): void {
   entry.isMilitary = a.military;
 }
 
+/**
+ * Height of a ring on the ground under an aircraft. On the flat world that
+ * is a fixed lift over the y=0 plane. On 3D terrain the ground is wherever
+ * the mesh is (altArr[4], the aircraft's ground anchor), and the ring lies
+ * on it with only the clearance its own size needs: markers hold a
+ * constant screen size, so from afar a ring is miles across and has to
+ * clear the bumps under it, while up close it is small and can lie flat.
+ */
+function ringY(entry: RenderEntry, flatY: number): number {
+  if (!terrainActive()) return flatY;
+  return entry.altArr[4]! + 0.006 + 0.012 * entry.lastViewScale;
+}
+
 function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void {
   // `at` is the smooth-motion display position; without it the raw record
   // places the aircraft (historical playback, smoothing off, first fix).
@@ -785,10 +806,12 @@ function applyTransform(entry: RenderEntry, a: Aircraft, at?: SampledFix): void 
   // Ground anchor (icon + altitude-line foot) sits on the DRAWN terrain
   // (world/tiles.ts terrainSurface: the mesh's own triangles, which cut
   // under sharp ridges the raw sample would float over); y=0 plane when
-  // 3D terrain is off. The clamp keeps cones from sinking under the mesh
-  // on baro/ellipsoid quirks when an aircraft is on or near the ground.
+  // 3D terrain is off. An aircraft on the ground sits on it; one near it
+  // is eased down onto it (the mesh is drawn a little under true
+  // elevation, see seatedY), which also keeps cones from sinking under the
+  // mesh on baro/ellipsoid quirks.
   terrainSurface(lat, lon, tmpGround);
-  if (tmpPos.y < tmpGround.y) tmpPos.y = tmpGround.y;
+  tmpPos.y = a.onGround ? tmpGround.y : seatedY(tmpPos.y, tmpGround.y);
 
   entry.cone.position.copy(tmpPos);
 
@@ -1124,7 +1147,7 @@ function tryAppendTrailTail(entry: RenderEntry, points: readonly TrailPoint[], s
 
   for (let i = entry.lastTrailLength; i < n; i++) {
     const p = points[i]!;
-    toScene(p.lat, p.lon, p.altFt, tmpTrail);
+    toSceneSeated(p.lat, p.lon, p.altFt, tmpTrail);
     const cur = altitudeColorCached(p.altFt, false);
     const dt = p.ms - prevMs;
     const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
@@ -1233,7 +1256,7 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], sta
   let prevX = 0, prevY = 0, prevZ = 0, prevR = 0, prevG = 0, prevB = 0, prevMs = 0;
   {
     const p0 = points[start]!;
-    toScene(p0.lat, p0.lon, p0.altFt, tmpTrail);
+    toSceneSeated(p0.lat, p0.lon, p0.altFt, tmpTrail);
     // altitudeColorCached returns a shared Color instance bucketed by
     // altitude — read .r/.g/.b directly into locals so we never have to
     // copy through a tmp Color.
@@ -1245,7 +1268,7 @@ function rebuildTrailFull(entry: RenderEntry, points: readonly TrailPoint[], sta
 
   for (let i = start + 1; i < n; i++) {
     const p = points[i]!;
-    toScene(p.lat, p.lon, p.altFt, tmpTrail);
+    toSceneSeated(p.lat, p.lon, p.altFt, tmpTrail);
     const cur = altitudeColorCached(p.altFt, false);
     const dt = p.ms - prevMs;
     const dashed = dt >= TRAIL_GAP_THRESHOLD_MS;
@@ -1618,7 +1641,7 @@ export class AircraftReconciler {
     // advances, so selecting a static aircraft (rev unchanged for many
     // frames) needs this seed here or the ring would render at (0,0,0).
     if (selected) {
-      entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
+      entry.selectionRing.position.set(entry.cone.position.x, ringY(entry, 0.15), entry.cone.position.z);
     }
   }
 
@@ -1860,14 +1883,10 @@ export class AircraftReconciler {
         // applySelection, this keeps it in sync as the aircraft moves (per
         // rev advance, or per frame while sampled).
         if (entry.emergencyRing.visible) {
-          entry.emergencyRing.position.set(
-            entry.cone.position.x,
-            entry.icon.y + 0.07,
-            entry.cone.position.z,
-          );
+          entry.emergencyRing.position.set(entry.cone.position.x, terrainActive() ? ringY(entry, 0) : entry.icon.y + 0.07, entry.cone.position.z);
         }
         if (entry.isSelected) {
-          entry.selectionRing.position.set(entry.cone.position.x, 0.15, entry.cone.position.z);
+          entry.selectionRing.position.set(entry.cone.position.x, ringY(entry, 0.15), entry.cone.position.z);
         }
       }
       const trailRev = this.store.getTrailRev(a.hex);
@@ -1971,7 +1990,7 @@ export class AircraftReconciler {
           const t = elapsed / PING_DURATION_MS;
           const scale = 1 + (PING_MAX_SCALE - 1) * t;
           const pingOpacity = (1 - t) * 0.85;
-          entry.pingRing.position.set(entry.cone.position.x, 0.18, entry.cone.position.z);
+          entry.pingRing.position.set(entry.cone.position.x, ringY(entry, 0.18), entry.cone.position.z);
           entry.pingRing.scale.setScalar(scale * entry.lastViewScale);
           entry.pingMaterial.opacity = pingOpacity;
           entry.pingRing.visible = true;

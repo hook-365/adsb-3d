@@ -16,7 +16,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import type { InstancedInterleavedBuffer, InterleavedBufferAttribute } from 'three';
 import { registerLineMaterial } from '../aircraft/reconciler';
 import { RANGE_NM, subscribeHome } from '../core/config';
-import { distanceFromHomeNm, toScene } from '../core/coords';
+import { distanceFromHomeNm } from '../core/coords';
 import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
@@ -25,7 +25,7 @@ import { DIORAMA_PLANES } from './diorama-clip';
 import { yieldToAircraft } from './label-yield';
 import { getMetar, setAirportWeatherWanted, subscribeAirportWeather } from './airport-weather';
 import { subscribeElevation } from './elevation';
-import { terrainActive, terrainSurface } from './tiles';
+import { terrainActive, terrainSurface, toSceneSeated } from './tiles';
 import type { PathPoint } from './procedure-geometry';
 import {
   finalInUse,
@@ -395,8 +395,9 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       const shades: number[] = [];
       const segment = (a: PathPoint | [number, number, number], b: PathPoint | [number, number, number], shade: number): void => {
         for (const p of [a, b]) {
-          if (Array.isArray(p)) toScene(p[0], p[1], p[2], tmp);
-          else toScene(p.lat, p.lon, p.altFt ?? 0, tmp);
+          // Eased onto the drawn terrain like the aircraft that fly it, so a final ends on its runway.
+          if (Array.isArray(p)) toSceneSeated(p[0], p[1], p[2], tmp);
+          else toSceneSeated(p.lat, p.lon, p.altFt ?? 0, tmp);
           lines.push(tmp.x, tmp.y, tmp.z);
           shades.push(approachColor.r * shade, approachColor.g * shade, approachColor.b * shade);
         }
