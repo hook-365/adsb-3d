@@ -118,7 +118,9 @@ export class XrBillboard {
     geometry.translate(0, 0.5, 0);
     this.mesh = new Mesh(geometry, this.material);
     this.mesh.scale.set(BILLBOARD_W_NM, BILLBOARD_H_NM, 1);
-    this.mesh.renderOrder = 7; // above selection / emergency rings
+    // Above the rings, and above the storm volume (10): a storm is drawn
+    // late and does not write depth, so anything before it gets painted over.
+    this.mesh.renderOrder = 12;
     this.mesh.visible = false;
     this.mesh.name = 'xr-billboard';
     parent.add(this.mesh);
