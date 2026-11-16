@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sharper map up close** (off by default): finer map tiles for the area the camera is looking at when it is near the ground.
 - **Published procedures** (US): each runway end draws the real final of its instrument approach, and the ones traffic is flying are brighter. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it with its fixes and altitudes. From the FAA's CIFP, cycle shown in the card. Not for navigation.
 - **What an aircraft is doing**: the aircraft card's first row says it in words, such as "Final for runway 12R at KMSP · 5 NM out", "KKILR4 arrival into KMSP · next GREAK", "Taxiing at KMSP" or "Holding or circling". Inferred from its track, the runways and the published procedures.
+- **Wind on each runway**: the airport card shows which end the reported wind favours, with its headwind and crosswind.
+- **Airspeed**: with winds aloft on, the aircraft card estimates true airspeed and Mach from ground speed and the wind.
+- **Runways in use worldwide**: outside the US, approach paths brighten and the aircraft card says "Final for runway 34L" from traffic lined up on the runway.
 - **Procedure data stays current**: the container rebuilds it from each new 28-day FAA edition by itself (`ENABLE_DATA_REFRESH`, default on), so approaches, airways and navaids no longer wait for a new image.
 - **Airport card and weather**: click an airport for its runways, current METAR decoded and raw, the TAF, and the traffic at the field. Labels are coloured by flight category.
 - **Route line**: the selected aircraft's scheduled route is drawn as a line from its origin to its destination.

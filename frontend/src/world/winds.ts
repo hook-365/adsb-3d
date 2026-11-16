@@ -156,6 +156,28 @@ export function windComponents(wind: Wind, trackDeg: number): { headKt: number; 
   return { headKt: wind.speedKt * Math.cos(angle), crossKt: wind.speedKt * Math.sin(angle) };
 }
 
+/** Speed of sound in the standard atmosphere, knots. */
+function soundSpeedKt(altFt: number): number {
+  const kelvin = Math.max(216.65, 288.15 - 0.0019812 * altFt);
+  return 661.47 * Math.sqrt(kelvin / 288.15);
+}
+
+/**
+ * True airspeed and Mach from ground speed and the wind: the ground
+ * velocity less the air's own. An estimate twice over (a forecast wind, a
+ * standard-atmosphere temperature), good to a few knots.
+ */
+export function airspeed(wind: Wind, trackDeg: number, groundSpeedKt: number, altFt: number): { tasKt: number; mach: number } {
+  const rad = Math.PI / 180;
+  // The wind blows FROM dirDeg, so the air moves toward the opposite heading.
+  const airEast = -wind.speedKt * Math.sin(wind.dirDeg * rad);
+  const airNorth = -wind.speedKt * Math.cos(wind.dirDeg * rad);
+  const east = groundSpeedKt * Math.sin(trackDeg * rad) - airEast;
+  const north = groundSpeedKt * Math.cos(trackDeg * rad) - airNorth;
+  const tasKt = Math.hypot(east, north);
+  return { tasKt, mach: tasKt / soundSpeedKt(altFt) };
+}
+
 export function windsActive(): boolean {
   return WINDS_ENABLED && getSettings().windsAloft;
 }

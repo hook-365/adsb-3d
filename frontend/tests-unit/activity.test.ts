@@ -8,6 +8,7 @@ import {
   inProcedureCoverage,
   inferActivity,
   matchFinal,
+  matchRunwayFinal,
   matchProcedure,
   nearestAirport,
   runwayUnder,
@@ -102,6 +103,21 @@ describe('final', () => {
   });
   it('ignores an aircraft crossing the final', () => {
     expect(matchFinal(plane({ lat: kLat, lon: kLon, altFt: 3000, trackDeg: 30, verticalRateFpm: -700 }), index)).toBeNull();
+  });
+});
+
+describe('final where nothing is published', () => {
+  // 5 NM west of the 09 threshold, on the centreline, heading east and descending.
+  const onFinal = plane({ lat: 45, lon: -93.02 - 5 / (60 * Math.cos((45 * Math.PI) / 180)), altFt: 2500, trackDeg: 90, verticalRateFpm: -700 });
+  it('names the runway end from the runway alone', () => {
+    const fit = matchRunwayFinal(onFinal, [airport('EGTS', 45, -93)], () => [runway], () => false)!;
+    expect(fit.runway).toBe('09');
+    expect(fit.nm).toBeCloseTo(5, 0);
+    expect(inferActivity(onFinal, ctx())).toMatchObject({ kind: 'final', icao: 'KTST', runway: '09' });
+  });
+  it('leaves airports with published finals to those, and ignores unlit strips', () => {
+    expect(matchRunwayFinal(onFinal, [airport('EGTS', 45, -93)], () => [runway], () => true)).toBeNull();
+    expect(matchRunwayFinal(onFinal, [airport('EGTS', 45, -93)], () => [{ ...runway, lighted: false }], () => false)).toBeNull();
   });
 });
 

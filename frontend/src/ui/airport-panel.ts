@@ -90,6 +90,33 @@ export function runwayText(r: Runway): string {
   return r.lighted ? `${size}, ${t('misc.airport_runway_lit')}` : size;
 }
 
+/**
+ * What a wind does to a runway: the end it favours (the one with the
+ * headwind) and the head and cross components there, knots. `fromLeft` is
+ * as seen landing on that end.
+ */
+export function runwayWind(
+  r: Runway,
+  windDirDeg: number,
+  windKt: number,
+): { end: string; headKt: number; crossKt: number; fromLeft: boolean } {
+  const cos = Math.cos((((r.lowLat + r.highLat) / 2) * Math.PI) / 180);
+  // True heading when landing on the low-numbered end: toward the high end.
+  const lowHeading = (Math.atan2((r.highLon - r.lowLon) * cos, r.highLat - r.lowLat) * 180) / Math.PI;
+  const angle = ((windDirDeg - lowHeading) * Math.PI) / 180;
+  const head = windKt * Math.cos(angle);
+  const cross = windKt * Math.sin(angle);
+  // The other end sees the same wind turned around: head and cross both change sign.
+  const low = head >= 0;
+  return {
+    end: low ? r.lowIdent : r.highIdent,
+    headKt: Math.abs(head),
+    crossKt: Math.abs(cross),
+    // A positive cross on the low end is wind from the right of its heading.
+    fromLeft: low ? cross < 0 : cross > 0,
+  };
+}
+
 /** Aircraft within `nm` of a point and how many of them are on the ground. */
 export function countNear(
   aircraft: Iterable<Pick<Aircraft, 'lat' | 'lon' | 'onGround'>>,
@@ -182,8 +209,28 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     nearby.textContent = t('misc.airport_nearby_value', { n: near, g: ground });
   };
 
+  // Each runway's size and, with a reported wind, what that wind does to it.
+  const refreshRunways = (): void => {
+    if (!current) return;
+    const m = getSettings().airportWeather ? getMetar(current.airport.icao) : null;
+    const blowing = m && typeof m.windDir === 'number' && m.windKt !== null && m.windKt >= 3 ? { dir: m.windDir, kt: m.windKt } : null;
+    runways.replaceChildren();
+    for (const r of current.runways) {
+      const value = el('dd', undefined, runwayText(r));
+      if (blowing) {
+        const w = runwayWind(r, blowing.dir, blowing.kt);
+        const cross = Math.round(w.crossKt);
+        const parts = [t('misc.airport_runway_head', { end: w.end, kt: Math.round(w.headKt) })];
+        if (cross >= 1) parts.push(t(w.fromLeft ? 'misc.airport_runway_cross_left' : 'misc.airport_runway_cross_right', { kt: cross }));
+        value.append(el('div', 'runway-wind', parts.join(' · ')));
+      }
+      runways.append(el('dt', undefined, `${r.lowIdent}/${r.highIdent}`), value);
+    }
+  };
+
   const refreshWeather = (): void => {
     if (!current) return;
+    refreshRunways();
     const on = getSettings().airportWeather;
     const m = on ? getMetar(current.airport.icao) : null;
     for (const node of weatherRows) node.hidden = !m;
@@ -296,10 +343,7 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     name.textContent = airport.city ? `${airport.name}, ${airport.city}` : airport.name;
     elevation.textContent = fmtAltitude(airport.place.altFt);
 
-    runways.replaceChildren();
-    for (const r of site.runways) {
-      runways.append(el('dt', undefined, `${r.lowIdent}/${r.highIdent}`), el('dd', undefined, runwayText(r)));
-    }
+    refreshRunways();
     // Only where the deployment has an Explore feed, and not for the place
     // the scope is already on.
     explore.hidden = getExploreFeed() === null;

@@ -3233,6 +3233,12 @@ body.chrome-idle .settings-button {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 155px);
   }
 }
+/* What the reported wind does to each runway (ui/airport-panel.ts). */
+.airspace-panel .runway-wind {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* The airport card's pill (ui/airport-panel.ts) sits above the aircraft's,
    since both can be up at once. */
 .detail-pill.airport-pill {

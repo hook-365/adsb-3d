@@ -13,7 +13,7 @@ import { stormsActive } from '../world/storms';
 import { getField, subscribeField } from '../world/weather-fields';
 import { lightningActive, lightningNear } from '../world/lightning';
 import { airspaceFor, airspaceSummary } from '../world/airspace';
-import { getWinds, windAt, windComponents, windsActive } from '../world/winds';
+import { airspeed, getWinds, windAt, windComponents, windsActive } from '../world/winds';
 import { activityOf, subscribeActivity, type Activity } from '../world/activity';
 import type { AcarsMessage } from '../feed/acars';
 import { escapeHtml } from './html';
@@ -173,6 +173,8 @@ export function createAircraftDetail(
   const activityEl = document.getElementById('detail-activity')!;
   const windLabelEl = document.getElementById('detail-wind-label')!;
   const windEl = document.getElementById('detail-wind')!;
+  const tasLabelEl = document.getElementById('detail-tas-label')!;
+  const tasEl = document.getElementById('detail-tas')!;
   const vrateEl = document.getElementById('detail-vrate')!;
   const spdEl = document.getElementById('detail-spd')!;
   const hdgEl = document.getElementById('detail-hdg')!;
@@ -505,6 +507,14 @@ export function createAircraftDetail(
       }
     }
     setRow(windLabelEl, windEl, t('detail.wind'), windText);
+    // With the wind known, the speed through the air follows from the speed over the ground.
+    let tasText: string | null = null;
+    if (wind && a.trackDeg !== null && a.groundSpeedKt !== null && a.groundSpeedKt >= 60) {
+      const air = airspeed(wind, a.trackDeg, a.groundSpeedKt, a.altFt);
+      tasText = `≈ ${fmtSpeed(Math.round(air.tasKt))}`;
+      if (air.mach >= 0.4) tasText += ` · ${t('detail.mach', { mach: air.mach.toFixed(2) })}`;
+    }
+    setRow(tasLabelEl, tasEl, t('detail.tas'), tasText);
 
     const groundFt = elevationFtAt(a.lat, a.lon);
     altEl.textContent = a.onGround

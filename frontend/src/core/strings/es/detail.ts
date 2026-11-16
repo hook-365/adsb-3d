@@ -69,6 +69,8 @@ export const detailStrings = {
   'detail.wind_value': '{dir}° a {kt} kt',
   'detail.wind_head': 'viento de cara {kt} kt',
   'detail.wind_tail': 'viento de cola {kt} kt',
+  'detail.tas': 'TAS',
+  'detail.mach': 'Mach {mach}',
   'detail.activity': 'Ahora',
   'detail.act_parked': 'Estacionado',
   'detail.act_parked_at': 'Estacionado en {apt}',

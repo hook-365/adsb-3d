@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { GRID, LEVELS, arrowOutline, gridAxes, parseWinds, windAt, windComponents } from '../src/world/winds';
+import { GRID, LEVELS, airspeed, arrowOutline, gridAxes, parseWinds, windAt, windComponents } from '../src/world/winds';
 
 /** An Open-Meteo answer where every point has the same wind at every level. */
 function uniform(lats: number[], lons: number[], speed: number, dir: number, over: Record<number, [number, number]> = {}) {
@@ -104,5 +104,21 @@ describe('arrowOutline', () => {
     const len = (kt: number): number => arrowOutline(kt, 0)[7]![0] * 2;
     expect(len(80)).toBeGreaterThan(len(20));
     expect(len(400)).toBeLessThan(70);
+  });
+});
+
+describe('airspeed', () => {
+  it('adds a headwind to the ground speed and takes a tailwind off', () => {
+    // Flying north into a 50 kt wind from the north.
+    expect(airspeed({ dirDeg: 360, speedKt: 50 }, 0, 400, 35000).tasKt).toBeCloseTo(450);
+    expect(airspeed({ dirDeg: 180, speedKt: 50 }, 0, 400, 35000).tasKt).toBeCloseTo(350);
+  });
+  it('barely changes with a pure crosswind', () => {
+    expect(airspeed({ dirDeg: 90, speedKt: 30 }, 0, 400, 35000).tasKt).toBeCloseTo(Math.hypot(400, 30));
+  });
+  it('gives Mach against the standard atmosphere', () => {
+    // 661 kt is Mach 1 at sea level; about 574 kt in the stratosphere.
+    expect(airspeed({ dirDeg: 0, speedKt: 0 }, 0, 661.47, 0).mach).toBeCloseTo(1, 3);
+    expect(airspeed({ dirDeg: 0, speedKt: 0 }, 0, 459, 37000).mach).toBeCloseTo(0.8, 2);
   });
 });

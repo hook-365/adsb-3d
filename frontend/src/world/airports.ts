@@ -295,8 +295,8 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
   approachMat.clippingPlanes = DIORAMA_PLANES;
   registerLineMaterial(approachMat, 0.8);
 
-  /** Published finals in the approach geometry: where each one's vertices are. */
-  let finals: { points: PathPoint[]; start: number; count: number; inUse: boolean }[] = [];
+  /** Finals in the approach geometry (published, and the generic ones): where each one's vertices are and its unlit shade. */
+  let finals: { points: PathPoint[]; start: number; count: number; inUse: boolean; idle: number }[] = [];
   const approachColor = new Color(APPROACH_COLOR);
   let runwayMesh: Mesh | null = null;
   let approachLines: LineSegments2 | null = null;
@@ -345,7 +345,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       const inUse = finalInUse(final.points, traffic);
       if (inUse === final.inUse) continue;
       final.inUse = inUse;
-      const shade = inUse ? APPROACH_IN_USE : APPROACH_IDLE;
+      const shade = inUse ? APPROACH_IN_USE : final.idle;
       for (let i = final.start; i < final.start + final.count; i++) {
         colors[i * 3] = approachColor.r * shade;
         colors[i * 3 + 1] = approachColor.g * shade;
@@ -420,7 +420,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
                 segment(at(f0), at(f1), APPROACH_IDLE);
               }
             }
-            finals.push({ points, start, count: lines.length / 3 - start, inUse: false });
+            finals.push({ points, start, count: lines.length / 3 - start, inUse: false, idle: APPROACH_IDLE });
           }
           continue;
         }
@@ -430,7 +430,12 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
             approachPath(r.lowLat, r.lowLon, r.lowElevFt, r.highLat, r.highLon),
             approachPath(r.highLat, r.highLon, r.highElevFt, r.lowLat, r.lowLon),
           ]) {
+            const start = lines.length / 3;
             for (let i = 0; i + 1 < path.length; i++) segment(path[i]!, path[i + 1]!, APPROACH_GENERIC);
+            // Nothing is published here, but traffic lined up on the
+            // runway still says which end is in use.
+            const points = path.map(([lat, lon, altFt]) => ({ lat, lon, altFt }));
+            finals.push({ points, start, count: lines.length / 3 - start, inUse: false, idle: APPROACH_GENERIC });
           }
         }
       }

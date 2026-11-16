@@ -2,7 +2,7 @@ import type { TrailPoint } from '../aircraft/store';
 import type { Aircraft } from '../core/types';
 import { getAirports, loadAirports, type Airport } from '../feed/explore-airports';
 import type { RouteInfo } from '../feed/routes';
-import { loadRunways, runwaysOf, subscribeRunways, type Runway } from './airports';
+import { approachPath, loadRunways, runwaysOf, subscribeRunways, type Runway } from './airports';
 import { bearing, distanceNm, type PathPoint, type ProcedureFix } from './procedure-geometry';
 import { procedureParts } from './procedure-layer';
 import {
@@ -222,6 +222,37 @@ export function matchFinal(
   return best ? { icao: best.icao, runway: best.runway, nm: best.nm } : null;
 }
 
+/**
+ * The same for airports with no published approach (everywhere outside the
+ * US): lined up and descending on the extended centreline of a lit paved
+ * runway. `skip` says which airports the published finals already cover.
+ */
+export function matchRunwayFinal(
+  a: Aircraft,
+  airports: readonly Airport[],
+  runwaysOf: (icao: string) => readonly Runway[],
+  skip: (icao: string) => boolean,
+): { icao: string; runway: string; nm: number } | null {
+  let best: { icao: string; runway: string; nm: number; offNm: number } | null = null;
+  for (const airport of airports) {
+    const p = airport.place;
+    if (Math.abs(p.lat - a.lat) > FINAL_SEARCH_DEG || Math.abs(p.lon - a.lon) > FINAL_SEARCH_DEG * 2) continue;
+    if (skip(airport.icao)) continue;
+    for (const r of runwaysOf(airport.icao)) {
+      if (!r.lighted || !r.hard) continue;
+      for (const [ident, path] of [
+        [r.lowIdent, approachPath(r.lowLat, r.lowLon, r.lowElevFt, r.highLat, r.highLon, 10, 1)],
+        [r.highIdent, approachPath(r.highLat, r.highLon, r.highElevFt, r.lowLat, r.lowLon, 10, 1)],
+      ] as const) {
+        const fit = finalFit(path.map(([lat, lon, altFt]) => ({ lat, lon, altFt })), a);
+        if (!fit || (best && fit.offNm >= best.offNm)) continue;
+        best = { icao: airport.icao, runway: ident, nm: fit.nm, offNm: fit.offNm };
+      }
+    }
+  }
+  return best ? { icao: best.icao, runway: best.runway, nm: best.nm } : null;
+}
+
 export interface ActivityContext {
   nowMs: number;
   trail: readonly TrailPoint[];
@@ -245,7 +276,10 @@ export function inferActivity(a: Aircraft, ctx: ActivityContext): Activity {
     return { kind: speed >= TAXI_KT ? 'taxi' : 'parked', icao };
   }
 
-  const final = ctx.index ? matchFinal(a, ctx.index) : null;
+  const index = ctx.index;
+  const final =
+    (index ? matchFinal(a, index) : null) ??
+    (ctx.airports ? matchRunwayFinal(a, ctx.airports, ctx.runwaysOf, (icao) => index?.airports[icao] !== undefined) : null);
   if (final) return { kind: 'final', ...final };
 
   const vs = a.verticalRateFpm ?? 0;
