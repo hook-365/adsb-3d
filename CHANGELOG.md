@@ -43,6 +43,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Aircraft on the ground sit on the ground** with 3D terrain on. Parked and taxiing aircraft, low traffic, trails, approach paths and the selection ring no longer hover over the map up close.
 - **Smooth motion** no longer pauses and jumps, or steps backward, when position updates arrive unevenly; aircraft speed up or slow down slightly instead.
+- **Close-up map tiles** are no longer cut through by blurry angular patches of the far-zoom map; they now lie on the same surface as the map under them.
 - **Ground labels** (airports, navaids, fixes, airspace) fade while an aircraft passes in front of them, instead of covering it.
 - **Labels** no longer flicker at the view edge or the label-density fade while the camera moves.
 - **3D storms**: finer sampling inside the storm removes the grain seen in a headset ([#18](https://github.com/hook-365/adsb-3d/issues/18)); clear air around and above it is skipped.

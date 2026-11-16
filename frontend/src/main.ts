@@ -1486,6 +1486,8 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
     // split into its two renderers, the reconciler pass (syncMs) and the
     // whole tick (tickMs). A frame much longer than tickMs is GPU-bound. The newest sample is also left on
     // window.__adsb3dPerf for a remote inspector.
+    // Scene handle for a remote inspector, perf mode only.
+    (window as unknown as { __adsb3dDebug?: unknown }).__adsb3dDebug ??= { scene: world.scene, camera: world.camera, controls };
     const t0 = performance.now();
     world.renderer.render(world.scene, world.camera);
     const t1 = performance.now();

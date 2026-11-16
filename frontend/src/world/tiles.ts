@@ -309,7 +309,8 @@ function sampleTerrain(z: number, x: number, y: number, s: number, i: number, j:
  * so the draped imagery's v coordinate stays linear. Edge vertices that a
  * coarser neighbour doesn't have are placed on that neighbour's edge line.
  */
-function buildTerrainPiece(z: number, x: number, y: number, lx: number, ly: number, dropY: number): TilePiece {
+function buildTerrainPiece(z: number, x: number, y: number, lx: number, ly: number, dropY: number, onBasemap = false): TilePiece {
+  if (onBasemap) return buildDrapedPiece(z, x, y, lx, ly);
   const s = terrainSegments(z, x, y);
   const north = terrainSegments(z, x, y - 1);
   const south = terrainSegments(z, x, y + 1);
@@ -349,6 +350,36 @@ function buildTerrainPiece(z: number, x: number, y: number, lx: number, ly: numb
       uvs[v * 2 + 1] = atlasV(ly, j / s);
     }
   }
+  return { positions, uvs, indices: gridIndices(s) };
+}
+
+/**
+ * Detail-patch tile: the same grid, but every vertex sits on the basemap's
+ * drawn surface (terrainSurface) instead of the raw elevation. The basemap
+ * is flat between vertices a mile or two apart; a finer mesh that followed
+ * the real ground would dip under those flats wherever the ground curves,
+ * and the blurry basemap would show through in blotches.
+ */
+function buildDrapedPiece(z: number, x: number, y: number, lx: number, ly: number): TilePiece {
+  const s = terrainSegments(z, x, y);
+  const positions = new Float32Array((s + 1) * (s + 1) * 3);
+  const uvs = new Float32Array((s + 1) * (s + 1) * 2);
+  for (let j = 0; j <= s; j++) {
+    const lat = tileYToLat(y + j / s, z);
+    for (let i = 0; i <= s; i++) {
+      terrainSurface(lat, tileXToLon(x + i / s, z), tmpV);
+      const v = j * (s + 1) + i;
+      positions[v * 3] = tmpV.x;
+      positions[v * 3 + 1] = tmpV.y;
+      positions[v * 3 + 2] = tmpV.z;
+      uvs[v * 2] = atlasU(lx, i / s);
+      uvs[v * 2 + 1] = atlasV(ly, j / s);
+    }
+  }
+  return { positions, uvs, indices: gridIndices(s) };
+}
+
+function gridIndices(s: number): Uint32Array {
   const indices = new Uint32Array(s * s * 6);
   let o = 0;
   for (let j = 0; j < s; j++) {
@@ -361,7 +392,7 @@ function buildTerrainPiece(z: number, x: number, y: number, lx: number, ly: numb
       indices[o++] = b; indices[o++] = d; indices[o++] = c;
     }
   }
-  return { positions, uvs, indices };
+  return indices;
 }
 
 const CELL_PX = 256;
@@ -400,8 +431,8 @@ function createChunk(terrain: boolean, overlay: boolean, patch = false): Chunk {
   // the terrain beneath still occludes aircraft correctly.
   // A detail patch lies on the basemap it sharpens. The basemap has already
   // written the terrain's depth; the patch only has to win the depth test
-  // against it, which a polygon offset toward the camera settles (its finer
-  // mesh follows the ground a little differently from the coarse one).
+  // against it. Its vertices sit on the basemap's own surface
+  // (buildDrapedPiece), so a polygon offset toward the camera settles it.
   const material = new MeshBasicMaterial({
     map: texture,
     depthWrite: terrain && !overlay && !patch,
@@ -572,7 +603,7 @@ export function createTileLayer(options: TileLayerOptions = {}): Group {
         chunk.ctx.drawImage(image, lx * CELL_PX, ly * CELL_PX, CELL_PX, CELL_PX);
         chunk.pieces.set(
           `${x}/${y}`,
-          terrain ? buildTerrainPiece(zoom, x, y, lx, ly, dropY) : buildFlatPiece(zoom, x, y, lx, ly, dropY),
+          terrain ? buildTerrainPiece(zoom, x, y, lx, ly, dropY, patch) : buildFlatPiece(zoom, x, y, lx, ly, dropY),
         );
         chunk.dirty = true;
         loaded++;
