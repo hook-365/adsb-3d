@@ -19,7 +19,7 @@ ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
 
 [![Arrivals and departures threading the stacked shelves of the Minneapolis Class B airspace, drawn in 3D](Airspace.jpg)](https://github.com/hook-365/adsb-3d/releases/download/v0.14.0/adsb-3d-airspace.mp4)
 
-New in v0.14: airspace in 3D. Click the image for a short clip.
+Airspace in 3D, since v0.14. Click the image for a short clip.
 
 ## Built with the community
 
@@ -39,6 +39,7 @@ and translations count just as much as code.
 
 <img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
 
+- **v0.15**: airports with runways, ground detail at 420 fields, weather-coloured labels and an info card; published approaches, arrivals and departures (US) with the runways in use lit up; airways, navaids and fixes; an alert log with a watchlist; what each aircraft is doing on its card; a busy scope at about twice the frame rate.
 - **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards, plus live temporary flight restrictions; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
 - **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.
 - **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
@@ -75,7 +76,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **3D airspace** (off by default, US only; separate toggles for controlled airspace, special use airspace and the name labels): Class B, C and D and special use airspace (MOA, restricted, prohibited, warning, alert) drawn as volumes between their published floors and ceilings, so a Class B shows as its stacked shelves. Select an aircraft and the detail panel names the airspace it is in. Click an airspace's name label to fly the camera to it and open a card that explains it: what the class means and what entering takes, its limits, each shelf, published times of use, and how many aircraft are inside right now. Built from FAA open data baked into the image (`scripts/build-airspace.py` refreshes it); no extra container, no runtime calls to the FAA. Not for navigation.
 - **Temporary flight restrictions** (off by default, US only): active and upcoming TFRs (wildfires, stadiums, launches, VIP movements) drawn as volumes with the rest of the airspace, live from the FAA's TFR site through the container's own cached proxy and refreshed every ten minutes. Click a TFR's label for its NOTAM: type, location, limits, when it is in force and the published text. Not for navigation.
 - **Airspace that follows its hours**: special use airspace outside its published times of use is drawn fainter, and its info card says where the clock stands. Areas activated only by NOTAM, and schedules the app cannot read with certainty, are left as they are; it never guesses.
-- **Airports** (off by default): runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels, for the airports on the scope. Runway data from OurAirports, baked into the image.
+- **Airports** (runways and labels on by default, approach paths a toggle): runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels, for the airports on the scope. Runway data from OurAirports, baked into the image.
 - **Winds aloft** (needs `ENABLE_WINDS_ALOFT`): forecast wind drawn as arrows at a height you choose (5,000 ft to FL340), and a wind row on the selected aircraft's card with its head or tail wind component. A model forecast for the current hour on a coarse grid, from Open-Meteo.
 - **Airways, navaids and fixes** (off by default, US only): low airways (Victor and T routes) drawn at 8,000 ft and high ones (Jet and Q routes) at flight level 330, so cruising traffic follows the lines at its own height; VORs and NDBs with their identifiers and frequencies; and the named fixes along the airways. From the FAA's CIFP, baked into the image. Not for navigation.
 - **Published instrument procedures** (US): with approach paths on, each runway end draws the real final segment of its instrument approach (fixes, crossing altitudes, glide angle), and a final that live traffic is established on is drawn brighter, so the runways in use stand out. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it in full with its fixes and altitude limits. Curved RNP legs and DME arcs are drawn as published; vectors, climbs, holds and missed approaches are dashed approximations. From the FAA's CIFP, baked into the image; the card shows the edition and says when it is out of date. Not for navigation.
