@@ -803,7 +803,9 @@ function applySelection(hex: string | null): void {
   // The airspace card shares the detail card's slot: an aircraft takes it over.
   if (hex !== null) {
     airspacePanel?.hide();
-    airportPanel?.hide();
+    // With a procedure drawn the airport card only steps aside: the
+    // approach stays up while you click through the traffic flying it.
+    airportPanel?.yieldSlot();
   }
   // New target: drop the XR follow anchor so it re-captures at the new
   // aircraft's current spot instead of yanking the world across the room.
@@ -1086,7 +1088,7 @@ airspacePanel = mountAirspacePanel(() => store.snapshot.values());
 mountAirspace(world.xrRoot, {
   onSelect: (selection) => {
     frameBox(selection.frame);
-    airportPanel?.hide();
+    airportPanel?.yieldSlot();
     airspacePanel?.show(selection);
   },
 });
@@ -1104,6 +1106,14 @@ airportPanel = mountAirportPanel(() => store.snapshot.values(), {
     void procedureLayer.show(site.airport.icao, pick.kind, pick.id, site.airport.place.altFt).then((frame) => {
       if (frame) frameBox(frame);
     });
+  },
+  onRestore: () => {
+    // The card takes its slot back from whatever holds it.
+    if (xrSelectedHex !== null) {
+      applySelection(null);
+      aircraftList.setSelected(null);
+    }
+    airspacePanel?.hide();
   },
 });
 mountAirports(world.xrRoot, {

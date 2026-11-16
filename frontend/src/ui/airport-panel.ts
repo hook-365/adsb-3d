@@ -33,6 +33,12 @@ import {
 // from being up together.
 
 export interface AirportPanel {
+  /**
+   * Something else wants the card's slot (an aircraft was selected, an
+   * airspace card opened). With a procedure drawn the card steps aside to
+   * its pill and the procedure stays; otherwise it closes.
+   */
+  yieldSlot(): void;
   show(site: AirportSite): void;
   hide(): void;
 }
@@ -40,6 +46,8 @@ export interface AirportPanel {
 export interface AirportPanelOptions {
   /** A procedure was picked in the card, or (null) the pick was cleared. */
   onProcedure?: (site: AirportSite, pick: { kind: ProcedureKind; id: string } | null) => void;
+  /** The card is coming back from its pill and needs its slot again. */
+  onRestore?: () => void;
 }
 
 /** Approach identifiers in runway order, then by name: every approach to 12L, then 12R, ... */
@@ -114,7 +122,24 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
   const close = el('button', 'close', '×');
   close.type = 'button';
   close.setAttribute('aria-label', t('misc.airport_close'));
-  header.append(ident, close);
+  const minimize = el('button', 'close', '–');
+  minimize.type = 'button';
+  minimize.title = t('static.detail_minimize_title');
+  minimize.setAttribute('aria-label', t('misc.airport_minimize'));
+  const buttons = el('div', 'airspace-buttons');
+  buttons.append(minimize, close);
+  header.append(ident, buttons);
+
+  // Minimized: the card steps aside to a pill and whatever procedure is
+  // drawn stays drawn. Closing (the card's X) is what clears it.
+  const pill = el('button', 'detail-pill airport-pill');
+  pill.type = 'button';
+  pill.hidden = true;
+  pill.setAttribute('aria-label', t('misc.airport_restore'));
+  const pillIdent = el('span', 'pill-callsign');
+  const pillProcedure = el('span', 'pill-stats');
+  pill.append(pillIdent, pillProcedure);
+  document.body.append(pill);
 
   const name = el('div', 'airspace-kind');
   const grid = el('dl', 'grid');
@@ -240,8 +265,20 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     procedures.append(line, el('p', 'airspace-note', t('misc.airport_procedures_note')));
   };
 
+  const setMinimized = (on: boolean): void => {
+    if (!current) return;
+    root.hidden = on;
+    pill.hidden = !on;
+    if (!on) return;
+    pillIdent.textContent = current.airport.icao;
+    const [kind, id] = (picked ?? '').split(':') as [ProcedureKind, string | undefined];
+    pillProcedure.textContent = id ? procedureName(kind, id) : '';
+    pillProcedure.hidden = !id;
+  };
+
   const hide = (): void => {
     if (!current) return;
+    pill.hidden = true;
     if (picked) options.onProcedure?.(current, null);
     picked = null;
     current = null;
@@ -253,6 +290,7 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     if (current && picked && current.airport.icao !== site.airport.icao) options.onProcedure?.(current, null);
     if (current?.airport.icao !== site.airport.icao) picked = null;
     current = site;
+    pill.hidden = true;
     const { airport } = site;
     title.textContent = airport.iata ? `${airport.icao} · ${airport.iata}` : airport.icao;
     name.textContent = airport.city ? `${airport.name}, ${airport.city}` : airport.name;
@@ -287,6 +325,11 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
   };
 
   close.addEventListener('click', hide);
+  minimize.addEventListener('click', () => setMinimized(true));
+  pill.addEventListener('click', () => {
+    options.onRestore?.();
+    setMinimized(false);
+  });
   explore.addEventListener('click', () => {
     const place = current?.airport.place;
     if (!place) return;
@@ -305,5 +348,10 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     else refreshWeather();
   });
 
-  return { show, hide };
+  const yieldSlot = (): void => {
+    if (current && picked) setMinimized(true);
+    else hide();
+  };
+
+  return { show, hide, yieldSlot };
 }

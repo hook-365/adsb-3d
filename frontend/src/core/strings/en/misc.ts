@@ -96,6 +96,8 @@ export const miscStrings = {
   'misc.emergency_toast': '⚠ {flight} · {detail}',
   'misc.loading_toast': 'Loading {what}…',
   'misc.airport_close': 'Close airport panel',
+  'misc.airport_minimize': 'Minimize airport panel',
+  'misc.airport_restore': 'Restore airport panel',
   'misc.airport_elevation': 'Elevation',
   'misc.airport_nearby': 'Traffic now',
   'misc.airport_nearby_value': '{n} within 5 NM, {g} on the ground',
