@@ -250,6 +250,7 @@ condition for some of them.
 | `EXPLORE_POLL_S` | `10` | Seconds between Explore polls and the per-city cache window; a free key allows 30 requests a minute |
 | `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users still opt in per-browser) |
 | `ENABLE_UPDATE_CHECK` | `true` | The container asks GitHub once a day for the latest release and the settings panel shows a badge when it is newer. Runs server-side only (one request per deployment per day, no viewer IPs); `false` disables it entirely |
+| `ENABLE_DATA_REFRESH` | `true` | The container asks the FAA once a day whether a new edition of its procedure data is out (approaches, arrivals, departures, airways, navaids; one every 28 days) and, when it is, downloads it (about 9 MB) and rebuilds the app's copy, a few seconds of work. Runs server-side only (no viewer IPs); `false` keeps the copy built into the image, which the airport card marks out of date once its 28 days are up |
 | `HIDE_TOWER` | `false` | Hide the home tower marker |
 | `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
 | `ROUTE_CACHE_TTL_SECONDS` (track-service) | `86400` | How long the shared route cache keeps an answer before asking adsb.im again |
@@ -421,6 +422,7 @@ result:
 | `scripts/build-runways.py` | `frontend/src/world/runways-data.json` | OurAirports `runways.csv` (public domain) | After `build-airports.py`, or when runways change |
 | `scripts/build-procedures.py` | `frontend/src/world/procedures-index.json`, `procedures.pack` | FAA CIFP (not copyrighted) | Every 28 days, when a new edition is effective |
 | `scripts/build-navdata.py` | `frontend/src/world/navdata.json` | FAA CIFP (not copyrighted) | With `build-procedures.py` |
+| `scripts/refresh-cifp.py` | runs the two above from one download | FAA CIFP | Before a release. Running containers run the same script daily for themselves (`ENABLE_DATA_REFRESH`) |
 
 To run the full container against an existing backend:
 

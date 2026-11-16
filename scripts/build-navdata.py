@@ -26,7 +26,7 @@ import zipfile
 from pathlib import Path
 
 API = "https://external-api.faa.gov/apra/cifp/chart?edition=current"
-OUT = Path(__file__).resolve().parent.parent / "frontend" / "src" / "world" / "navdata.json"
+OUT_DIR = Path(__file__).resolve().parent.parent / "frontend" / "src" / "world"
 UA = {"User-Agent": "adsb-3d-build-navdata", "Accept": "application/json"}
 
 
@@ -54,7 +54,9 @@ def position(line: str, at: int = 32) -> tuple[float, float] | None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--zip", type=Path, help="CIFP_YYMMDD.zip already on disk")
+    ap.add_argument("--out", type=Path, default=OUT_DIR, help="directory to write into (default: the frontend's)")
     args = ap.parse_args()
+    OUT = args.out / "navdata.json"  # noqa: N806
     if args.zip:
         blob = args.zip.read_bytes()
     else:

@@ -14,6 +14,11 @@ writes two files:
   frontend/src/world/procedures.pack
       every airport's complete procedures as one gzipped JSON chunk each,
       end to end. The app range-requests the one airport it needs.
+  frontend/src/world/cifp-edition.json
+      the edition's cycle and dates alone.
+
+Normally run through scripts/refresh-cifp.py, which fetches the edition
+once for this and build-navdata.py.
 
     python3 scripts/build-procedures.py
 
@@ -39,8 +44,7 @@ from pathlib import Path
 
 API = "https://external-api.faa.gov/apra/cifp/chart?edition=current"
 ROOT = Path(__file__).resolve().parent.parent
-INDEX = ROOT / "frontend" / "src" / "world" / "procedures-index.json"
-PACK = ROOT / "frontend" / "src" / "world" / "procedures.pack"
+OUT_DIR = ROOT / "frontend" / "src" / "world"
 UA = {"User-Agent": "adsb-3d-build-procedures", "Accept": "application/json"}
 KINDS = {"D": "sid", "E": "star", "F": "approach"}
 
@@ -116,8 +120,12 @@ def edition_of(name: str) -> datetime.date | None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--zip", type=Path, help="CIFP_YYMMDD.zip already on disk")
+    ap.add_argument("--out", type=Path, default=OUT_DIR, help="directory to write into (default: the frontend's)")
     ap.add_argument("--effective", help="edition's effective date (YYYY-MM-DD) when --zip's name does not carry it")
     args = ap.parse_args()
+    INDEX = args.out / "procedures-index.json"  # noqa: N806
+    PACK = args.out / "procedures.pack"  # noqa: N806
+    EDITION = args.out / "cifp-edition.json"  # noqa: N806
 
     if args.zip:
         blob = args.zip.read_bytes()
@@ -323,6 +331,12 @@ def main() -> int:
     }
     INDEX.write_text(json.dumps(doc, separators=(",", ":")) + "\n", encoding="utf-8")
     PACK.write_bytes(bytes(pack))
+    # The edition on its own, small enough to bundle: the app compares it with
+    # a refreshed edition's manifest without fetching the index first.
+    EDITION.write_text(
+        json.dumps({k: doc[k] for k in ("cycle", "effective", "expires")}, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     print(
         f"{len(index)} airports: {counts['approach']} approaches, {counts['star']} STARs, {counts['sid']} SIDs; "
         f"{unresolved} unresolved legs ({len(broken)} procedures dropped)\n"

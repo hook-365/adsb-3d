@@ -20,10 +20,11 @@ RUN npm run build
 FROM nginx:1.29-alpine
 
 # Tools used by entrypoint.sh: bc (math for tile pre-cache), wget (downloads),
-# jq (FEEDS_CONFIG parsing), gettext (envsubst), curl (healthcheck).
+# jq (FEEDS_CONFIG parsing), gettext (envsubst), curl (healthcheck), python3
+# (the daily procedure-data rebuild, scripts/refresh-cifp.py; stdlib only).
 # Versions intentionally unpinned: Alpine's apk repos drop superseded package
 # versions once a new one lands, so pinning here breaks rebuilds within days.
-RUN apk add --no-cache bc wget jq gettext curl
+RUN apk add --no-cache bc wget jq gettext curl python3
 
 # nginx tile cache dir and tle cache dir removed (satellite dropped)
 RUN mkdir -p /var/cache/nginx/tiles
@@ -51,6 +52,12 @@ COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY nginx/nginx.conf /etc/nginx/templates/default.conf.template
 
 # Entrypoint generates config.js + dynamic feed proxy blocks at startup
+# The FAA procedure-data generators and the edition this image was built
+# with: entrypoint.sh reruns them when the FAA publishes a newer one
+# (ENABLE_DATA_REFRESH).
+COPY scripts/refresh-cifp.py scripts/build-procedures.py scripts/build-navdata.py /opt/adsb3d/scripts/
+COPY frontend/src/world/cifp-edition.json /opt/adsb3d/cifp-edition.json
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

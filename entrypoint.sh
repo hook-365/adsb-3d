@@ -1115,6 +1115,44 @@ else
     echo "[update] release check disabled"
 fi
 
+# ---------------------------------------------------------------------------
+# Procedure data refresh (ENABLE_DATA_REFRESH, default true). The FAA
+# replaces its instrument procedures, airways and navaids every 28 days,
+# and the copy baked into this image goes out of date with them. Once a day
+# refresh-cifp.py asks the FAA which edition is current and, when it is
+# newer than the image's and than what was already built, downloads it
+# (about 9 MB) and rebuilds the app's data from it under /cifp/, where the
+# frontend prefers it to its bundled copy. It is the same generator the
+# image's own data was built with. Server-side only: the FAA sees one
+# request per deployment per day and no viewer IPs. Any failure keeps
+# whatever is already there.
+# ---------------------------------------------------------------------------
+CIFP_DIR=/usr/share/nginx/html/cifp
+rm -rf "$CIFP_DIR"
+
+data_refresh_loop() {
+    sleep 90
+    while :; do
+        ADSB3D_USER_AGENT="$ADSB3D_USER_AGENT (data refresh)" nice -n 10 python3 /opt/adsb3d/scripts/refresh-cifp.py \
+            --serve "$CIFP_DIR" --bundled /opt/adsb3d/cifp-edition.json > /tmp/cifp-refresh.log 2>&1 \
+            && CIFP_RC=0 || CIFP_RC=$?
+        # The last line says what happened; the rest is the generators' counts.
+        tail -n 1 /tmp/cifp-refresh.log | sed 's/^/[data] /'
+        if [ "$CIFP_RC" -eq 0 ]; then
+            sleep 86400
+        else
+            sleep 21600
+        fi
+    done
+}
+
+if [ "$(_bool "${ENABLE_DATA_REFRESH:-true}")" = "true" ]; then
+    echo "[data] daily procedure data refresh enabled (ENABLE_DATA_REFRESH=false to turn off)"
+    data_refresh_loop &
+else
+    echo "[data] procedure data refresh disabled"
+fi
+
 # Validate the rendered config before handing off to nginx. A malformed
 # generated block (bad feed data, a busted envsubst substitution) should
 # fail the container loudly instead of nginx refusing to start with a

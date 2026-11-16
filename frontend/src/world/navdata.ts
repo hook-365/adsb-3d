@@ -1,4 +1,4 @@
-import dataUrl from './navdata.json?url';
+import { cifpSource } from './cifp-source';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -277,7 +277,8 @@ export function mountNavData(parent: Group): void {
     if (data || loading) return;
     loading = true;
     setLoading('navdata', t('settings.group_navigation'));
-    fetch(dataUrl)
+    cifpSource()
+      .then((source) => fetch(source.navdataUrl))
       .then((res) => {
         if (!res.ok) throw new Error(`navigation data: HTTP ${res.status}`);
         return res.json() as Promise<unknown>;
