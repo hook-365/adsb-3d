@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **VR hand menu** is no longer drawn over by airspace names or the aircraft card (#19).
 - **Ground vehicles** no longer log an extrusion error, and their flat ground icon is drawn (#19).
 - The browser console no longer shows a 404 for `/cifp/manifest.json` while the bundled procedure data is current (#19).
+- **Explore motion**: aircraft no longer pause and then catch up. Every second poll was answered from the proxy's cache with the same data, so positions changed every 20 s on a 10 s setting; each poll now gets fresh data.
 
 ---
 

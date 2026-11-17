@@ -34,7 +34,11 @@ export type SampledFix = Fix;
 
 export const DELAY_FACTOR = 1.2;
 export const MIN_DELAY_MS = 1_000;
-export const MAX_DELAY_MS = 12_000;
+// Above 1.2x the slowest steady cadence there is: an Explore city at the
+// default 10 s setting delivers every 11 to 12 s (the poll interval plus
+// the provider's response time). A cap below that leaves the clock
+// reaching the newest fix before the next arrives: a pause, then a catch-up.
+export const MAX_DELAY_MS = 16_000;
 export const SNAP_GAP_FACTOR = 3;
 export const MIN_SNAP_GAP_MS = 10_000;
 /** Cap on the gap-EMA seed. A first-observed gap can be a coverage hole

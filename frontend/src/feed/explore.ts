@@ -132,6 +132,7 @@ export function buildExploreFeed(place: ExplorePlace): Feed {
     trailMaxPoints: 600,
     backfillWindowMs: 0,
     pollMs: explorePollMs(),
+    pollAfterResponse: true,
     prefetchRoutes: false,
   };
 }

@@ -153,6 +153,28 @@ describe('LiveFeed transport', () => {
     feed.stop();
   });
 
+  it('pollAfterResponse counts the interval from the end of a slow response', async () => {
+    // The Explore proxy caches a body for pollMs from when it arrived; a
+    // poll timed from the start of the last one is handed the same body.
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ ok: true, json: async () => ({ now: Date.now() / 1000, ac: [] }) }), 2000);
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const feed = new LiveFeed({ liveUrl: '/data/explore/aircraft.json', wsUrl: null, pollMs: 10_000, pollAfterResponse: true });
+    feed.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // 10 s after the request started the cached copy is still valid: no poll yet.
+    await vi.advanceTimersByTimeAsync(9900);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    feed.stop();
+  });
+
   it('wsUrl null → polling only, no WebSocket constructed', async () => {
     const fetchMock = okFetch();
     vi.stubGlobal('fetch', fetchMock);

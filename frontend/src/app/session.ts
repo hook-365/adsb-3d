@@ -149,6 +149,7 @@ export function initSession(opts: {
       liveUrl: feed.liveUrl,
       wsUrl: feed.supportsWs ? `${feed.apiBase}/ws/live` : null,
       pollMs: feed.pollMs,
+      pollAfterResponse: feed.pollAfterResponse === true,
     });
     liveFeed.subscribe((records, status) => {
       if (connectLoader && status.ok) {

@@ -86,7 +86,19 @@ export interface LiveFeedConfig {
   wsUrl: string | null;
   /** HTTP poll cadence; defaults to POLL_INTERVAL_MS (readsb's ~1 Hz). */
   pollMs?: number;
+  /**
+   * The URL is cached upstream for pollMs (the Explore proxy): count the
+   * interval from the end of a response, not its start. The cache keeps a
+   * body for pollMs from when it arrived, so a poll timed from the start
+   * of the last one lands just inside that window and is handed the same
+   * body again; every second poll was a repeat, and aircraft moved every
+   * 20 s on a 10 s setting.
+   */
+  pollAfterResponse?: boolean;
 }
+
+/** Past the cache window by this much, so the next poll is never a repeat. */
+const CACHE_CLEAR_MS = 250;
 
 function resolveWsUrl(input: string | null): string | null {
   if (input === null) return null;
@@ -100,6 +112,7 @@ export class LiveFeed {
   private readonly httpUrl: string;
   private readonly wsUrl: string | null;
   private readonly pollMs: number;
+  private readonly pollAfterResponse: boolean;
 
   // Transport state
   private ws: WebSocket | null = null;
@@ -122,6 +135,7 @@ export class LiveFeed {
     this.httpUrl = config.liveUrl;
     this.wsUrl = resolveWsUrl(config.wsUrl);
     this.pollMs = config.pollMs ?? POLL_INTERVAL_MS;
+    this.pollAfterResponse = config.pollAfterResponse === true;
   }
 
   subscribe(fn: FeedListener): () => void {
@@ -314,7 +328,7 @@ export class LiveFeed {
     }
 
     const elapsed = performance.now() - start;
-    const wait = Math.max(0, this.pollMs - elapsed);
+    const wait = this.pollAfterResponse ? this.pollMs + CACHE_CLEAR_MS : Math.max(0, this.pollMs - elapsed);
     this.httpTimer = setTimeout(() => void this.httpTick(), wait);
   }
 }

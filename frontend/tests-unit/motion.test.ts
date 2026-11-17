@@ -292,7 +292,9 @@ describe('cadence change', () => {
 
   it('reseeds after a sustained slowdown and glides across the slow bracket', () => {
     const { tr, lastMs, lastLat } = trackerWithSlowdown(CADENCE_RESEED_RUN + 1);
-    const s = tr.sample('abc', lastMs);
+    // 5 s on, so the delayed display time (the capped 16 s behind) is
+    // inside the newest 15 s bracket rather than the one before it.
+    const s = tr.sample('abc', lastMs + 5_000);
     expect(s).not.toBeNull();
     // Between the previous fix and the newest: interpolated, not snapped.
     expect(s!.lat).toBeGreaterThan(lastLat - 0.01 + 1e-6);

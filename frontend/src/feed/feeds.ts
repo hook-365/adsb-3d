@@ -72,6 +72,8 @@ export interface Feed {
    * API plan with a per-minute budget isn't overrun.
    */
   pollMs: number;
+  /** The live URL is cached for pollMs by the proxy; see LiveFeedConfig.pollAfterResponse. */
+  pollAfterResponse?: boolean;
   /**
    * Warm the route cache for every callsign in view (receivers: small,
    * slow-churning, instant routes on click). Off for Explore cities,
