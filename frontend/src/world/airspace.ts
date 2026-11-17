@@ -8,9 +8,9 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
+  type Object3D,
   CanvasTexture,
-  Sprite,
-  SpriteMaterial,
+  PlaneGeometry,
   ShapeUtils,
   Vector2,
   Vector3,
@@ -18,6 +18,7 @@ import {
 } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { HOME, RANGE_NM, subscribeHome } from '../core/config';
+import { billboardYaw } from '../aircraft/xr-billboard-math';
 import { toScene } from '../core/coords';
 import { t } from '../core/i18n';
 import { getSettings, subscribeSettings } from '../core/settings';
@@ -117,8 +118,22 @@ const ELEVATION_SETTLE_MS = 1500;
 const XR_MAX_LABELS = 12;
 const XR_LABEL_HEIGHT = 5;
 
-/** A name and its limits on a canvas, for the headset where CSS labels cannot draw. */
-function xrLabelSprite(title: string, limits: string, color: number): Sprite {
+/** Every headset label is this plane, scaled; it faces +Z until yawed toward the eye. */
+const XR_LABEL_GEOMETRY = new PlaneGeometry(XR_LABEL_HEIGHT * 4, XR_LABEL_HEIGHT);
+
+type XrLabel = Mesh<PlaneGeometry, MeshBasicMaterial>;
+
+function isXrLabel(obj: unknown): obj is XrLabel {
+  return obj instanceof Mesh && obj.geometry === XR_LABEL_GEOMETRY;
+}
+
+/**
+ * A name and its limits on a canvas, for the headset where CSS labels
+ * cannot draw. An upright plane, not a Sprite: a sprite is aligned to the
+ * view plane and so rolls and pitches with the head, where the aircraft
+ * card stays vertical (issue #19). faceLabels() yaws it toward the eye.
+ */
+function xrLabelMesh(title: string, limits: string, color: number): XrLabel {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 128;
@@ -139,12 +154,11 @@ function xrLabelSprite(title: string, limits: string, color: number): Sprite {
     ctx.font = '500 30px ui-monospace, Menlo, monospace';
     ctx.fillText(limits, 256, 94, 490);
   }
-  const material = new SpriteMaterial({ map: new CanvasTexture(canvas), transparent: true, depthWrite: false });
-  const sprite = new Sprite(material);
-  sprite.scale.set(XR_LABEL_HEIGHT * 4, XR_LABEL_HEIGHT, 1);
-  sprite.renderOrder = 11;
-  sprite.userData = { kind: 'airspace-label' };
-  return sprite;
+  const material = new MeshBasicMaterial({ map: new CanvasTexture(canvas), transparent: true, depthWrite: false });
+  const mesh: XrLabel = new Mesh(XR_LABEL_GEOMETRY, material);
+  mesh.renderOrder = 11;
+  mesh.userData = { kind: 'airspace-label' };
+  return mesh;
 }
 
 export function airspaceKindsOn(): Set<AirspaceKind> {
@@ -378,7 +392,12 @@ export interface AirspaceOptions {
   onSelect?: (selection: AirspaceSelection) => void;
 }
 
-export function mountAirspace(parent: Group, options: AirspaceOptions = {}): void {
+export interface AirspaceLayer {
+  /** In a headset, once per frame: turn the name labels toward the eye, upright. */
+  faceLabels(eye: Object3D): void;
+}
+
+export function mountAirspace(parent: Group, options: AirspaceOptions = {}): AirspaceLayer {
   const group = new Group();
   group.name = 'airspace';
   const focusGroup = new Group();
@@ -457,7 +476,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     for (const child of Array.from(labelGroup.children)) {
       labelGroup.remove(child);
       if (child instanceof CSS2DObject) child.element.remove();
-      if (child instanceof Sprite) {
+      if (isXrLabel(child)) {
         child.material.map?.dispose();
         child.material.dispose();
       }
@@ -496,7 +515,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
     for (const { list, core } of groups) {
       const ceiling = list.reduce((a, b) => (limitsMsl(b, volumeGroundFt(b)).hi > limitsMsl(a, volumeGroundFt(a)).hi ? b : a));
       if (xr) {
-        const sprite = xrLabelSprite(
+        const sprite = xrLabelMesh(
           airspaceTitle(core.name),
           airspaceLimits({ loFt: core.loFt, loAgl: core.loAgl, hiFt: ceiling.hiFt, hiAgl: ceiling.hiAgl, unlimited: ceiling.unlimited }),
           AIRSPACE_COLORS[core.kind],
@@ -621,7 +640,7 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   setInterval(() => {
     if (attached && idleSignature(Date.now()) !== idleKey) rebuild();
   }, SCHEDULE_CHECK_MS);
-  // Entering or leaving a headset swaps CSS labels for sprites and back.
+  // Entering or leaving a headset swaps CSS labels for canvas planes and back.
   let wasPresenting = getXrState().presenting;
   subscribeXr((x) => {
     if (x.presenting === wasPresenting) return;
@@ -640,4 +659,16 @@ export function mountAirspace(parent: Group, options: AirspaceOptions = {}): voi
   });
   lastKinds = layerKey();
   sync();
+
+  const eyeLocal = new Vector3();
+  return {
+    faceLabels(eye: Object3D): void {
+      if (labelGroup.children.length === 0) return;
+      eyeLocal.setFromMatrixPosition(eye.matrixWorld);
+      labelGroup.worldToLocal(eyeLocal);
+      for (const child of labelGroup.children) {
+        if (isXrLabel(child)) child.rotation.y = billboardYaw(eyeLocal, child.position);
+      }
+    },
+  };
 }

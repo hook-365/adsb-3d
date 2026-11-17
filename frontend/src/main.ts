@@ -1088,7 +1088,7 @@ mountSevereCells(world.xrRoot);
 mountLightning(world.xrRoot);
 const routeLine = mountRouteLine(world.xrRoot);
 airspacePanel = mountAirspacePanel(() => store.snapshot.values());
-mountAirspace(world.xrRoot, {
+const airspaceLayer = mountAirspace(world.xrRoot, {
   onSelect: (selection) => {
     frameBox(selection.frame);
     airportPanel?.yieldSlot();
@@ -1383,6 +1383,7 @@ function tick(frameTime: number, xrFrame?: XRFrame): void {
   // the billboard on desktop sat on top of the aircraft and doubled the
   // CSS2D label; a bottom-card trial just duplicated the sidebar).
   const stereoDesktop = !world.renderer.xr.isPresenting && getSettings().stereo;
+  if (world.renderer.xr.isPresenting) airspaceLayer.faceLabels(world.renderer.xr.getCamera());
   if ((world.renderer.xr.isPresenting || stereoDesktop) && xrSelectedHex) {
     const a = store.snapshot.get(xrSelectedHex);
     const pos = reconciler.positionOf(xrSelectedHex);

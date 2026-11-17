@@ -12,6 +12,9 @@ import shapesDataJson from './shapes-data.json';
 export interface ShapeDef {
   w: number;
   h: number;
+  // Absent on the four ground-vehicle entries (ground_emergency,
+  // ground_service, ground_unknown, ground_fixed), which tar1090 ships as
+  // one finished drawing in `svg` instead of a viewBox and a path.
   viewBox: string;
   strokeScale?: number;
   // Most shapes have a single `d` path string; a few (gyrocopter, etc.)
@@ -20,6 +23,8 @@ export interface ShapeDef {
   accent?: string | string[];
   accentMult?: number;
   noRotate?: boolean;
+  /** A whole SVG document with tar1090's SIZE / strokeColor / strokeWidth placeholders. */
+  svg?: string;
 }
 type IconRef = readonly [shape: string, scaling: number];
 
@@ -96,7 +101,21 @@ const textureCache = new Map<string, CachedTexture>();
 const RASTER_PX = 128;
 const ICON_ANISOTROPY = 8;
 
+/**
+ * A tar1090 drawing to our tinting convention: the body white so the
+ * material colour shows through, the outline and the detail black.
+ */
+function buildRawSvg(svg: string): string {
+  return svg
+    .replace(' SIZE', '')
+    .replace(/strokeColor/g, '#000')
+    .replace(/strokeWidth/g, '0.5')
+    .replace(/fill:#fff/g, 'fill:#000')
+    .replace(/fill:#5a5a5a/g, 'fill:#fff');
+}
+
 function buildSvg(def: ShapeDef): string {
+  if (def.svg) return buildRawSvg(def.svg);
   // Render with white fill + black stroke. The stroke width is given in
   // the source viewBox's units (strokeScale is what tar1090 uses); we
   // apply it directly so outlines stay visible after the canvas resamples
@@ -189,5 +208,9 @@ export function shapeRotates(shapeName: string): boolean {
 /** Raw catalog entry for a shape, or null if unknown. Consumed by
  *  shape-geometry.ts to extrude the SVG outline into a 3D marker. */
 export function getShapeDef(shapeName: string): ShapeDef | null {
-  return data.shapes[shapeName] ?? null;
+  const def = data.shapes[shapeName];
+  // No outline to extrude in a drawing-only entry: the caller's fallback
+  // marker stands in, as for an unknown shape.
+  if (!def || typeof def.viewBox !== 'string' || def.path === undefined) return null;
+  return def;
 }

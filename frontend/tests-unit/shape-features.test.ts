@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // jsdom (not node like the other suites): building the real silhouette
 // geometry runs SVGLoader.parse, which needs DOMParser.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { BufferGeometry } from 'three';
 import {
   SHAPE_FEATURES,
@@ -11,6 +11,7 @@ import {
 import { getShapeDef } from '../src/aircraft/shapes';
 import { buildFeatureParts, getSilhouetteGeometry } from '../src/aircraft/shape-geometry';
 import fuselageProfiles from '../src/aircraft/fuselage-profiles.json';
+import shapesData from '../src/aircraft/shapes-data.json';
 
 // Drift guard for the 3D feature annotations: every entry must reference a
 // real catalog shape, carry sane fractions, and produce a merged geometry
@@ -200,5 +201,21 @@ describe('merged geometry', () => {
     } finally {
       delete SHAPE_FEATURES[victim];
     }
+  });
+});
+
+describe('whole catalog', () => {
+  // Four ground-vehicle entries are a finished drawing with no viewBox or
+  // path; they used to throw in the extruder (issue #19).
+  it('no shape makes the extruder throw', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const name of Object.keys(shapesData.shapes)) getSilhouetteGeometry(name);
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('drawing-only shapes fall back to the plain marker', () => {
+    expect(getShapeDef('ground_unknown')).toBeNull();
+    expect(getSilhouetteGeometry('ground_unknown')).toBeNull();
   });
 });

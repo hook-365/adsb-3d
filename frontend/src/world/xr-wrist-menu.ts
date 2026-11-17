@@ -520,7 +520,10 @@ export class XrWristMenu {
     this.mesh = new Mesh(geometry, this.material);
     this.mesh.name = 'xr-wrist-menu';
     this.mesh.visible = false;
-    this.mesh.renderOrder = 10;
+    // Last of everything transparent: the menu writes no depth, so
+    // anything drawn after it paints over it, as the airspace names (11)
+    // and the aircraft card (12) did (issue #19).
+    this.mesh.renderOrder = 20;
 
     // Redraw on any state change so the displayed value tracks reality.
     // XR state included: mode-gated rows (AR's Place scope) appear at

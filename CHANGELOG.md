@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **VR/AR airspace names** stay upright and only turn to face you, like the aircraft card, instead of tilting with your head (#19).
+- **VR hand menu** is no longer drawn over by airspace names or the aircraft card (#19).
+- **Ground vehicles** no longer log an extrusion error, and their flat ground icon is drawn (#19).
+- The browser console no longer shows a 404 for `/cifp/manifest.json` while the bundled procedure data is current (#19).
+
 ---
 
 ## [0.15.0] - 2026-11-16
