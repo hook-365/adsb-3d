@@ -258,9 +258,7 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
     mode === 'ar' ? ['local-floor', 'hit-test'] : ['local-floor'];
   try {
     xrLog(`requestSession(${sessionMode}) with optionalFeatures:`, optionalFeatures);
-    const session = await xr.requestSession(sessionMode, {
-      optionalFeatures,
-    });
+    const session = await requestSessionWithRetry(xr, sessionMode, { optionalFeatures });
     xrLog('requestSession resolved — session granted', {
       // Logs which features the runtime actually granted, so a missing
       // local-floor (the reason aircraft could float at the wrong height)
@@ -287,6 +285,32 @@ async function enterSession(mode: 'vr' | 'ar'): Promise<void> {
     const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     setState({ lastError: `Could not start ${mode.toUpperCase()} session — ${message}` });
     throw err;
+  }
+}
+
+/** How long the runtime gets to finish tearing down the last session. */
+const SESSION_RETRY_MS = 400;
+
+/**
+ * requestSession, asked a second time if the first is refused. The Steam
+ * Frame rejects the first request after a session has just ended
+ * (NotSupportedError, though isSessionSupported said yes) and grants the
+ * next one (issue #19). One retry, soon enough that the click's user
+ * activation still stands; a SecurityError means it has lapsed or was
+ * never there, so that one is not retried.
+ */
+async function requestSessionWithRetry(
+  xr: XRSystem,
+  sessionMode: XRSessionMode,
+  init: XRSessionInit,
+): Promise<XRSession> {
+  try {
+    return await xr.requestSession(sessionMode, init);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'SecurityError') throw err;
+    xrLog(`requestSession(${sessionMode}) refused, retrying once`, err);
+    await new Promise((resolve) => setTimeout(resolve, SESSION_RETRY_MS));
+    return xr.requestSession(sessionMode, init);
   }
 }
 

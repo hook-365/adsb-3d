@@ -1,6 +1,7 @@
 import {
   BackSide,
   BoxGeometry,
+  Color,
   DataTexture,
   Data3DTexture,
   FloatType,
@@ -8,13 +9,19 @@ import {
   Matrix4,
   Mesh,
   NearestFilter,
+  NoBlending,
+  NormalBlending,
+  PerspectiveCamera,
   RedFormat,
   RGBAFormat,
+  Scene,
   ShaderMaterial,
   UnsignedByteType,
   Vector3,
   Vector4,
+  WebGLRenderTarget,
   GLSL3,
+  type Camera,
   type Group,
   type WebGLRenderer,
 } from 'three';
@@ -23,6 +30,7 @@ import { toScene } from '../core/coords';
 import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
+import { getXrState, subscribeXr } from '../core/xr';
 import { DIORAMA_PLANES } from './diorama-clip';
 import { subscribeField, type FieldGrid } from './weather-fields';
 
@@ -44,6 +52,14 @@ import { subscribeField, type FieldGrid } from './weather-fields';
 // Known v1 limit: the volume does not read the scene depth buffer, so an
 // aircraft inside a storm is drawn fully in front of it (the box's back
 // face is behind the aircraft, so the aircraft wins the depth test).
+//
+// In a headset the march is the most expensive thing on screen: it runs
+// for every pixel of both eyes at the panel's resolution, and halved a
+// busy scene's frame rate (issue #19). There it is rendered into a target
+// a fraction of the eye's size (XR_SCALE) and the box then draws that
+// picture, stretched back up. A storm is soft, so the loss is hard to
+// see; the pixel count, which is the cost, falls with the square of the
+// scale. `?stormScale=0.5` forces the same path on a monitor.
 //
 // One sidecar serves every feed: the manifest request carries the active
 // feed's home position and weather-service crops its shared MRMS download
@@ -86,6 +102,8 @@ const FINE_XR = 3;
 /** While the camera is moving: the eye forgives a coarser march in motion,
  * and this is when a dropped frame shows. Full quality returns at rest. */
 const FINE_MOVING = 2;
+/** In a headset: the march's render size as a fraction of the eye's, each way. */
+const XR_SCALE = 0.5;
 /** Occupancy cell size in volume cells, and how many cells it is grown by. */
 const OCC_POOL = 8;
 const OCC_DILATE = 2;
@@ -327,6 +345,32 @@ void main() {
 }
 `;
 
+/** The reduced pass, drawn back onto the box: one lookup per pixel. */
+const COMPOSITE_VERT = /* glsl */ `
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const COMPOSITE_FRAG = /* glsl */ `
+out vec4 fragColor;
+uniform sampler2D uMap;
+uniform vec4 uRect;   // this eye's viewport, framebuffer pixels
+void main() {
+  vec4 c = texture(uMap, (gl_FragCoord.xy - uRect.xy) / uRect.zw);
+  if (c.a <= 0.002) discard;
+  fragColor = c;
+}
+`;
+
+/** Pure: `?stormScale=` as a usable fraction, or null (absent, junk, or 1 and over). */
+export function parseStormScale(search: string): number | null {
+  const raw = new URLSearchParams(search).get('stormScale');
+  if (raw === null) return null;
+  const v = Number(raw);
+  return Number.isFinite(v) && v >= 0.1 && v < 1 ? v : null;
+}
+
 /**
  * Pure: the occupancy map the coarse march reads. One byte per
  * `pool` x `pool` block of columns: 0 where no cell of any layer in the
@@ -405,6 +449,105 @@ export function mountStorms(parent: Group): void {
   rampTex.needsUpdate = true;
   const tmp = new Vector3();
   const lastView = new Matrix4();
+
+  // The reduced pass (see the header). Its own scene, mesh and camera, all
+  // with hand-set matrices: the pass must see exactly what the eye sees,
+  // and three would otherwise rebuild a headset eye's matrix without its rig.
+  const forcedScale = parseStormScale(window.location.search);
+  let reduced = forcedScale !== null || getXrState().presenting;
+  let target: WebGLRenderTarget | null = null;
+  const passScene = new Scene();
+  passScene.matrixWorldAutoUpdate = false;
+  const passMesh = new Mesh(geometry);
+  passMesh.matrixAutoUpdate = false;
+  passMesh.frustumCulled = false;
+  passScene.add(passMesh);
+  const passCam = new PerspectiveCamera();
+  passCam.matrixAutoUpdate = false;
+  passCam.matrixWorldAutoUpdate = false;
+  const viewport = new Vector4();
+  const clearColor = new Color();
+  const composite = new ShaderMaterial({
+    glslVersion: GLSL3,
+    vertexShader: COMPOSITE_VERT,
+    fragmentShader: COMPOSITE_FRAG,
+    uniforms: {
+      uMap: { value: null },
+      uRect: { value: new Vector4(0, 0, 1, 1) },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: BackSide,
+    fog: false,
+  });
+
+  /** March into the small target with this eye's camera; the box then draws the result. */
+  const renderPass = (renderer: WebGLRenderer, camera: Camera): void => {
+    if (!mesh || !material) return;
+    const scale = forcedScale ?? XR_SCALE;
+    renderer.getCurrentViewport(viewport);
+    const w = Math.max(1, Math.round(viewport.z * scale));
+    const h = Math.max(1, Math.round(viewport.w * scale));
+    if (!target) {
+      target = new WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false });
+      target.texture.minFilter = LinearFilter;
+      target.texture.magFilter = LinearFilter;
+    } else if (target.width !== w || target.height !== h) {
+      target.setSize(w, h);
+    }
+    passMesh.material = material;
+    passMesh.matrixWorld.copy(mesh.matrixWorld);
+    passCam.matrixWorld.copy(camera.matrixWorld);
+    passCam.matrixWorldInverse.copy(camera.matrixWorldInverse);
+    passCam.projectionMatrix.copy(camera.projectionMatrix);
+    passCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+
+    const prevTarget = renderer.getRenderTarget();
+    const prevXr = renderer.xr.enabled;
+    const prevAutoClear = renderer.autoClear;
+    const prevInfoReset = renderer.info.autoReset;
+    const prevAlpha = renderer.getClearAlpha();
+    renderer.getClearColor(clearColor);
+    // xr off: this render is ours, not the headset's. info: keep the
+    // frame's draw-call count (the ?perf=1 log) instead of restarting it.
+    renderer.xr.enabled = false;
+    renderer.autoClear = false;
+    renderer.info.autoReset = false;
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(passScene, passCam);
+    renderer.setClearColor(clearColor, prevAlpha);
+    renderer.info.autoReset = prevInfoReset;
+    renderer.autoClear = prevAutoClear;
+    renderer.xr.enabled = prevXr;
+    renderer.setRenderTarget(prevTarget);
+    // setRenderTarget restores the whole framebuffer's viewport; a headset
+    // eye is half of it.
+    renderer.state.viewport(viewport);
+    composite.uniforms.uMap!.value = target.texture;
+    composite.uniforms.uRect!.value.copy(viewport);
+  };
+
+  /** Point the box at the march itself or at the reduced pass's picture. */
+  const applyMode = (): void => {
+    if (mesh && material) {
+      mesh.material = reduced ? composite : material;
+      // Into the target the march writes its colour and coverage as they
+      // are; the box blends them, once, when it draws the picture.
+      material.blending = reduced ? NoBlending : NormalBlending;
+    }
+    if (!reduced && target) {
+      target.dispose();
+      target = null;
+    }
+  };
+  subscribeXr((s) => {
+    const next = forcedScale !== null || s.presenting;
+    if (next === reduced) return;
+    reduced = next;
+    applyMode();
+  });
 
   const dispose = (): void => {
     if (mesh) {
@@ -522,13 +665,15 @@ export function mountStorms(parent: Group): void {
     mesh.frustumCulled = false;
     mesh.userData = { kind: 'storms' };
     applyTop();
+    applyMode();
     mesh.onBeforeRender = (renderer: WebGLRenderer, _scene, camera): void => {
-      if (!material) return;
+      if (!material || !mesh) return;
       const moving = !camera.matrixWorld.equals(lastView);
       lastView.copy(camera.matrixWorld);
       const xr = renderer.xr.isPresenting;
       material.uniforms.uSteps!.value = Math.max(xr ? COARSE_XR : COARSE_DESKTOP, coarseMin);
       material.uniforms.uFine!.value = xr ? FINE_XR : moving ? FINE_MOVING : FINE_DESKTOP;
+      if (mesh.material === composite) renderPass(renderer, camera);
     };
     parent.add(mesh);
   };

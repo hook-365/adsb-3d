@@ -513,8 +513,10 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.enter_vr_desc'),
         onClick: async () => {
           const s = getXrState();
+          // A refused session is already on screen (lastError, below) and
+          // in the console; nothing more to do with the rejection here.
           if (s.presenting) await exitVR();
-          else await enterVR();
+          else await enterVR().catch(() => undefined);
         },
         subscribe: (update) =>
           subscribeXr((s) => {
@@ -549,8 +551,10 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         description: t('settings.enter_ar_desc'),
         onClick: async () => {
           const s = getXrState();
+          // A refused session is already on screen (lastError, below) and
+          // in the console; nothing more to do with the rejection here.
           if (s.presenting) await exitVR();
-          else await enterAR();
+          else await enterAR().catch(() => undefined);
         },
         subscribe: (update) =>
           subscribeXr((s) => {

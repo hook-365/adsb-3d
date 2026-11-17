@@ -135,3 +135,14 @@ describe('buildOccupancy', () => {
     expect(minCoarseSteps(256, 256, 8, 1)).toBe(23);
   });
 });
+
+describe('parseStormScale', () => {
+  it('reads a fraction and refuses anything that is not a reduction', async () => {
+    const { parseStormScale } = await import('../src/world/storms');
+    expect(parseStormScale('?stormScale=0.5')).toBe(0.5);
+    expect(parseStormScale('?perf=1')).toBeNull();
+    expect(parseStormScale('?stormScale=1')).toBeNull();
+    expect(parseStormScale('?stormScale=0')).toBeNull();
+    expect(parseStormScale('?stormScale=abc')).toBeNull();
+  });
+});
