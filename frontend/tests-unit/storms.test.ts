@@ -146,3 +146,38 @@ describe('parseStormScale', () => {
     expect(parseStormScale('?stormScale=abc')).toBeNull();
   });
 });
+
+describe('passLayout', () => {
+  it('scales the framebuffer and keeps each eye in its place', async () => {
+    const { passLayout } = await import('../src/world/storms');
+    const l = passLayout(
+      [
+        { x: 0, y: 0, w: 1728, h: 1728 },
+        { x: 1728, y: 0, w: 1728, h: 1728 },
+      ],
+      0.5,
+    );
+    expect([l.fullW, l.fullH, l.w, l.h]).toEqual([3456, 1728, 1728, 864]);
+    expect(l.rects).toEqual([
+      { x: 0, y: 0, w: 864, h: 864 },
+      { x: 864, y: 0, w: 864, h: 864 },
+    ]);
+  });
+  it('shares the edge between eyes when the scale does not divide evenly', async () => {
+    const { passLayout } = await import('../src/world/storms');
+    const l = passLayout(
+      [
+        { x: 0, y: 0, w: 1001, h: 999 },
+        { x: 1001, y: 0, w: 1001, h: 999 },
+      ],
+      0.3,
+    );
+    expect(l.rects[0]!.x + l.rects[0]!.w).toBe(l.rects[1]!.x);
+    expect(l.rects[1]!.x + l.rects[1]!.w).toBe(l.w);
+  });
+  it('is the whole target for a single monitor view', async () => {
+    const { passLayout } = await import('../src/world/storms');
+    const l = passLayout([{ x: 0, y: 0, w: 1920, h: 1080 }], 0.5);
+    expect(l.rects).toEqual([{ x: 0, y: 0, w: 960, h: 540 }]);
+  });
+});

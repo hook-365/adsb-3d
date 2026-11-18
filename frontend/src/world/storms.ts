@@ -17,12 +17,15 @@ import {
   Scene,
   ShaderMaterial,
   UnsignedByteType,
+  Vector2,
   Vector3,
   Vector4,
   WebGLRenderTarget,
   GLSL3,
+  type ArrayCamera,
   type Camera,
   type Group,
+  type Object3D,
   type WebGLRenderer,
 } from 'three';
 import { HOME, WEATHER3D_ENABLED, subscribeHome } from '../core/config';
@@ -60,6 +63,12 @@ import { subscribeField, type FieldGrid } from './weather-fields';
 // picture, stretched back up. A storm is soft, so the loss is hard to
 // see; the pixel count, which is the cost, falls with the square of the
 // scale. `?stormScale=0.5` forces the same path on a monitor.
+//
+// That pass runs before the frame's own drawing starts (the scene's
+// onBeforeRender), both eyes into one target laid out like the headset's
+// framebuffer. Run from the box's own draw it switched render targets in
+// the middle of each eye, and a headset's tiled GPU pays for every such
+// switch by storing the half-drawn eye and loading it back.
 //
 // One sidecar serves every feed: the manifest request carries the active
 // feed's home position and weather-service crops its shared MRMS download
@@ -356,8 +365,12 @@ const COMPOSITE_FRAG = /* glsl */ `
 out vec4 fragColor;
 uniform sampler2D uMap;
 uniform vec4 uRect;   // this eye's viewport, framebuffer pixels
+uniform vec2 uFull;   // the framebuffer the target mirrors, pixels
+uniform float uInset; // half a target texel, in framebuffer pixels
 void main() {
-  vec4 c = texture(uMap, (gl_FragCoord.xy - uRect.xy) / uRect.zw);
+  // Stay inside this eye's part of the target: the other eye is next door.
+  vec2 p = clamp(gl_FragCoord.xy, uRect.xy + uInset, uRect.xy + uRect.zw - uInset);
+  vec4 c = texture(uMap, p / uFull);
   if (c.a <= 0.002) discard;
   fragColor = c;
 }
@@ -369,6 +382,36 @@ export function parseStormScale(search: string): number | null {
   if (raw === null) return null;
   const v = Number(raw);
   return Number.isFinite(v) && v >= 0.1 && v < 1 ? v : null;
+}
+
+export interface PassRect { x: number; y: number; w: number; h: number }
+
+/**
+ * Pure: the reduced target for a set of eye viewports (framebuffer pixels).
+ * The target is the framebuffer those viewports sit in, scaled; each eye
+ * keeps its place in it, on whole pixels, edges shared where the eyes touch.
+ */
+export function passLayout(
+  views: readonly PassRect[],
+  scale: number,
+): { fullW: number; fullH: number; w: number; h: number; rects: PassRect[] } {
+  let fullW = 1;
+  let fullH = 1;
+  for (const v of views) {
+    fullW = Math.max(fullW, v.x + v.w);
+    fullH = Math.max(fullH, v.y + v.h);
+  }
+  const rects = views.map((v) => {
+    const x = Math.round(v.x * scale);
+    const y = Math.round(v.y * scale);
+    return {
+      x,
+      y,
+      w: Math.max(1, Math.round((v.x + v.w) * scale) - x),
+      h: Math.max(1, Math.round((v.y + v.h) * scale) - y),
+    };
+  });
+  return { fullW, fullH, w: Math.max(1, Math.round(fullW * scale)), h: Math.max(1, Math.round(fullH * scale)), rects };
 }
 
 /**
@@ -474,6 +517,8 @@ export function mountStorms(parent: Group): void {
     uniforms: {
       uMap: { value: null },
       uRect: { value: new Vector4(0, 0, 1, 1) },
+      uFull: { value: new Vector2(1, 1) },
+      uInset: { value: 1 },
     },
     transparent: true,
     depthWrite: false,
@@ -481,26 +526,52 @@ export function mountStorms(parent: Group): void {
     fog: false,
   });
 
-  /** March into the small target with this eye's camera; the box then draws the result. */
+  /** Coarser in a headset, and while a desktop camera moves. */
+  const tune = (renderer: WebGLRenderer, camera: Camera): void => {
+    if (!material) return;
+    const moving = !camera.matrixWorld.equals(lastView);
+    lastView.copy(camera.matrixWorld);
+    const xr = renderer.xr.isPresenting;
+    material.uniforms.uSteps!.value = Math.max(xr ? COARSE_XR : COARSE_DESKTOP, coarseMin);
+    material.uniforms.uFine!.value = xr ? FINE_XR : moving ? FINE_MOVING : FINE_DESKTOP;
+  };
+
+  const shown = (o: Object3D | null): boolean => {
+    for (; o; o = o.parent) if (!o.visible) return false;
+    return true;
+  };
+
+  /**
+   * March every eye into the small target, before the frame draws anything;
+   * the box then draws the result. `camera` is what the frame renders with:
+   * a headset's ArrayCamera (one camera and viewport per eye) or the
+   * desktop camera.
+   */
   const renderPass = (renderer: WebGLRenderer, camera: Camera): void => {
-    if (!mesh || !material) return;
+    if (!mesh || !material || mesh.material !== composite || !shown(mesh)) return;
     const scale = forcedScale ?? XR_SCALE;
+    const array = (camera as ArrayCamera).isArrayCamera ? (camera as ArrayCamera) : null;
+    const eyes: Camera[] = array ? array.cameras : [camera];
+    if (eyes.length === 0) return;
     renderer.getCurrentViewport(viewport);
-    const w = Math.max(1, Math.round(viewport.z * scale));
-    const h = Math.max(1, Math.round(viewport.w * scale));
+    const layout = passLayout(
+      eyes.map((eye) => {
+        // A headset eye carries its own viewport; a monitor has the one.
+        const v = (array && (eye as Camera & { viewport?: Vector4 }).viewport) || viewport;
+        return { x: v.x, y: v.y, w: v.z, h: v.w };
+      }),
+      scale,
+    );
     if (!target) {
-      target = new WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false });
+      target = new WebGLRenderTarget(layout.w, layout.h, { depthBuffer: false, generateMipmaps: false });
       target.texture.minFilter = LinearFilter;
       target.texture.magFilter = LinearFilter;
-    } else if (target.width !== w || target.height !== h) {
-      target.setSize(w, h);
+    } else if (target.width !== layout.w || target.height !== layout.h) {
+      target.setSize(layout.w, layout.h);
     }
+    tune(renderer, camera);
     passMesh.material = material;
     passMesh.matrixWorld.copy(mesh.matrixWorld);
-    passCam.matrixWorld.copy(camera.matrixWorld);
-    passCam.matrixWorldInverse.copy(camera.matrixWorldInverse);
-    passCam.projectionMatrix.copy(camera.projectionMatrix);
-    passCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
 
     const prevTarget = renderer.getRenderTarget();
     const prevXr = renderer.xr.enabled;
@@ -508,25 +579,52 @@ export function mountStorms(parent: Group): void {
     const prevInfoReset = renderer.info.autoReset;
     const prevAlpha = renderer.getClearAlpha();
     renderer.getClearColor(clearColor);
-    // xr off: this render is ours, not the headset's. info: keep the
-    // frame's draw-call count (the ?perf=1 log) instead of restarting it.
+    // xr off: this render is ours, not the headset's. info: the frame's
+    // counters (the ?perf=1 log) are the frame's to reset.
     renderer.xr.enabled = false;
     renderer.autoClear = false;
     renderer.info.autoReset = false;
-    renderer.setRenderTarget(target);
     renderer.setClearColor(0x000000, 0);
-    renderer.clear();
-    renderer.render(passScene, passCam);
+    eyes.forEach((eye, i) => {
+      const r = layout.rects[i]!;
+      // setRenderTarget is what applies the target's viewport.
+      target!.viewport.set(r.x, r.y, r.w, r.h);
+      renderer.setRenderTarget(target);
+      if (i === 0) renderer.clear();
+      passCam.matrixWorld.copy(eye.matrixWorld);
+      passCam.matrixWorldInverse.copy(eye.matrixWorldInverse);
+      passCam.projectionMatrix.copy(eye.projectionMatrix);
+      passCam.projectionMatrixInverse.copy(eye.projectionMatrixInverse);
+      renderer.render(passScene, passCam);
+    });
     renderer.setClearColor(clearColor, prevAlpha);
     renderer.info.autoReset = prevInfoReset;
     renderer.autoClear = prevAutoClear;
     renderer.xr.enabled = prevXr;
     renderer.setRenderTarget(prevTarget);
-    // setRenderTarget restores the whole framebuffer's viewport; a headset
-    // eye is half of it.
-    renderer.state.viewport(viewport);
     composite.uniforms.uMap!.value = target.texture;
-    composite.uniforms.uRect!.value.copy(viewport);
+    composite.uniforms.uFull!.value.set(layout.fullW, layout.fullH);
+    composite.uniforms.uInset!.value = 0.5 / scale;
+  };
+
+  // Hooked onto whichever scene the box ends up in, once; whatever hook
+  // that scene already had still runs.
+  let hooked: Scene | null = null;
+  const hookScene = (): void => {
+    let root: Object3D = parent;
+    while (root.parent) root = root.parent;
+    if (hooked === root || !(root as Scene).isScene) return;
+    hooked = root as Scene;
+    // three calls a scene's hook with (renderer, scene, camera, target),
+    // not the per-object arguments its types describe.
+    type SceneHook = (this: Scene, renderer: WebGLRenderer, scene: Scene, camera: Camera, renderTarget: unknown) => void;
+    const scene = hooked;
+    const before = scene.onBeforeRender as unknown as SceneHook;
+    const hook: SceneHook = function (renderer, s, camera, renderTarget) {
+      before.call(this, renderer, s, camera, renderTarget);
+      renderPass(renderer, camera);
+    };
+    scene.onBeforeRender = hook as unknown as Scene['onBeforeRender'];
   };
 
   /** Point the box at the march itself or at the reduced pass's picture. */
@@ -667,15 +765,13 @@ export function mountStorms(parent: Group): void {
     applyTop();
     applyMode();
     mesh.onBeforeRender = (renderer: WebGLRenderer, _scene, camera): void => {
-      if (!material || !mesh) return;
-      const moving = !camera.matrixWorld.equals(lastView);
-      lastView.copy(camera.matrixWorld);
-      const xr = renderer.xr.isPresenting;
-      material.uniforms.uSteps!.value = Math.max(xr ? COARSE_XR : COARSE_DESKTOP, coarseMin);
-      material.uniforms.uFine!.value = xr ? FINE_XR : moving ? FINE_MOVING : FINE_DESKTOP;
-      if (mesh.material === composite) renderPass(renderer, camera);
+      if (!mesh) return;
+      // Reduced: the march already ran (renderPass); say which eye this is.
+      if (mesh.material === composite) composite.uniforms.uRect!.value.copy(renderer.getCurrentViewport(viewport));
+      else tune(renderer, camera);
     };
     parent.add(mesh);
+    hookScene();
   };
 
   const load = async (next: VolumeManifest): Promise<void> => {
