@@ -39,6 +39,7 @@ and translations count just as much as code.
 
 <img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
 
+- **v0.15.1**: security release. nginx is updated to 1.30.7, patched against the NGINX2Root vulnerabilities (CVE-2026-123007 and four others, disclosed 2026-11-18). Update now, and update any nginx-based reverse proxy in front of it. Also smoother 3D storms in VR/AR and Explore motion without pauses.
 - **v0.15**: airports with runways, ground detail at 420 fields, weather-coloured labels and an info card; published approaches, arrivals and departures (US) with the runways in use lit up; airways, navaids and fixes; an alert log with a watchlist; what each aircraft is doing on its card; a busy scope at about twice the frame rate.
 - **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards, plus live temporary flight restrictions; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
 - **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.

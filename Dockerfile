@@ -17,7 +17,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: runtime nginx image
 # =============================================================================
-FROM nginx:1.29-alpine
+FROM nginx:1.30-alpine
 
 # Tools used by entrypoint.sh: bc (math for tile pre-cache), wget (downloads),
 # jq (FEEDS_CONFIG parsing), gettext (envsubst), curl (healthcheck), python3

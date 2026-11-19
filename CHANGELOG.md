@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+
+- **nginx updated to 1.30.7**, patched against NGINX2Root (CVE-2026-123007, CVE-2026-123633, CVE-2026-123634, CVE-2026-121810, CVE-2026-113425), five remote code execution flaws in nginx disclosed on 2026-11-18. The image was on nginx 1.29, which gets no fix. It serves plain HTTP without HTTP/2, HTTP/3 or the mail proxy, so the main HTTP/2 flaw was not reachable in the image itself, but it does use the nginx resolver, which one of the five is in. Update now. If a reverse proxy in front of it runs nginx (Nginx Proxy Manager, NPMplus, SWAG), update that too: it is the one facing the internet.
+
 ### Fixed
 
 - **VR/AR airspace names** stay upright and only turn to face you, like the aircraft card, instead of tilting with your head (#19).
