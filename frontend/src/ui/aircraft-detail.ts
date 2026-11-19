@@ -414,6 +414,10 @@ export function createAircraftDetail(
         const text = t(act.kind === 'star' ? 'detail.act_star' : 'detail.act_sid', { id: act.id, apt: act.icao });
         return act.next ? `${text} · ${t('detail.act_next', { fix: act.next })}` : text;
       }
+      case 'refuel': {
+        const text = t('detail.act_refuel', { id: act.track });
+        return act.with ? `${text} · ${t('detail.act_refuel_with', { flight: act.with })}` : text;
+      }
       case 'holding':
         return t('detail.act_holding');
       case 'departing':
@@ -490,7 +494,7 @@ export function createAircraftDetail(
     // What it is doing, inferred from its track, the runways and the
     // published procedures (world/activity.ts).
     const route = a.callsign ? (getRoute(a.callsign) ?? null) : null;
-    setRow(activityLabelEl, activityEl, t('detail.activity'), activityText(activityOf(a, store.trails(a.hex) ?? [], route)));
+    setRow(activityLabelEl, activityEl, t('detail.activity'), activityText(activityOf(a, store.trails(a.hex) ?? [], route, store.snapshot.values())));
 
     // Airspace the aircraft is inside while the 3D airspace layer is on
     // (one line per volume); the same call highlights those volumes.

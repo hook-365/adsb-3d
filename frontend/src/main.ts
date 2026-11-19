@@ -59,6 +59,7 @@ import { mountAirports } from './world/airports';
 import { mountProcedureLayer } from './world/procedure-layer';
 import { mountAirportGround } from './world/airport-ground';
 import { mountCentres } from './world/artcc';
+import { mountRefuelTracks } from './world/refueling-layer';
 import { mountPireps } from './world/pireps';
 import { updateLabelYield } from './world/label-yield';
 import { mountNavData } from './world/navdata';
@@ -1100,6 +1101,7 @@ mountWinds(world.xrRoot);
 const detailTiles = mountDetailTiles(world.xrRoot);
 const airportGround = mountAirportGround(world.xrRoot);
 mountCentres(world.xrRoot);
+mountRefuelTracks(world.xrRoot);
 mountPireps(world.xrRoot);
 const procedureLayer = mountProcedureLayer(world.xrRoot);
 airportPanel = mountAirportPanel(() => store.snapshot.values(), {

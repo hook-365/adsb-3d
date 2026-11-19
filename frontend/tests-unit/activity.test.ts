@@ -6,10 +6,12 @@ import type { Aircraft } from '../src/core/types';
 import type { Airport } from '../src/feed/explore-airports';
 import {
   inProcedureCoverage,
+  formationPartner,
   inferActivity,
   matchFinal,
   matchRunwayFinal,
   matchProcedure,
+  matchRefuelTrack,
   nearestAirport,
   runwayUnder,
   trailTurnDeg,
@@ -19,6 +21,8 @@ import {
 import type { Runway } from '../src/world/airports';
 import { destination } from '../src/world/procedure-geometry';
 import { decodeIndex } from '../src/world/procedures';
+import { decodeRefuelTracks, refuelDrawing } from '../src/world/refueling';
+import refuelText from '../src/world/refueling-data.json?raw';
 
 const index = decodeIndex(JSON.parse(indexText))!;
 
@@ -189,5 +193,80 @@ describe('holding and the rest', () => {
     expect(inProcedureCoverage(44.9, -93.2)).toBe(true);
     expect(inProcedureCoverage(61.2, -150)).toBe(true);
     expect(inProcedureCoverage(51.5, -0.1)).toBe(false);
+  });
+});
+
+describe('refueling tracks', () => {
+  const tracks = decodeRefuelTracks(JSON.parse(refuelText));
+  // Westbound along AR-109's long leg at 45.78 N, one point a minute at 360 kt.
+  const run = (lat: number, fromLon: number, minutes: number): TrailPoint[] =>
+    Array.from({ length: minutes + 1 }, (_, i) => ({ lat, lon: fromLon - i * 0.143, altFt: 27_000, ms: 1_000_000 - (minutes - i) * 60_000 }));
+  const trail = run(45.78, -88.5, 5);
+  const tanker = plane({ lat: 45.78, lon: trail.at(-1)!.lon, altFt: 27_000, groundSpeedKt: 360, trackDeg: 271, military: true });
+
+  it('decodes the generated file', () => {
+    expect(tracks.length).toBeGreaterThan(100);
+    expect(tracks.every((t) => t.pts.length >= 2 && t.bbox[0] <= t.bbox[2])).toBe(true);
+    expect(decodeRefuelTracks({ tracks: [{ id: 'X', pts: [[1, 2]] }, { id: 3 }] })).toEqual([]);
+  });
+  it('names the track a run along it is on, flown either way', () => {
+    expect(matchRefuelTrack(tanker, trail, 1_000_000, tracks)?.id).toBe('AR-109');
+    const back = [...trail].reverse().map((p, i) => ({ ...p, ms: trail[i]!.ms }));
+    expect(matchRefuelTrack({ ...tanker, lon: back.at(-1)!.lon, trackDeg: 91 }, back, 1_000_000, tracks)?.id).toBe('AR-109');
+  });
+  it('needs a run along the track, not a crossing or a fresh contact', () => {
+    expect(matchRefuelTrack({ ...tanker, trackDeg: 180 }, trail, 1_000_000, tracks)).toBeNull();
+    expect(matchRefuelTrack(tanker, trail.slice(-2), 1_000_000, tracks)).toBeNull();
+    const cut = trail.map((p, i) => ({ ...p, lat: 45.78 + (trail.length - 1 - i) * 0.1 }));
+    expect(matchRefuelTrack(tanker, cut, 1_000_000, tracks)).toBeNull();
+    expect(matchRefuelTrack({ ...tanker, lat: 46.4 }, run(46.4, -88.5, 5), 1_000_000, tracks)).toBeNull();
+  });
+  it('finds who is flying in formation', () => {
+    const receiver = plane({ hex: 'ae0001', callsign: 'RCH101', lat: 45.78, lon: tanker.lon + 0.01, altFt: 26_900, groundSpeedKt: 362, trackDeg: 270 });
+    const others = [
+      tanker,
+      plane({ hex: 'a00001', lat: 45.78, lon: tanker.lon + 0.01, altFt: 31_000, groundSpeedKt: 360, trackDeg: 270 }),
+      plane({ hex: 'a00002', lat: 45.79, lon: tanker.lon, altFt: 27_000, groundSpeedKt: 360, trackDeg: 90 }),
+      plane({ hex: 'a00003', lat: 45.9, lon: tanker.lon, altFt: 27_000, groundSpeedKt: 360, trackDeg: 270 }),
+    ];
+    expect(formationPartner(tanker, others)).toBeNull();
+    expect(formationPartner(tanker, [...others, receiver])?.hex).toBe('ae0001');
+  });
+  it('reports it for military aircraft only', () => {
+    const receiver = plane({ hex: 'ae0001', callsign: 'RCH101', lat: 45.78, lon: tanker.lon + 0.01, altFt: 26_900, groundSpeedKt: 362, trackDeg: 270 });
+    const c = ctx({ trail, airports: [], refuelTracks: tracks, others: [tanker, receiver] });
+    expect(inferActivity(tanker, c)).toEqual({ kind: 'refuel', track: 'AR-109', with: 'RCH101' });
+    expect(inferActivity(tanker, { ...c, others: [tanker] })).toEqual({ kind: 'refuel', track: 'AR-109', with: null });
+    expect(inferActivity({ ...tanker, military: false }, c).kind).toBe('cruise');
+  });
+});
+
+describe('refueling track drawing', () => {
+  const tracks = decodeRefuelTracks(JSON.parse(refuelText));
+  const from = (lat: number, lon: number) => (aLat: number, aLon: number) =>
+    Math.hypot((aLat - lat) * 60, (aLon - lon) * 60 * Math.cos((lat * Math.PI) / 180));
+
+  it('keeps a long leg that crosses the scope with both ends outside it', () => {
+    const leg = decodeRefuelTracks({ tracks: [{ id: 'LONG', pts: [[45, -100], [45, -86]] }] });
+    const { pieces, labels } = refuelDrawing(leg, from(45, -93), 100, 6, 60, 10);
+    expect(pieces.length).toBeGreaterThan(0);
+    expect(pieces.length % 4).toBe(0);
+    // Only the part inside the scope is cut up and kept: about 200 of its 590 NM.
+    expect(pieces.length / 4).toBeLessThan(40);
+    for (let i = 0; i < pieces.length; i += 4) {
+      expect(Math.min(from(45, -93)(pieces[i]!, pieces[i + 1]!), from(45, -93)(pieces[i + 2]!, pieces[i + 3]!))).toBeLessThanOrEqual(100);
+    }
+    expect(labels.map((l) => l.id)).toEqual(['LONG']);
+    // Named where the line passes closest to the middle, to within a piece.
+    expect(labels[0]!.nm).toBeLessThanOrEqual(6);
+  });
+  it('draws nothing far from every track, and little of the country for one scope', () => {
+    expect(refuelDrawing(tracks, from(-30, 20), 250, 6, 160, 24).pieces).toEqual([]);
+    const all = refuelDrawing(tracks, () => 0, 250, 6, 160, 24).pieces.length;
+    const local = refuelDrawing(tracks, from(45, -89.5), 262, 6, 160, 24);
+    expect(local.pieces.length).toBeLessThan(all / 8);
+    expect(local.labels.map((l) => l.id)).toEqual(expect.arrayContaining(['AR-321', 'AR-109']));
+    expect(local.labels.length).toBeLessThanOrEqual(24);
+    expect(local.labels[0]!.nm).toBeLessThanOrEqual(local.labels.at(-1)!.nm);
   });
 });

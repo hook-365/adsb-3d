@@ -16,11 +16,12 @@ import {
   type ProcedureIndex,
 } from './procedures';
 import { finalPath } from './procedure-geometry';
+import { getRefuelTracks, loadRefuelTracks, subscribeRefuelTracks, type RefuelTrack } from './refueling';
 
 // What is this aircraft doing? Worked out for the selected aircraft from
 // what the app already knows: its position, track and vertical rate, its
 // trail, its scheduled route, the runways, and (US) the published
-// procedures. The answer is an inference from traffic data, never a
+// procedures and air refueling tracks. The answer is an inference from traffic data, never a
 // clearance: "final for runway 12R" means it is lined up and descending
 // there, and "BAINY4 arrival" that its track lies along that procedure.
 //
@@ -32,6 +33,7 @@ export type Activity =
   | { kind: 'landing'; icao: string }
   | { kind: 'final'; icao: string; runway: string; nm: number }
   | { kind: 'star' | 'sid'; icao: string; id: string; next: string | null }
+  | { kind: 'refuel'; track: string; with: string | null }
   | { kind: 'holding' }
   | { kind: 'departing'; icao: string }
   | { kind: 'arriving'; icao: string; nm: number }
@@ -63,6 +65,18 @@ const PROCEDURE_HISTORY = 8;
 const PROCEDURE_HISTORY_MS = 12 * 60_000;
 const STAR_RANGE_NM = 250;
 const SID_RANGE_NM = 100;
+/** Half width of the corridor along a refueling track's centreline, NM. */
+const REFUEL_CROSS_NM = 4;
+const REFUEL_TRACK_DEG = 30;
+const REFUEL_WINDOW_MS = 6 * 60_000;
+/** Ground covered inside the corridor before it counts: more than any crossing of it. */
+const REFUEL_MIN_RUN_NM = 20;
+const REFUEL_HISTORY = 8;
+/** Two aircraft this close, level with each other and going the same way are flying together. */
+const FORMATION_NM = 1.5;
+const FORMATION_ALT_FT = 1000;
+const FORMATION_TRACK_DEG = 20;
+const FORMATION_SPEED_KT = 50;
 const VERTICAL_FPM = 300;
 /** Airborne this low and this close to a field, and not climbing, is the last seconds of a landing. */
 const LANDING_ABOVE_FT = 600;
@@ -202,6 +216,67 @@ export function matchProcedure(
   return best ? { candidate: best.candidate, next: best.next } : null;
 }
 
+function trackFit(lat: number, lon: number, track: RefuelTrack): { crossNm: number; courseDeg: number } | null {
+  const box = REFUEL_CROSS_NM / 60;
+  const [minLat, minLon, maxLat, maxLon] = track.bbox;
+  if (lat < minLat - box || lat > maxLat + box || lon < minLon - box * 3 || lon > maxLon + box * 3) return null;
+  let best: { crossNm: number; courseDeg: number } | null = null;
+  for (let i = 0; i + 1 < track.pts.length; i++) {
+    const [aLat, aLon] = track.pts[i]!;
+    const [bLat, bLon] = track.pts[i + 1]!;
+    const fit = segmentFit(lat, lon, { lat: aLat, lon: aLon, altFt: null }, { lat: bLat, lon: bLon, altFt: null });
+    if (!best || fit.crossNm < best.crossNm) best = fit;
+  }
+  return best && best.crossNm <= REFUEL_CROSS_NM ? best : null;
+}
+
+/**
+ * The air refueling track an aircraft is flying: it is inside the track's
+ * corridor, headed along it either way, and its recent trail has run along
+ * the same corridor for longer than a crossing would. Says where it is
+ * flying, not that fuel is moving.
+ */
+export function matchRefuelTrack(
+  a: Pick<Aircraft, 'lat' | 'lon' | 'trackDeg'>,
+  trail: readonly TrailPoint[],
+  nowMs: number,
+  tracks: readonly RefuelTrack[],
+): RefuelTrack | null {
+  if (a.trackDeg === null) return null;
+  const recent = trail.filter((p) => nowMs - p.ms <= REFUEL_WINDOW_MS);
+  const oldest = recent[0];
+  if (!oldest || distanceNm(oldest.lat, oldest.lon, a.lat, a.lon) < REFUEL_MIN_RUN_NM) return null;
+  const step = Math.max(1, Math.floor(recent.length / REFUEL_HISTORY));
+  const history = recent.filter((_, i) => i % step === 0);
+  let best: { track: RefuelTrack; along: boolean; crossNm: number } | null = null;
+  for (const track of tracks) {
+    const fit = trackFit(a.lat, a.lon, track);
+    if (!fit) continue;
+    const off = Math.abs(turnBetween(a.trackDeg, fit.courseDeg));
+    if (off > REFUEL_TRACK_DEG && off < 180 - REFUEL_TRACK_DEG) continue;
+    if (!history.every((p) => trackFit(p.lat, p.lon, track))) continue;
+    // Tracks that share a line ("AR-7A South", "AR-7B North") are drawn in the direction they are flown.
+    const along = off <= REFUEL_TRACK_DEG;
+    if (best && (best.along !== along ? best.along : best.crossNm <= fit.crossNm)) continue;
+    best = { track, along, crossNm: fit.crossNm };
+  }
+  return best?.track ?? null;
+}
+
+/** The nearest aircraft flying in formation with this one: close, level with it, same way, same speed. */
+export function formationPartner(a: Aircraft, others: Iterable<Aircraft>): Aircraft | null {
+  let best: { aircraft: Aircraft; nm: number } | null = null;
+  for (const o of others) {
+    if (o.hex === a.hex || o.onGround || Math.abs(o.altFt - a.altFt) > FORMATION_ALT_FT) continue;
+    if (Math.abs(o.lat - a.lat) > 0.05 || Math.abs(o.lon - a.lon) > 0.15) continue;
+    if (a.trackDeg !== null && o.trackDeg !== null && Math.abs(turnBetween(a.trackDeg, o.trackDeg)) > FORMATION_TRACK_DEG) continue;
+    if (a.groundSpeedKt !== null && o.groundSpeedKt !== null && Math.abs(a.groundSpeedKt - o.groundSpeedKt) > FORMATION_SPEED_KT) continue;
+    const nm = distanceNm(a.lat, a.lon, o.lat, o.lon);
+    if (nm <= FORMATION_NM && (!best || nm < best.nm)) best = { aircraft: o, nm };
+  }
+  return best?.aircraft ?? null;
+}
+
 /** The runway end an aircraft is on final for, from the published finals near it. */
 export function matchFinal(
   a: Aircraft,
@@ -261,6 +336,10 @@ export interface ActivityContext {
   runwaysOf: (icao: string) => readonly Runway[];
   index: ProcedureIndex | null;
   candidates: readonly ProcedureCandidate[];
+  /** Air refueling tracks, once loaded. */
+  refuelTracks?: readonly RefuelTrack[] | null;
+  /** Everything on the scope, to find who it is flying with. */
+  others?: Iterable<Aircraft>;
 }
 
 /** Pure: the most specific thing that can be said about what the aircraft is doing. */
@@ -291,6 +370,15 @@ export function inferActivity(a: Aircraft, ctx: ActivityContext): Activity {
   );
   if (procedure) {
     return { kind: procedure.candidate.kind, icao: procedure.candidate.icao, id: procedure.candidate.id, next: procedure.next };
+  }
+
+  // Military only: an airliner whose route happens to lie along a track is not using it.
+  if (a.military && ctx.refuelTracks) {
+    const track = matchRefuelTrack(a, ctx.trail, ctx.nowMs, ctx.refuelTracks);
+    if (track) {
+      const partner = ctx.others ? formationPartner(a, ctx.others) : null;
+      return { kind: 'refuel', track: track.id, with: partner ? (partner.callsign ?? partner.registration ?? partner.hex.toUpperCase()) : null };
+    }
   }
 
   if (Math.abs(trailTurnDeg(ctx.trail, ctx.nowMs)) >= HOLD_TURN_DEG) return { kind: 'holding' };
@@ -381,18 +469,25 @@ function loadCandidates(icao: string, wanted: ReadonlySet<'star' | 'sid'>): Proc
 /**
  * What the aircraft is doing, from whatever has loaded so far. Starts any
  * fetch the answer could use (airports, runways, the procedure index, the
- * route airports' procedures); subscribeActivity fires as they land.
+ * route airports' procedures, refueling tracks); subscribeActivity fires as they land.
  */
-export function activityOf(a: Aircraft, trail: readonly TrailPoint[], route: RouteInfo | null): Activity {
+export function activityOf(
+  a: Aircraft,
+  trail: readonly TrailPoint[],
+  route: RouteInfo | null,
+  others?: Iterable<Aircraft>,
+): Activity {
   if (!wired) {
     wired = true;
     subscribeProcedures(notify);
     subscribeRunways(notify);
+    subscribeRefuelTracks(notify);
     void loadAirports().then(notify);
     loadRunways();
   }
   const covered = inProcedureCoverage(a.lat, a.lon);
   if (covered && !a.onGround) void loadProcedureIndex();
+  if (covered && !a.onGround && a.military) loadRefuelTracks();
   const candidates: ProcedureCandidate[] = [];
   const plausible = route?.plausible ? route : null;
   if (covered && !a.onGround && plausible) {
@@ -412,5 +507,7 @@ export function activityOf(a: Aircraft, trail: readonly TrailPoint[], route: Rou
     runwaysOf,
     index: getProcedureIndex(),
     candidates,
+    refuelTracks: getRefuelTracks(),
+    others: others ?? [],
   });
 }

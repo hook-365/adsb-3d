@@ -452,6 +452,12 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
       },
       {
         kind: 'toggle',
+        key: 'refuelTracks',
+        label: t('settings.refuel_tracks'),
+        description: t('settings.refuel_tracks_desc'),
+      },
+      {
+        kind: 'toggle',
         key: 'airspaceControlled',
         label: t('settings.airspace_controlled'),
         description: t('settings.airspace_controlled_desc'),
@@ -770,7 +776,7 @@ const SECTION_LAYOUT: Record<string, readonly RowGroupSpec[]> = {
     },
     { heading: t('settings.group_overlays'), ids: ['rangeRings', 'acarsPings', 'routeLine'] },
     { heading: t('settings.group_airports'), ids: ['airportRunways', 'airportGround', 'airportApproaches', 'airportLabels', 'airportWeather'] },
-    { heading: t('settings.group_navigation'), ids: ['airwaysLow', 'airwaysHigh', 'navaids', 'fixes'] },
+    { heading: t('settings.group_navigation'), ids: ['airwaysLow', 'airwaysHigh', 'navaids', 'fixes', 'refuelTracks'] },
     { heading: t('settings.group_airspace'), ids: ['airspaceControlled', 'airspaceSpecial', 'airspaceTfr', 'airspaceCenters', 'airspaceLabels'] },
     { heading: t('settings.group_altitude'), ids: ['altitudeExaggeration', 'altitudeCurveBias'] },
   ],

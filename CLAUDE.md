@@ -108,7 +108,7 @@ loading toast names; a layer calls `setLoading(key, label | null)`), `feed/feeds
   loader, range-fetch of one airport from `procedures.pack`, runways in
   use) + `procedure-geometry` (pure: ARINC 424 legs to polylines; legs
   that end on a condition are flagged approximate and drawn dashed) +
-  `procedure-layer` (the one procedure picked in the airport card), `airport-ground` (taxiways, aprons, terminals and gates of the airport under a close camera; range-fetched from `airport-ground.pack`, OpenStreetMap, built by `scripts/build-airport-ground.py`), `frequencies` (airport radio frequencies for the card, `frequencies-data.json`), `artcc` (US control centre outlines and the card's Centre row: where an aircraft is, never who it talks to; `artcc-data.json`), `pireps` (pilot reports as clickable markers, nginx `/wx/pirep`), `activity` (what the selected aircraft is doing: parked, on final for a runway, on a named arrival or departure, holding; pure inference plus a lazy loader, shown as the detail card's first row), `label-yield` (fades a ground label while a nearer aircraft overlaps it on screen; a layer opts its label group in with `yieldToAircraft`),
+  `procedure-layer` (the one procedure picked in the airport card), `airport-ground` (taxiways, aprons, terminals and gates of the airport under a close camera; range-fetched from `airport-ground.pack`, OpenStreetMap, built by `scripts/build-airport-ground.py`), `frequencies` (airport radio frequencies for the card, `frequencies-data.json`), `artcc` (US control centre outlines and the card's Centre row: where an aircraft is, never who it talks to; `artcc-data.json`), `pireps` (pilot reports as clickable markers, nginx `/wx/pirep`), `activity` (what the selected aircraft is doing: parked, on final for a runway, on a named arrival or departure, on an air refueling track (military only, with whoever is in formation; `refueling` loads `refueling-data.json`, and `refueling-layer` draws the tracks on the ground as one merged `LineSegments` behind the `refuelTracks` setting), holding; pure inference plus a lazy loader, shown as the detail card's first row), `label-yield` (fades a ground label while a nearer aircraft overlaps it on screen; a layer opts its label group in with `yieldToAircraft`),
   `navdata` (US airways at the heights they are flown, navaids and fixes)
   + `navdata.json` (generated from the same CIFP edition by
   `scripts/build-navdata.py`), `route-line` (great
@@ -316,7 +316,7 @@ Generated data (committed; regenerate, never hand-edit; stdlib Python):
 4.0), `scripts/build-airports.py` → `feed/explore-airports.json`
 (OurAirports), `scripts/build-runways.py` → `world/runways-data.json`
 (OurAirports; run after build-airports, it keeps that file's airports),
-`scripts/build-frequencies.py` → `world/frequencies-data.json` (OurAirports), `scripts/build-artcc.py` → `world/artcc-data.json` (FAA), `scripts/build-airport-ground.py` → `world/airport-ground-index.json` + `world/airport-ground.pack` (OpenStreetMap via Overpass, ODbL; slow and resumable, answers kept in `.cache/`),
+`scripts/build-frequencies.py` → `world/frequencies-data.json` (OurAirports), `scripts/build-artcc.py` → `world/artcc-data.json` (FAA), `scripts/build-refueling.py` → `world/refueling-data.json` (tar1090's US A2A refueling overlay), `scripts/build-airport-ground.py` → `world/airport-ground-index.json` + `world/airport-ground.pack` (OpenStreetMap via Overpass, ODbL; slow and resumable, answers kept in `.cache/`),
 `scripts/build-procedures.py` → `world/procedures-index.json` +
 `world/procedures.pack` + `world/cifp-edition.json` and `scripts/build-navdata.py` →
 `world/navdata.json` (both FAA CIFP, run together by `scripts/refresh-cifp.py`; a new edition every 28 days, and
@@ -339,8 +339,9 @@ work done.
   instance only for what must animate independently.
 - Never commit `.env` or real coordinates/hostnames/IPs. Examples use
   placeholder coordinates and TEST-NET (`192.0.2.x`) addresses.
-- `frontend/src/aircraft/shapes-data.json` is vendored from tar1090 and is
-  **GPL v2+**; the rest of the source is MIT.
+- `frontend/src/aircraft/shapes-data.json` (vendored) and
+  `frontend/src/world/refueling-data.json` (generated from its overlay)
+  come from tar1090 and are **GPL v2+**; the rest of the source is MIT.
 - **Version:** `VERSION` at the repo root is the only place the version is
   set. Never type a version number into nginx.conf, entrypoint.sh, the
   Python services or the frontend — they read `/VERSION` (nginx image:

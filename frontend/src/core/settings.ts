@@ -272,6 +272,8 @@ export interface Settings {
   /** Low (Victor, T) and high (Jet, Q) airways (world/navdata.ts; FAA CIFP, US). */
   airwaysLow: boolean;
   airwaysHigh: boolean;
+  /** US air refueling tracks, drawn on the ground (world/refueling-layer.ts). */
+  refuelTracks: boolean;
   /** VORs and NDBs, and the named fixes along the airways. */
   navaids: boolean;
   fixes: boolean;
@@ -377,6 +379,7 @@ const DEFAULTS: Settings = {
   airportWeather: true,
   airwaysLow: false,
   airwaysHigh: false,
+  refuelTracks: false,
   navaids: false,
   fixes: false,
   windsAloft: false,

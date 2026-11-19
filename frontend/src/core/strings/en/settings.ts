@@ -223,6 +223,8 @@ export const settingsStrings = {
   'settings.navaids_desc': 'VORs and NDBs with their identifiers and frequencies.',
   'settings.fixes': 'Fixes',
   'settings.fixes_desc': 'The named points along the airways. Names are shown near the centre of the scope.',
+  'settings.refuel_tracks': 'Refueling tracks',
+  'settings.refuel_tracks_desc': 'US military air refueling tracks, drawn on the ground and named near the centre of the scope. Centrelines only; the data gives no heights. Not for navigation.',
   'settings.group_airports': 'Airports',
   'settings.airport_runways': 'Runways',
   'settings.airport_runways_desc': 'Runways drawn where they lie, for airports on the scope. OurAirports data; small strips may be missing.',

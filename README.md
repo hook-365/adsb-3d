@@ -86,6 +86,7 @@ Full history in [CHANGELOG.md](CHANGELOG.md) and on the
 - **Frequencies**: the airport card lists the field's ATIS, clearance, ground, tower, approach and departure frequencies (OurAirports).
 - **Pilot reports** (off by default): turbulence, icing and weather reported by pilots in the last two hours, marked where and how high they were and coloured by severity. Click one for the report as filed. From aviationweather.gov; mostly a US product.
 - **Centre boundaries** (off by default, US): outlines of the air route traffic control centres, and a Centre row on the aircraft card saying whose airspace it is in.
+- **Air refueling tracks** (off by default, US): the published military refueling tracks drawn on the ground and named, and the aircraft card says when a military aircraft is flying along one and who is in formation with it. Centrelines from the overlay tar1090 draws; the data gives no heights. An inference from position, not a statement that fuel is moving.
 - **Route line**: select an aircraft and its scheduled route is drawn as a great-circle line from origin to destination, when the route fits where the aircraft is.
 
 - **Alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Squawks 7400 (unmanned, lost link) and 7777 (military intercept) raise a calmer one. A watchlist of callsigns, registrations or hex codes (`RCH*` matches any ending) and, optionally, military aircraft alert when they come onto the scope. Every alert is kept in a log behind a pill at the top of the screen. Live only; an emergency sound is off by default. Desktop only: a headset shows the ring, not the toast.
@@ -428,6 +429,7 @@ result:
 | `scripts/build-runways.py` | `frontend/src/world/runways-data.json` | OurAirports `runways.csv` (public domain) | After `build-airports.py`, or when runways change |
 | `scripts/build-frequencies.py` | `frontend/src/world/frequencies-data.json` | OurAirports `airport-frequencies.csv` (public domain) | With the runways |
 | `scripts/build-artcc.py` | `frontend/src/world/artcc-data.json` | FAA open data, Airspace Boundary (public domain) | Rarely; with the airspace file |
+| `scripts/build-refueling.py` | `frontend/src/world/refueling-data.json` | tar1090's `US_A2A_refueling.geojson` (GPL v2+) | Rarely |
 | `scripts/build-airport-ground.py` | `frontend/src/world/airport-ground-index.json`, `airport-ground.pack` | OpenStreetMap through the Overpass API (ODbL) | Occasionally. Slow: the public Overpass servers are often busy, so it retries and resumes from `.cache/` |
 | `scripts/build-procedures.py` | `frontend/src/world/procedures-index.json`, `procedures.pack` | FAA CIFP (not copyrighted) | Every 28 days, when a new edition is effective |
 | `scripts/build-navdata.py` | `frontend/src/world/navdata.json` | FAA CIFP (not copyrighted) | With `build-procedures.py` |
@@ -451,7 +453,9 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 - **OpenStreetMap contributors** ([openstreetmap.org/copyright](https://www.openstreetmap.org/copyright), ODbL 1.0) — the taxiways, aprons, terminals and gates of the airport ground detail (`frontend/src/world/airport-ground.pack`), credited on screen while the layer is on.
 - **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
 - **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),
-  GPL v2+) — SVG aircraft shape catalog and the altitude → color palette.
+  GPL v2+) — SVG aircraft shape catalog, the altitude → color palette, and
+  the US air refueling track centrelines (its "US A2A Refueling" overlay,
+  `frontend/src/world/refueling-data.json`).
 - **readsb / dump1090-fa** — upstream Mode S/ADS-B decoder.
 - **planespotters.net** — aircraft photographs in the detail panel.
 - **[adsb.im](https://adsb.im)** — callsign → route resolution, run by
@@ -478,6 +482,7 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 
 ## License
 
-Source code is MIT (see `LICENSE`). Vendored tar1090 data
-(`frontend/src/aircraft/shapes-data.json`) is GPL v2+ per upstream — if
-you redistribute the built app, GPL governs that component.
+Source code is MIT (see `LICENSE`). Data taken from tar1090
+(`frontend/src/aircraft/shapes-data.json` and
+`frontend/src/world/refueling-data.json`) is GPL v2+ per upstream — if
+you redistribute the built app, GPL governs those components.

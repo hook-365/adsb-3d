@@ -219,6 +219,8 @@ export const settingsStrings = {
   'settings.navaids_desc': 'VORs und NDBs mit Kennung und Frequenz.',
   'settings.fixes': 'Wegpunkte',
   'settings.fixes_desc': 'Die benannten Punkte entlang der Luftstraßen. Namen erscheinen nahe der Mitte des Sichtbereichs.',
+  'settings.refuel_tracks': 'Luftbetankungsstrecken',
+  'settings.refuel_tracks_desc': 'Militärische Luftbetankungsstrecken der USA, am Boden gezeichnet und nahe der Mitte des Sichtbereichs benannt. Nur Mittellinien; die Daten enthalten keine Höhen. Nicht für die Navigation.',
   'settings.group_airports': 'Flughäfen',
   'settings.airport_runways': 'Pisten',
   'settings.airport_runways_desc': 'Pisten an ihrer tatsächlichen Lage für Flughäfen im Sichtbereich. Daten von OurAirports; kleine Plätze können fehlen.',

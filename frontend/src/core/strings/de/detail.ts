@@ -84,6 +84,8 @@ export const detailStrings = {
   'detail.act_star': 'Anflugroute {id} nach {apt}',
   'detail.act_sid': 'Abflugroute {id} ab {apt}',
   'detail.act_next': 'weiter nach {fix}',
+  'detail.act_refuel': 'Auf Luftbetankungsstrecke {id}',
+  'detail.act_refuel_with': 'in Formation mit {flight}',
   'detail.act_holding': 'Warteschleife oder Kreisen',
   'detail.act_departing': 'Steigflug ab {apt}',
   'detail.act_arriving': 'Anflug auf {apt} · noch {dist}',

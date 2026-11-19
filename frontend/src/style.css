@@ -1861,6 +1861,14 @@ body.xr-on .acars-toggle {
   font-size: 9px;
 }
 
+/* Names of the air refueling tracks (world/refueling-layer.ts). */
+.aircraft-label.refuel-label {
+  color: #c3ccff;
+  border-color: color-mix(in srgb, #8fa3ff 45%, transparent);
+  background: color-mix(in srgb, var(--panel-base-alt) 60%, transparent);
+  font-size: 9px;
+}
+
 /* Pilot reports (world/pireps.ts): coloured by how bad it was; click for the report as filed. */
 .aircraft-label.pirep-label {
   display: flex;

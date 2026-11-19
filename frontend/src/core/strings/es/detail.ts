@@ -84,6 +84,8 @@ export const detailStrings = {
   'detail.act_star': 'Llegada {id} a {apt}',
   'detail.act_sid': 'Salida {id} desde {apt}',
   'detail.act_next': 'siguiente {fix}',
+  'detail.act_refuel': 'En ruta de reabastecimiento {id}',
+  'detail.act_refuel_with': 'en formación con {flight}',
   'detail.act_holding': 'En espera o en círculos',
   'detail.act_departing': 'Ascendiendo desde {apt}',
   'detail.act_arriving': 'Llegando a {apt} · faltan {dist}',

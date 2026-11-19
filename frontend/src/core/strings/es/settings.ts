@@ -219,6 +219,8 @@ export const settingsStrings = {
   'settings.navaids_desc': 'VOR y NDB con su identificador y frecuencia.',
   'settings.fixes': 'Puntos de referencia',
   'settings.fixes_desc': 'Los puntos con nombre a lo largo de las aerovías. Los nombres se muestran cerca del centro del alcance.',
+  'settings.refuel_tracks': 'Rutas de reabastecimiento',
+  'settings.refuel_tracks_desc': 'Rutas militares de reabastecimiento en vuelo de EE. UU., dibujadas sobre el terreno y nombradas cerca del centro del alcance. Solo ejes; los datos no indican alturas. No apto para la navegación.',
   'settings.group_airports': 'Aeropuertos',
   'settings.airport_runways': 'Pistas',
   'settings.airport_runways_desc': 'Pistas dibujadas en su posición real para los aeropuertos del alcance. Datos de OurAirports; pueden faltar pistas pequeñas.',
