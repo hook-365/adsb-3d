@@ -7,8 +7,9 @@ import { t } from '../core/i18n';
 import { setLoading } from '../core/loading';
 import { getSettings, subscribeSettings } from '../core/settings';
 import { DIORAMA_PLANES } from './diorama-clip';
+import { subscribeElevation } from './elevation';
 import { yieldToAircraft } from './label-yield';
-import { terrainSurface } from './tiles';
+import { terrainActive, terrainSurface } from './tiles';
 
 // US air route traffic control centres (ARTCCs): the twenty-odd regions
 // en-route traffic is handed between. Drawn as outlines on the ground,
@@ -35,6 +36,8 @@ const COLOR = 0x9fb4c8;
 const MAX_PIECE_NM = 6;
 /** How far inside its own side of the boundary a centre's name sits, NM. */
 const LABEL_INSET_NM = 7;
+/** Elevation tiles stream in after boot and after a feed switch: rebuild once they settle. */
+const ELEVATION_SETTLE_MS = 1500;
 
 /** Parse the generated file. Entries that do not fit are dropped. */
 export function decodeCentres(raw: unknown): Centre[] {
@@ -133,6 +136,7 @@ export function mountCentres(parent: Group): void {
   });
   let lines: LineSegments | null = null;
   let attached = false;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
   const tmp = new Vector3();
 
   const dispose = (): void => {
@@ -148,6 +152,7 @@ export function mountCentres(parent: Group): void {
   };
 
   const rebuild = (): void => {
+    clearTimeout(settleTimer);
     dispose();
     if (!attached || !centres) return;
     const positions: number[] = [];
@@ -232,6 +237,12 @@ export function mountCentres(parent: Group): void {
     if (key === lastKey) return;
     lastKey = key;
     rebuild();
+  });
+  // An outline built before its terrain has loaded lies at sea level, under the ground.
+  subscribeElevation(() => {
+    if (!attached || !terrainActive()) return;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(rebuild, ELEVATION_SETTLE_MS);
   });
   sync();
 }
