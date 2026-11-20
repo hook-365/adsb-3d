@@ -20,7 +20,7 @@ import {
   Vector2,
   Vector3,
   Vector4,
-  WebGLRenderTarget,
+  WebGLMultipleRenderTargets,
   GLSL3,
   type ArrayCamera,
   type Camera,
@@ -52,9 +52,14 @@ import { subscribeField, type FieldGrid } from './weather-fields';
 // each layer height. That is what puts an aircraft at FL300 inside the
 // echo at FL300 instead of above or below it.
 //
-// Known v1 limit: the volume does not read the scene depth buffer, so an
-// aircraft inside a storm is drawn fully in front of it (the box's back
-// face is behind the aircraft, so the aircraft wins the depth test).
+// Depth: the box is only the march's canvas, so its own depth means
+// nothing. Its floor is the lowest MRMS level, 0.5 km MSL, and 3D terrain
+// higher than that used to win the depth test and erase every storm over
+// high ground (issue #19). The march instead reports where its echo is,
+// the opacity-weighted distance along the ray, as the fragment's depth:
+// a storm is hidden by what stands in front of it and covers what is
+// behind it, terrain and aircraft alike. The volume still does not read
+// the scene depth buffer, so a ray is never cut short at a mountain.
 //
 // In a headset the march is the most expensive thing on screen: it runs
 // for every pixel of both eyes at the panel's resolution, and halved a
@@ -252,16 +257,35 @@ export function rampTable(size = RAMP_SIZE): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+// A 0..1 depth through an RGBA8 target and back. Kept under 1 so fract()
+// cannot wrap it to 0.
+const PACK_GLSL = /* glsl */ `
+vec4 packDepth(float v) {
+  vec4 r = fract(v * vec4(1.0, 255.0, 65025.0, 16581375.0));
+  return r - r.yzww * vec4(1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0, 0.0);
+}
+float unpackDepth(vec4 r) {
+  return dot(r, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0));
+}
+`;
+
 const VERT = /* glsl */ `
 #include <clipping_planes_pars_vertex>
 out vec3 vPosObj;
 out vec3 vCamObj;
+out vec2 vClipZW;
+flat out vec2 vCamZW;
 void main() {
   vPosObj = position;
   // Camera in the box's own frame, so the march is a unit-cube problem.
   vCamObj = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
+  // Clip z and w are linear along the ray from the camera (the view origin,
+  // so the projection's last column) to this point of the box wall; the
+  // fragment shader mixes the two to get the depth of a point in between.
+  vClipZW = gl_Position.zw;
+  vCamZW = projectionMatrix[3].zw;
   #include <clipping_planes_vertex>
 }
 `;
@@ -270,7 +294,10 @@ const FRAG = /* glsl */ `
 precision highp sampler3D;
 #include <clipping_planes_pars_fragment>
 // GLSL3 ShaderMaterial: three leaves the output declaration to us.
-out vec4 fragColor;
+// The second output is the echo's depth for the reduced pass, whose target
+// has no depth buffer; drawn straight to the screen it goes nowhere.
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragEchoDepth;
 uniform sampler3D uVolume;
 uniform sampler2D uHeightLut;
 uniform sampler2D uRamp;
@@ -287,7 +314,10 @@ uniform vec4 uTopUv;        // xy scale, zw offset
 uniform sampler2D uKmLut;   // box y -> km MSL
 in vec3 vPosObj;
 in vec3 vCamObj;
+in vec2 vClipZW;
+flat in vec2 vCamZW;
 
+${PACK_GLSL}
 // Interleaved gradient noise: an ordered, evenly spread dither. White noise
 // clumps, and the clumps are what read as grain when the pattern is fixed
 // to the screen while a headset turns.
@@ -313,6 +343,7 @@ void main() {
   float tStart = tEnter + stepLen * ign(gl_FragCoord.xy);
   vec3 rgb = vec3(0.0);
   float acc = 0.0;
+  float tSum = 0.0; // opacity-weighted distance, for the depth
   for (int i = 0; i < 64; i++) {
     float tc = tStart + coarse * float(i);
     if (i >= uSteps || tc >= tExit || acc > 0.95) break;
@@ -345,16 +376,22 @@ void main() {
       vec4 c = textureLod(uRamp, vec2(dbz / ${RAMP_MAX_DBZ.toFixed(1)}, 0.5), 0.0);
       float a = 1.0 - exp(-c.a * uDensity * stepLen);
       rgb += (1.0 - acc) * a * c.rgb;
+      tSum += (1.0 - acc) * a * t;
       acc += (1.0 - acc) * a;
       if (acc > 0.95) break;
     }
   }
   if (acc <= 0.002) discard;
   fragColor = vec4(rgb, acc);
+  // Where the echo is, not where the box wall is (see the header).
+  vec2 zw = mix(vCamZW, vClipZW, (tSum / acc) / length(vPosObj - vCamObj));
+  float depth = clamp(zw.x / zw.y * 0.5 + 0.5, 0.0, 0.999999);
+  gl_FragDepth = depth;
+  fragEchoDepth = packDepth(depth);
 }
 `;
 
-/** The reduced pass, drawn back onto the box: one lookup per pixel. */
+/** The reduced pass, drawn back onto the box: two lookups per pixel. */
 const COMPOSITE_VERT = /* glsl */ `
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -364,6 +401,8 @@ void main() {
 const COMPOSITE_FRAG = /* glsl */ `
 out vec4 fragColor;
 uniform sampler2D uMap;
+uniform sampler2D uDepth; // the echo's depth, packed, nearest-sampled
+${PACK_GLSL}
 uniform vec4 uRect;   // this eye's viewport, framebuffer pixels
 uniform vec2 uFull;   // the framebuffer the target mirrors, pixels
 uniform float uInset; // half a target texel, in framebuffer pixels
@@ -373,6 +412,7 @@ void main() {
   vec4 c = texture(uMap, p / uFull);
   if (c.a <= 0.002) discard;
   fragColor = c;
+  gl_FragDepth = unpackDepth(texture(uDepth, p / uFull));
 }
 `;
 
@@ -498,7 +538,8 @@ export function mountStorms(parent: Group): void {
   // and three would otherwise rebuild a headset eye's matrix without its rig.
   const forcedScale = parseStormScale(window.location.search);
   let reduced = forcedScale !== null || getXrState().presenting;
-  let target: WebGLRenderTarget | null = null;
+  /** Two textures: the picture, and the echo's depth (see the header). */
+  let target: WebGLMultipleRenderTargets | null = null;
   const passScene = new Scene();
   passScene.matrixWorldAutoUpdate = false;
   const passMesh = new Mesh(geometry);
@@ -516,6 +557,7 @@ export function mountStorms(parent: Group): void {
     fragmentShader: COMPOSITE_FRAG,
     uniforms: {
       uMap: { value: null },
+      uDepth: { value: null },
       uRect: { value: new Vector4(0, 0, 1, 1) },
       uFull: { value: new Vector2(1, 1) },
       uInset: { value: 1 },
@@ -563,9 +605,12 @@ export function mountStorms(parent: Group): void {
       scale,
     );
     if (!target) {
-      target = new WebGLRenderTarget(layout.w, layout.h, { depthBuffer: false, generateMipmaps: false });
-      target.texture.minFilter = LinearFilter;
-      target.texture.magFilter = LinearFilter;
+      target = new WebGLMultipleRenderTargets(layout.w, layout.h, 2, { depthBuffer: false, generateMipmaps: false });
+      target.texture[0]!.minFilter = LinearFilter;
+      target.texture[0]!.magFilter = LinearFilter;
+      // Packed bytes: a blend of two depths is neither.
+      target.texture[1]!.minFilter = NearestFilter;
+      target.texture[1]!.magFilter = NearestFilter;
     } else if (target.width !== layout.w || target.height !== layout.h) {
       target.setSize(layout.w, layout.h);
     }
@@ -602,7 +647,8 @@ export function mountStorms(parent: Group): void {
     renderer.autoClear = prevAutoClear;
     renderer.xr.enabled = prevXr;
     renderer.setRenderTarget(prevTarget);
-    composite.uniforms.uMap!.value = target.texture;
+    composite.uniforms.uMap!.value = target.texture[0]!;
+    composite.uniforms.uDepth!.value = target.texture[1]!;
     composite.uniforms.uFull!.value.set(layout.fullW, layout.fullH);
     composite.uniforms.uInset!.value = 0.5 / scale;
   };

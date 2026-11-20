@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **3D storms hidden by 3D terrain.** Over ground higher than about 500 m (Denver, the mountains around Los Angeles) the terrain was drawn over the storms above it, on a monitor and in a headset. A storm is now hidden only by what is actually in front of it. This also means an aircraft behind a storm is seen through it instead of being drawn on top (#19).
 - **Centre boundaries under the terrain.** With 3D terrain on, the control centre outlines could be drawn at sea level after a page load or a feed switch, because they were built before the elevation tiles arrived. They now rebuild once the terrain has settled, like the other ground layers.
 
 ---
