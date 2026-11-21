@@ -1,6 +1,6 @@
 # Features
 
-Everything the viewer can show. Most layers are toggles in the settings panel; the ones that need an extra container or an environment variable say so. Setup for those is in [CONFIGURATION.md](CONFIGURATION.md).
+Everything the viewer can show. Most layers are toggles in the settings panel; the ones that need an extra container or an environment variable say so. [CONFIGURATION.md](CONFIGURATION.md) has the one example that turns each of them on.
 
 ![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](../Live.jpg)
 
@@ -42,7 +42,7 @@ Everything the viewer can show. Most layers are toggles in the settings panel; t
 - **Alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Squawks 7400 (unmanned, lost link) and 7777 (military intercept) raise a calmer one. A watchlist of callsigns, registrations or hex codes (`RCH*` matches any ending) and, optionally, military aircraft alert when they come onto the scope. Every alert is kept in a log behind a pill at the top of the screen. Live only; an emergency sound is off by default. Desktop only: a headset shows the ring, not the toast.
 - **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
 - **Multi-feed**: several receivers and one feed picker in the status bar that lists them above the Explore places, with a single search box and in-place switching.
-- **Explore anywhere**: watch any area's traffic from a global aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live), with terrain and basemaps as usual. Pick from about 85 curated world cities, search about 3,100 US cities, or type an airport code or name (`KMSP`, `ATW`, `heathrow`) from about 6,000 airports. An optional second provider takes over automatically if the first fails. See [Explore](FEEDS.md#explore-any-city).
+- **Explore anywhere**: watch any area's traffic from a global aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live), with terrain and basemaps as usual. Pick from about 85 curated world cities, search about 3,100 US cities, or type an airport code or name (`KMSP`, `ATW`, `heathrow`) from about 6,000 airports. An optional second provider takes over automatically if the first fails. Every place has a shareable link (`?place=minneapolis`, `?place=us_wi_wausau`, `?place=apt_kmsp`). Providers are in [CONFIGURATION.md](CONFIGURATION.md#explore-providers).
 - **Free camera**: the footer *fly* button swaps the orbit for a free-flying eye: drag to look, WASD or arrows to move, R/F up and down, Shift for speed. It slows to a walk near the ground. Deselecting an aircraft returns the orbit camera to the view you had before.
 - **Sharper map up close** (off by default): when the camera is near the ground, a small patch of map tiles three zoom levels finer is loaded for the area it is looking at and follows the view. Same tile proxy and cache as the basemap.
 - **Close-up views**: the camera goes down to within a mile or so of the ground and the wheel zooms toward the cursor, so an airport, a ridge or an airspace shelf can be inspected from beside it.
@@ -56,6 +56,44 @@ Everything the viewer can show. Most layers are toggles in the settings panel; t
 
 - **Keyboard and screen readers**: the aircraft list is a real listbox with arrow-key navigation, proper roles, a keyboard-operable ACARS panel, and a throttled live count.
 
+## Controls
+
+Two camera modes, switched with the footer pill (or Settings → Camera):
+
+- **Orbit** (default): **left-drag** turns around a point, **scroll** zooms,
+  **right-drag** pans the view (moves the center point). Selecting an
+  aircraft follows it; deselecting eases back to the view you had.
+  The footer's **share** button copies a link to the selected aircraft;
+  opening one zooms in on that aircraft.
+- **Free**: **left-drag** looks around, **WASD** or the arrow keys fly
+  relative to where you look, **R / F** (or PageUp / PageDown) go straight
+  up and down, **Shift** is fast, **scroll** pushes along the line of sight.
+
+In orbit mode the camera can come within about a mile of the point it
+turns around, **scroll** zooms toward whatever is under the cursor (toward
+the aircraft while one is followed), and the eye can skim just above the
+ground. The free camera slows down as it gets low, so close inspection is
+not a blur.
+
+**Spin** in the footer starts a slow auto-orbit and opens a direction and
+speed popover; once the hand is still for two seconds the controls fade so
+only the orbit is left, and any movement brings them back. Spin is an
+orbit, so starting it switches a free camera back to orbit, and switching
+to the free camera stops it.
+
+With **3D airspace** on, click an airspace's name label to frame it and
+open its info card; `Esc` or the × closes the card.
+
+On a phone the aircraft list and the settings panel each fill the screen,
+so opening one closes the other.
+
+| Key | Action |
+|---|---|
+| Arrow keys | Pan the view (orbit) or fly (free) |
+| `R` | Recenter camera + clear selection (orbit); straight up (free) |
+| `/` | Focus the list search box |
+| `Esc` | Close settings panel, ACARS panel or a popover |
+
 ---
 
-Back to the [README](../README.md) or the [documentation index](README.md).
+Back to the [README](../README.md).

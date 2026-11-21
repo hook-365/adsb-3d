@@ -50,6 +50,7 @@ export const settingsStrings = {
   'settings.acars_pings_desc': 'Ping the map where a positioned ACARS message is reported, even beyond ADS-B range.',
   'settings.route_line': 'Route line',
   'settings.route_line_desc': 'Draw the selected aircraft\'s scheduled route as a line from its origin to its destination. Shown only when the route fits where the aircraft is.',
+  'settings.route_line_needs_contact': 'Off: this server has no route contact set, so routes are not looked up. Whoever runs it needs to set ROUTE_API_CONTACT.',
   'settings.winds_aloft': 'Winds aloft',
   'settings.winds_aloft_desc': 'Forecast wind as arrows at one height, and a wind row on the aircraft card with its head or tail wind. Open-Meteo forecast for the current hour on a coarse grid.',
   'settings.winds_level': 'Wind arrows at',

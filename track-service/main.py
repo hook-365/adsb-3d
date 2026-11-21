@@ -1030,8 +1030,26 @@ HEALTH_CACHE_TTL = 1.0
 # ---------------------------------------------------------------------------
 ROUTE_API_URL = os.getenv("ROUTE_API_URL", "http://adsb.im/api/0/routeset")
 ROUTE_API_CONTACT = os.getenv("ROUTE_API_CONTACT", "").strip()
+
+
+def is_real_contact(contact: str) -> bool:
+    """An email or a site, and not a placeholder from the examples. adsb.im
+    asks every install to say who runs it (issue #16), so route lookups
+    stay off without one. Same rule as the viewer's entrypoint."""
+    c = contact.strip().lower()
+    if not c or "." not in c:
+        return False
+    placeholders = ("example.com", "example.org", "example.net", "change-me", "changeme", "your-email", "youremail")
+    return not any(p in c for p in placeholders)
+
+
+ROUTE_LOOKUPS_ENABLED = is_real_contact(ROUTE_API_CONTACT)
 ROUTE_API_USER_AGENT = f"adsb-3d/{APP_VERSION} track-service (+https://github.com/hook-365/adsb-3d" + (
-    f"; {ROUTE_API_CONTACT}" if ROUTE_API_CONTACT else "") + ")"
+    f"; {ROUTE_API_CONTACT}" if ROUTE_LOOKUPS_ENABLED else "") + ")"
+if not ROUTE_LOOKUPS_ENABLED:
+    logging.getLogger(__name__).warning(
+        "ROUTE_API_CONTACT is not set to a real contact: the shared route cache is OFF. "
+        "Set it to your email, the same value as on adsb-3d.")
 ROUTE_CACHE_TTL = float(os.getenv("ROUTE_CACHE_TTL_SECONDS", str(24 * 3600)))
 ROUTE_BATCH_WINDOW = float(os.getenv("ROUTE_BATCH_WINDOW_SECONDS", "60"))
 # Floor on the spacing between upstream calls. A busy area (the Explore feed
@@ -1217,6 +1235,10 @@ class RouteSetRequest(BaseModel):
 async def routeset(req: RouteSetRequest):
     """Flight routes for a set of callsigns, shared-cached across all viewers.
     Same request/response shape as adsb.im's /api/0/routeset."""
+    if not ROUTE_LOOKUPS_ENABLED:
+        # 503: the viewer's nginx then falls back to its own direct proxy,
+        # which answers only if the viewer itself has a real contact.
+        raise HTTPException(status_code=503, detail="route lookups are off: set ROUTE_API_CONTACT")
     if len(req.planes) > 500:
         raise HTTPException(status_code=413, detail="too many callsigns")
     return await route_batcher.lookup([p.dict() for p in req.planes], priority=req.priority)

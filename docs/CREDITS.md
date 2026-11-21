@@ -47,4 +47,4 @@ you redistribute the built app, GPL governs those components.
 
 ---
 
-Back to the [README](../README.md) or the [documentation index](README.md).
+Back to the [README](../README.md).

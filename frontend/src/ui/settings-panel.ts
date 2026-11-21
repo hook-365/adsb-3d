@@ -11,6 +11,7 @@ import { t } from '../core/i18n';
 import { MOBILE_BREAKPOINT_PX, setAircraftListExpanded } from './panel-toggle';
 import { WEATHER3D_ENABLED, WINDS_ENABLED } from '../core/config';
 import { subscribeUpdateInfo } from '../core/update-check';
+import { routesEnabled } from '../feed/routes';
 import { isBasemapAvailable } from '../core/basemaps';
 import { THEME_OPTIONS } from '../core/theme';
 import { enterAR, enterVR, exitVR, getXrState, subscribeXr } from '../core/xr';
@@ -28,6 +29,13 @@ interface ToggleRow {
   key: keyof Settings;
   label: string;
   description?: string;
+  /**
+   * Set when this deployment cannot do what the toggle turns on. The
+   * switch then shows off and cannot be moved (the stored setting is left
+   * alone, so it comes back as it was once the deployment is fixed), and
+   * the description should say why.
+   */
+  unavailable?: boolean;
 }
 interface ChoiceRow {
   kind: 'choice';
@@ -382,7 +390,11 @@ export const SETTINGS_SCHEMA: SettingsSection[] = [
         kind: 'toggle',
         key: 'routeLine',
         label: t('settings.route_line'),
-        description: t('settings.route_line_desc'),
+        // No route contact on the server, no routes (issue #16): the row
+        // stays visible so the reason can be read, but cannot be turned on.
+        ...(routesEnabled()
+          ? { description: t('settings.route_line_desc') }
+          : { description: t('settings.route_line_needs_contact'), unavailable: true }),
       },
       {
         kind: 'toggle',
@@ -1032,8 +1044,15 @@ export function mountSettingsPanel(): void {
           switchWrap.className = 'settings-switch';
           const input = document.createElement('input');
           input.type = 'checkbox';
-          input.checked = Boolean(getSettings()[row.key]);
+          const unavailable = row.unavailable === true;
+          input.checked = !unavailable && Boolean(getSettings()[row.key]);
+          input.disabled = unavailable;
+          if (unavailable) rowEl.classList.add('is-unavailable');
           input.addEventListener('change', () => {
+            if (unavailable) {
+              input.checked = false;
+              return;
+            }
             updateSettings({ [row.key]: input.checked } as Partial<Settings>);
           });
           const slider = document.createElement('span');
@@ -1041,7 +1060,7 @@ export function mountSettingsPanel(): void {
           switchWrap.append(input, slider);
           rowEl.appendChild(switchWrap);
           inputSyncs.push((s) => {
-            input.checked = Boolean(s[row.key]);
+            input.checked = !unavailable && Boolean(s[row.key]);
           });
         } else if (row.kind === 'choice' && isSegmented(row)) {
           // Few short options: show them all, one press instead of

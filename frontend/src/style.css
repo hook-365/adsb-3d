@@ -825,6 +825,8 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   line-height: 1.4;
 }
 
+/* A row that cannot be turned on always says why, help mode or not. */
+.settings-panel .settings-row.is-unavailable .settings-row-desc,
 .settings-panel.show-help .settings-row-desc {
   display: block;
 }
@@ -904,6 +906,10 @@ body:has(#aircraft-panel:not(.collapsed)) .settings-panel {
   transition: transform 0.15s;
 }
 
+.settings-switch input:disabled + .settings-switch-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .settings-switch input:checked + .settings-switch-slider {
   background: color-mix(in srgb, var(--accent) 55%, transparent);
   border-color: color-mix(in srgb, var(--accent) 80%, transparent);

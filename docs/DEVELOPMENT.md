@@ -73,6 +73,35 @@ docker compose -f docker-compose.dev.yml --project-directory . up --build -d
 # → http://localhost:8186/
 ```
 
+## Versioning
+
+`VERSION` at the repository root is the single source of truth. Every image
+copies it at build time and reports it everywhere a version appears: the
+settings panel (`v0.12.1`), the `/api` and `/acars-api` root endpoints, the
+nginx `User-Agent` sent to adsb.im and tile providers, and track-service's
+`adsb-3d/<version> track-service` agent. Images built from a commit that is
+not a release tag carry build metadata (`0.12.1+a1b2c3d`, or `+local` for a
+local compose build), so a non-release build can never be mistaken for the
+published one. Releases are cut with `scripts/release.sh X.Y.Z`; CI refuses
+to publish if `VERSION`, `frontend/package.json` and the tag disagree.
+
+## Releasing
+
+`VERSION` (repo root) is the only place the version is set; never edit it,
+`frontend/package.json` or the changelog date by hand for a release.
+
+1. Make sure `CHANGELOG.md` has everything under `## [Unreleased]` and the
+   tree is clean.
+2. `scripts/release.sh X.Y.Z`: writes `VERSION` + `package.json`, dates the
+   changelog section, commits `release: vX.Y.Z`, creates the annotated tag.
+3. Review `git show`, then `git push origin master vX.Y.Z`. The publish
+   workflow's `version-check` job fails the build if `VERSION`,
+   `package.json` and the tag disagree; tag builds get no `+build` suffix.
+4. Confirm packages appear at `https://github.com/orgs/hook-365/packages`
+   and `docker run --rm ghcr.io/hook-365/adsb-track-service:X.Y.Z cat VERSION`
+   prints exactly `X.Y.Z`.
+5. Create a GitHub Release referencing the tag with the changelog entry.
+
 ---
 
-Back to the [README](../README.md) or the [documentation index](README.md).
+Back to the [README](../README.md).

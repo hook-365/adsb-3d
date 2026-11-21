@@ -107,3 +107,23 @@ async def test_priority_lookup_answers_before_the_bulk_window(batcher, monkeypat
     monkeypatch.setattr(main, "ROUTE_BATCH_WINDOW", 0.05)
     await asyncio.wait_for(bulk, 2.0)
     assert len(batcher.calls) == 1                     # bulk found everything cached, no second call
+
+
+@pytest.mark.parametrize("contact,real", [
+    ("", False),
+    ("you@example.com", False),
+    ("ops@Example.org", False),
+    ("change-me", False),
+    ("bob", False),
+    ("me@mydomain.net", True),
+    ("https://mysite.io", True),
+])
+def test_only_a_real_contact_turns_route_lookups_on(contact, real):
+    assert main.is_real_contact(contact) is real
+
+
+async def test_routeset_is_refused_without_a_real_contact(monkeypatch):
+    monkeypatch.setattr(main, "ROUTE_LOOKUPS_ENABLED", False)
+    with pytest.raises(main.HTTPException) as err:
+        await main.routeset(main.RouteSetRequest(planes=[]))
+    assert err.value.status_code == 503

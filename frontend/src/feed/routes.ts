@@ -200,8 +200,25 @@ export function normalizeRoute(entry: RawRouteEntry | undefined, lat: number, lo
   return out;
 }
 
+/**
+ * False when the operator has not set a real `ROUTE_API_CONTACT`: adsb.im
+ * asks every install to say who runs it, so the container turns lookups
+ * off (`window.ROUTE_CONFIG`, rendered by the entrypoint) and nothing here
+ * sends a request. Absent config (dev server, tests) means on.
+ */
+export function routesEnabled(): boolean {
+  return (globalThis as { ROUTE_CONFIG?: { enabled?: boolean } }).ROUTE_CONFIG?.enabled !== false;
+}
+
 async function fetchRoutes(queries: RouteQuery[], priority = false): Promise<void> {
   if (queries.length === 0) return;
+  if (!routesEnabled()) {
+    for (const q of queries) {
+      if (!cache.has(q.callsign)) cache.set(q.callsign, null);
+      settle(q.callsign);
+    }
+    return;
+  }
   try {
     const res = await fetch(ROUTESET_URL, {
       method: 'POST',

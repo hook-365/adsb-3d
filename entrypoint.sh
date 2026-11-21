@@ -24,18 +24,37 @@ fi
 # User-Agent for adsb.im / tile providers, the tile pre-cache fetcher and
 # config.js (shown in the settings panel) all read it from here.
 # ROUTE_API_CONTACT is the operator's contact adsb.im asks callers to send;
-# it is never defaulted to the project author's address.
+# it is never defaulted to the project author's address. Route lookups are
+# OFF without a real one (issue #16): unset, or still an example value,
+# and /routeset answers 404 and the frontend never asks.
 # ---------------------------------------------------------------------------
+# A real contact: an email or a site, and not a placeholder from the examples.
+_real_contact() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        ''|*example.com*|*example.org*|*example.net*|*change-me*|*changeme*|*your-email*|*youremail*) return 1 ;;
+        *@*.*|*.*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 ADSB3D_VERSION=$(tr -d '[:space:]' < /VERSION 2>/dev/null || true)
 : "${ADSB3D_VERSION:=0.0.0+unknown}"
 ROUTE_API_CONTACT=$(printf '%s' "${ROUTE_API_CONTACT:-}" | tr -d '"\\\n\r;()')
-if [ -n "$ROUTE_API_CONTACT" ]; then
+if _real_contact "$ROUTE_API_CONTACT"; then
     ADSB3D_USER_AGENT="adsb-3d/${ADSB3D_VERSION} (+https://github.com/hook-365/adsb-3d; ${ROUTE_API_CONTACT})"
+    ROUTES_ENABLED_JS="true"
+    ROUTES_DISABLED_DIRECTIVE=""
 else
     ADSB3D_USER_AGENT="adsb-3d/${ADSB3D_VERSION} (+https://github.com/hook-365/adsb-3d)"
-    echo "[WARN] ROUTE_API_CONTACT is not set — route lookups to adsb.im will carry no contact; they ask for one"
+    ROUTES_ENABLED_JS="false"
+    ROUTES_DISABLED_DIRECTIVE="return 404;"
+    if [ -n "$ROUTE_API_CONTACT" ]; then
+        echo "[WARN] ROUTE_API_CONTACT is still an example value or is not an email or site. Route lookups (origin / destination) are OFF."
+    else
+        echo "[WARN] ROUTE_API_CONTACT is not set. Route lookups (origin / destination) are OFF."
+    fi
+    echo "[WARN] Set ROUTE_API_CONTACT to your email to turn them on: adsb.im, which answers them, asks every install to say who runs it."
 fi
-export ADSB3D_VERSION ADSB3D_USER_AGENT
+export ADSB3D_VERSION ADSB3D_USER_AGENT ROUTES_ENABLED_JS ROUTES_DISABLED_DIRECTIVE
 echo "[version] adsb-3d ${ADSB3D_VERSION} — User-Agent: ${ADSB3D_USER_AGENT}"
 
 # =============================================================================
@@ -594,6 +613,12 @@ window.UPDATE_CHECK_CONFIG = {
     enabled: ${ENABLE_UPDATE_CHECK_JS}
 };
 
+// Route lookups (origin / destination, from adsb.im). Off until the
+// operator sets a real ROUTE_API_CONTACT; the frontend then never asks.
+window.ROUTE_CONFIG = {
+    enabled: ${ROUTES_ENABLED_JS}
+};
+
 // Basemap provider configuration. CARTO tiles are fetched by the browser
 // directly from CARTO's CDN with this key (their terms forbid proxying);
 // empty hides the CARTO basemaps and falls back to OpenStreetMap.
@@ -1008,7 +1033,7 @@ export DNS_RESOLVER
 # idempotent. Previously this step read-and-overwrote conf.d/default.conf in
 # place, so the ### DYNAMIC_FEED_*_BLOCKS ### markers were consumed on first
 # boot and a restart silently kept stale (or doubled-up) feed blocks.
-envsubst '${ADSB3D_USER_AGENT} ${WINDS_DISABLED_DIRECTIVE} ${WINDS_UPSTREAM_HOST} ${WINDS_KEY_ARG} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_HOST} ${EXPLORE_FALLBACK_PATH} ${EXPLORE_FALLBACK_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_DIRECTIVE} ${EXPLORE_FALLBACK_DISABLED_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${ADSB3D_USER_AGENT} ${ROUTES_DISABLED_DIRECTIVE} ${WINDS_DISABLED_DIRECTIVE} ${WINDS_UPSTREAM_HOST} ${WINDS_KEY_ARG} ${EXPLORE_DISABLED_DIRECTIVE} ${EXPLORE_POLL_S} ${EXPLORE_UPSTREAM_HOST} ${EXPLORE_UPSTREAM_PATH} ${EXPLORE_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_HOST} ${EXPLORE_FALLBACK_PATH} ${EXPLORE_FALLBACK_AUTH_DIRECTIVE} ${EXPLORE_FALLBACK_DIRECTIVE} ${EXPLORE_FALLBACK_DISABLED_DIRECTIVE} ${FEEDER_HOST} ${FEEDER_HOSTNAME} ${TRACK_API_HOST} ${ACARS_API_HOST} ${WEATHER_API_HOST} ${VOICE_STREAM_HOST} ${VOICE_EVENTS_HOST} ${VFRMAP_CYCLE} ${CORS_HEADERS} ${REAL_IP_DIRECTIVES} ${DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Then, insert dynamic feed blocks at placeholders
 if [ -n "$FEED_DATA_BLOCKS" ]; then

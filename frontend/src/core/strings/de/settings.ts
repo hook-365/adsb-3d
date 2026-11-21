@@ -49,6 +49,7 @@ export const settingsStrings = {
   'settings.acars_pings_desc': 'Markiert auf der Karte, wo eine ACARS-Nachricht mit Position gemeldet wird, auch außerhalb der ADS-B-Reichweite.',
   'settings.route_line': 'Routenlinie',
   'settings.route_line_desc': 'Zeichnet die planmäßige Route des ausgewählten Flugzeugs als Linie vom Start- zum Zielflughafen. Nur sichtbar, wenn die Route zur Position des Flugzeugs passt.',
+  'settings.route_line_needs_contact': 'Aus: Auf diesem Server ist kein Routen-Kontakt hinterlegt, daher werden keine Routen abgefragt. Der Betreiber muss ROUTE_API_CONTACT setzen.',
   'settings.winds_aloft': 'Höhenwinde',
   'settings.winds_aloft_desc': 'Vorhergesagter Wind als Pfeile auf einer Höhe und eine Windzeile in der Flugzeugkarte mit Gegen- oder Rückenwind. Open-Meteo-Vorhersage für die aktuelle Stunde auf grobem Raster.',
   'settings.winds_level': 'Windpfeile auf',

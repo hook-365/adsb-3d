@@ -49,6 +49,7 @@ export const settingsStrings = {
   'settings.acars_pings_desc': 'Marca en el mapa dónde se informa un mensaje ACARS con posición, incluso fuera del alcance ADS-B.',
   'settings.route_line': 'Línea de ruta',
   'settings.route_line_desc': 'Dibuja la ruta programada de la aeronave seleccionada como una línea de origen a destino. Solo se muestra cuando la ruta encaja con la posición de la aeronave.',
+  'settings.route_line_needs_contact': 'Desactivado: este servidor no tiene un contacto de rutas configurado, así que no se consultan rutas. Quien lo administra debe definir ROUTE_API_CONTACT.',
   'settings.winds_aloft': 'Vientos en altura',
   'settings.winds_aloft_desc': 'Viento previsto como flechas a una altura y una fila de viento en la ficha de la aeronave con su viento de cara o de cola. Pronóstico de Open-Meteo para la hora actual en una malla gruesa.',
   'settings.winds_level': 'Flechas de viento a',

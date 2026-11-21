@@ -120,6 +120,16 @@ describe('on-demand lookups (no prefetcher)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('sends nothing while the operator has no route contact set', async () => {
+    const fetchMock = postMock([{ callsign: 'DAL451', _airports: [DAL, PHX], plausible: true }]);
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('ROUTE_CONFIG', { enabled: false });
+    const a = ensureRoute({ callsign: 'DAL451', lat: 33, lon: -100 });
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await a).toBeNull();
+  });
+
   it('with a prefetcher attached, selection sends nothing of its own', async () => {
     const fetchMock = postMock();
     vi.stubGlobal('fetch', fetchMock);
