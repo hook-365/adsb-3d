@@ -29,12 +29,18 @@ external voice-services stack).
 - `Dockerfile` + `entrypoint.sh` — single image. The entrypoint renders
   `config.js` (frontend runtime config) and the nginx config from environment
   variables at container start.
-- `docs/` — everything the README links out to: `FEATURES.md`,
-  `CONFIGURATION.md` (the environment variable reference; a new variable
-  gets its row there, plus `.env.example` and the compose example),
-  `FEEDS.md`, `CONTROLS.md`, `UPGRADING.md`, `DEVELOPMENT.md`, `CREDITS.md`,
-  `VOICE.md`, `REVERSE-PROXY.md`, `PRODUCTION-CHECKLIST.md`. The README
-  stays short: pitch, quick start, feature summary, links.
+- `docs/` — five files, kept few on purpose: `CONFIGURATION.md`,
+  `FEATURES.md` (includes the controls), `DEVELOPMENT.md` (architecture,
+  versioning, releasing), `CREDITS.md`, `VOICE.md`. The README stays short:
+  pitch, quick start, feature summary, links.
+- `docker-compose.example.yml` — **the one example and the settings
+  reference**: required block first, every optional setting commented out
+  below, each with a one-line comment. A new environment variable is
+  documented by adding it there. `docs/CONFIGURATION.md` embeds the same
+  file verbatim (`tests-unit/docs-example.test.ts` fails if they differ),
+  so edit the yml and paste it into the doc. `.env.example` holds only
+  the required minimum (location, `FEEDER_URL`, `ROUTE_API_CONTACT`) plus a
+  commented `DB_PASSWORD`.
 
 ## Frontend architecture
 
@@ -353,7 +359,10 @@ work done.
   entrypoint → `ADSB3D_VERSION` / `ADSB3D_USER_AGENT` / `window.APP_VERSION`;
   Python: `APP_VERSION`). Outbound User-Agents are
   `adsb-3d/<version> (+https://github.com/hook-365/adsb-3d; $ROUTE_API_CONTACT)`
-  (track-service adds ` track-service`); never hardcode a contact. Release
+  (track-service adds ` track-service`); never hardcode a contact. Route lookups are off
+  without a real `ROUTE_API_CONTACT` (not empty, not an example value): the
+  entrypoint renders `return 404;` into `/routeset` and `window.ROUTE_CONFIG`,
+  and track-service answers 503 (`is_real_contact`, same rule in both). Release
   with `scripts/release.sh X.Y.Z`; CI (`version-check`) rejects a mismatch
   between `VERSION`, `frontend/package.json` and the tag. Non-release builds
   get `+<sha>` (CI) or `+local` (compose) build metadata. The Python images

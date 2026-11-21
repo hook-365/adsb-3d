@@ -26,6 +26,12 @@ services:
     mem_limit: 192m
     ports:
       - "8086:80"
+    # If you would rather keep the required values in a .env file, copy
+    # .env.example to .env and delete them here. Anything set inline in
+    # this file wins over .env.
+    env_file:
+      - path: .env
+        required: false
     environment:
       # ══ REQUIRED ══════════════════════════════════════════════════════
       # Where your receiver is. Altitude is in feet MSL, like every
@@ -41,14 +47,18 @@ services:
       - FEEDER_URL=http://192.0.2.50:8080
       # - FEEDER_URL=http://ultrafeeder
       # - FEEDER_URL=https://adsb.example.com
+      # (FEEDER_HOST=host:port is the old name for this and still works.)
+      # Your email (or a site where you can be reached). It is sent in the
+      # User-Agent of route lookups to adsb.im, a free service one person
+      # runs, so they can reach you if your instance misbehaves. The map
+      # tile providers get it too. It is never shown to viewers.
+      # Routes (origin and destination) stay off until this is a real
+      # address: left unset, or left as this example, nothing is looked up.
+      - ROUTE_API_CONTACT=you@example.com
 
       # ══ OPTIONAL ══════════════════════════════════════════════════════
 
       # ── Worth setting ────────────────────────────────────────────────
-      # A contact (email or site) sent in the User-Agent to adsb.im for
-      # route lookups and to the map tile providers. They ask for one.
-      # Unset sends none and the container warns at start.
-      # - ROUTE_API_CONTACT=you@example.com
       # Free key from https://carto.com/basemaps/apikey. Unlocks the Carto
       # Dark and Carto Voyager basemaps, fetched by the browser straight
       # from CARTO (their terms forbid proxying). One key per deployment.
@@ -148,8 +158,8 @@ services:
 
   # ══ OPTIONAL SERVICES ═════════════════════════════════════════════════
   # The database password is read from a .env file next to this one, so
-  # the three services that use it can never disagree. Copy .env.example
-  # to .env and set DB_PASSWORD there.
+  # the three services that use it can never disagree. Set DB_PASSWORD
+  # there (.env.example has the line).
 
   # ── Historical playback and the heatmap: ENABLE_HISTORICAL=true ───────
   # track-service:
@@ -160,7 +170,7 @@ services:
   #     - timescaledb-adsb
   #   environment:
   #     - FEEDER_URL=http://192.0.2.50:8080   # the same feeder as above
-  #     - ROUTE_API_CONTACT=you@example.com   # the same contact as above
+  #     - ROUTE_API_CONTACT=you@example.com   # the same contact as above; routes are off without it
   #     - DB_HOST=timescaledb-adsb
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
@@ -171,6 +181,10 @@ services:
   #     # - FEEDER_POLL_SECONDS=1             # live poll rate; default depends on the feeder
   #     # - ROUTE_CACHE_TTL_SECONDS=86400     # how long a route answer is kept
   #     # - ROUTE_MIN_INTERVAL_SECONDS=180    # least time between requests to adsb.im
+  #     # - ROUTE_BATCH_WINDOW_SECONDS=60     # how long new callsigns are collected into one request
+  #     # Point route lookups at another server that speaks adsb.im's routeset API.
+  #     # - ROUTE_API_URL=http://adsb.im/api/0/routeset
+  #     # (ULTRAFEEDER_URL is the old name for FEEDER_URL here and still works.)
 
   # timescaledb-adsb:
   #   image: timescale/timescaledb:2.17.2-pg16

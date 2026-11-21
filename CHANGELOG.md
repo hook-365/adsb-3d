@@ -14,7 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- **Shorter README.** The README is now the pitch, the quick start and a feature summary. The environment variable reference, feeds and Explore, controls, upgrading, development and credits moved, unchanged, to `docs/`.
+- **Routes need your contact.** Origin and destination lookups are now off until `ROUTE_API_CONTACT` is set to a real email or site, on adsb-3d and on track-service. adsb.im, which answers them, asks every install to say who runs it (#16). **If routes disappear after this update, set `ROUTE_API_CONTACT` and restart;** the container log says so at start. Nothing else is affected.
+- **Shorter docs, one example.** The README is now the pitch, the quick start and a feature summary. `docker-compose.example.yml` is the one example and the settings reference: what is required at the top, every optional setting commented out below it. `docs/CONFIGURATION.md` shows it in full. `.env.example` is cut to the required minimum. `ROUTE_API_CONTACT` is now listed as required in the examples and the quick start, since adsb.im asks every install to identify itself (#16). The per-proxy reverse proxy configs and the manual production checklist are gone; the docs say what adsb-3d needs from a proxy and leave the rest to the proxy's own documentation.
+- **Example files default to an IP for `FEEDER_URL`**, with the service name as the alternative for a feeder on the same Docker network. The example no longer publishes the track-service and database ports to the host.
 
 ### Fixed
 

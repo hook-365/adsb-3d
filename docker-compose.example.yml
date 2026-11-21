@@ -1,13 +1,9 @@
-# ADS-B 3D Viewer - Deployment Example
+# ADS-B 3D: the one example.
 #
-# Three ways to run this:
-#
-#   1. Single station, live-only           → use the adsb-3d service as-is
-#   2. Single station, with history        → also enable track-service + timescaledb-adsb
-#   3. Multi-feed (network of receivers)   → add FEED2_*, FEED3_*, ... blocks
-#
-# Adding a new remote feed = 4 env vars (NAME, URL, LAT, LON). The entrypoint
-# wires up nginx proxies, the frontend feed switcher, and FEED_MODE for you.
+# Every setting there is, in one file. The REQUIRED block is all you need
+# for live traffic. Everything under OPTIONAL is off or at its default
+# until you uncomment it. Values shown on commented lines are the defaults
+# unless the comment says otherwise.
 
 services:
   adsb-3d:
@@ -17,125 +13,167 @@ services:
     security_opt:
       - no-new-privileges:true
     mem_limit: 192m
-    # Loads vars from a .env file next to this compose file (see
-    # .env.example) — e.g. DB_PASSWORD, CORS_ALLOW_ORIGIN, FEEDN_* if you'd
-    # rather keep them out of this file. The inline `environment:` block
-    # below takes precedence over anything the same name sets here.
-    # required: false so `docker compose config` still works before you've
-    # created a .env — copy .env.example to .env to actually use it.
+    ports:
+      - "8086:80"
+    # If you would rather keep the required values in a .env file, copy
+    # .env.example to .env and delete them here. Anything set inline in
+    # this file wins over .env.
     env_file:
       - path: .env
         required: false
     environment:
-      # ── Local station ────────────────────────────────────────────────
+      # ══ REQUIRED ══════════════════════════════════════════════════════
+      # Where your receiver is. Altitude is in feet MSL, like every
+      # altitude in this file.
       - LATITUDE=45.0000
       - LONGITUDE=-90.0000
       - ALTITUDE=1000
       - LOCATION_NAME=My Station
-      - FEEDER_URL=http://ultrafeeder
-      # Contact (email or site) sent to adsb.im in the User-Agent of route
-      # lookups and to tile providers — they ask for one. Nothing is sent
-      # if unset (the container warns at start). Same variable on track-service.
+      # Anything that serves readsb's /data/aircraft.json (ultrafeeder,
+      # tar1090, readsb, dump1090-fa). It has to be reachable from inside
+      # this container. Use the feeder's IP and port, or its service name
+      # if it is on the same Docker network as this container.
+      - FEEDER_URL=http://192.0.2.50:8080
+      # - FEEDER_URL=http://ultrafeeder
+      # - FEEDER_URL=https://adsb.example.com
+      # (FEEDER_HOST=host:port is the old name for this and still works.)
+      # Your email (or a site where you can be reached). It is sent in the
+      # User-Agent of route lookups to adsb.im, a free service one person
+      # runs, so they can reach you if your instance misbehaves. The map
+      # tile providers get it too. It is never shown to viewers.
+      # Routes (origin and destination) stay off until this is a real
+      # address: left unset, or left as this example, nothing is looked up.
       - ROUTE_API_CONTACT=you@example.com
 
-      # ── Optional features ────────────────────────────────────────────
-      - ENABLE_HISTORICAL=false       # true to enable historical playback
-      - ENABLE_ACARS=false            # true to enable ACARS (needs acars-service)
-      - ENABLE_WEATHER3D=false        # true for 3D storms (needs weather-service, US only)
-      - ENABLE_WINDS_ALOFT=false      # true for winds aloft (Open-Meteo, non-commercial free tier)
-      # - WINDS_API_KEY=              # optional Open-Meteo key for commercial use
-      - HIDE_TOWER=false              # true to hide home tower (privacy)
-      # ── Global Explore (pick any city via a community aggregator) ─────
-      # One provider per deployment; all four answer in readsb format. Feed
-      # them from your receiver if you can: they run on hobbyist data.
-      # - EXPLORE_PROVIDER=flyitalyadsb   # needs EXPLORE_API_KEY (free, instant);
-      # - EXPLORE_API_KEY=fia_xxx         # feeders get Pro limits; data CC BY-SA 4.0
-      # - EXPLORE_PROVIDER=adsb.lol       # no key; data ODbL 1.0
-      # - EXPLORE_PROVIDER=adsb.fi        # no key; personal, non-commercial; 1 req/s
-      # - EXPLORE_PROVIDER=airplanes.live # no key; non-commercial terms
-      # - EXPLORE_FALLBACK_PROVIDER=adsb.lol # optional: takes over while the provider above fails
-      # - EXPLORE_POLL_S=10               # poll cadence = per-city cache window
-      # - CARTO_API_KEY=your-key      # free key from carto.com/basemaps/apikey unlocks
-      #                               # the Carto Dark/Voyager basemaps (browser-direct,
-      #                               # one key per deployment, never share it)
-      # - ENABLE_TERRAIN=true         # deploy-level 3D-terrain kill switch;
-      #                               # false hides the per-user terrain toggle entirely
-      # - ENABLE_UPDATE_CHECK=true    # container checks GitHub daily for a newer release
-      # - ENABLE_DATA_REFRESH=true    # container rebuilds procedure data from each new FAA edition (28 days)
-      #                               # and the settings panel shows a badge; false = off
-      # - DNS_RESOLVER=10.96.0.10     # nginx upstream DNS; default is Docker's
-      #                               # embedded 127.0.0.11 — override on runtimes
-      #                               # without it (e.g. Kubernetes CoreDNS)
+      # ══ OPTIONAL ══════════════════════════════════════════════════════
 
-      # ── Voice scanner (opt-in, requires a voice-services stack) ──────
-      # When ENABLE_VOICE=true the frontend renders a call-feed Voice panel
-      # (one clip per transmission) and nginx proxies /voice/calls + /voice/ws
-      # to the voice-events sidecar. Stand up rtl_airband + Icecast + the
-      # voice-events sidecar yourself (see docs/VOICE.md); leave disabled if
-      # you don't run that stack.
-      # - ENABLE_VOICE=false
-      # - VOICE_EVENTS_HOST=voice-events:8001    # sidecar — /voice/calls + /voice/ws
-      # - VOICE_STREAM_HOST=voice-icecast:8000   # Icecast host (nginx compat only;
-      #                                          # the frontend plays calls, not the stream)
+      # ── Worth setting ────────────────────────────────────────────────
+      # Free key from https://carto.com/basemaps/apikey. Unlocks the Carto
+      # Dark and Carto Voyager basemaps, fetched by the browser straight
+      # from CARTO (their terms forbid proxying). One key per deployment.
+      # - CARTO_API_KEY=your-key
 
-      # ── Multi-feed (uncomment to enable feed switching) ──────────────
-      # One block per remote receiver. Slot 1 is THIS station (local) — its
-      # LAT/LON/NAME override the values above when set. Slots 2+ are remote
-      # adsb-3d instances reachable over HTTP; FEED{N}_URL is just host:port.
-      #
+      # ── Explore: watch any city ──────────────────────────────────────
+      # Adds the Explore places to the feed picker. Pick one provider.
+      # Their limits and licences are in docs/CONFIGURATION.md.
+      # - EXPLORE_PROVIDER=adsb.lol         # no key
+      # - EXPLORE_PROVIDER=adsb.fi          # no key
+      # - EXPLORE_PROVIDER=airplanes.live   # no key
+      # - EXPLORE_PROVIDER=flyitalyadsb     # needs the free key below
+      # - EXPLORE_API_KEY=fia_xxxx
+      # A second provider that takes over while the first one is failing.
+      # - EXPLORE_FALLBACK_PROVIDER=adsb.lol
+      # Seconds between polls, and how long each city is cached.
+      # - EXPLORE_POLL_S=10
+
+      # ── Features that need nothing else ──────────────────────────────
+      # Winds aloft, from Open-Meteo (their free tier is non-commercial).
+      # - ENABLE_WINDS_ALOFT=true           # default false
+      # - WINDS_API_KEY=                    # optional paid Open-Meteo key
+      # Hide the home tower marker, for privacy on a public instance.
+      # - HIDE_TOWER=true                   # default false
+      # Remove 3D terrain for everyone. Users can turn it off themselves.
+      # - ENABLE_TERRAIN=false              # default true
+      # The container asks GitHub once a day whether a newer release is
+      # out, and the settings panel shows a badge. No viewer data is sent.
+      # - ENABLE_UPDATE_CHECK=false         # default true
+      # The container refreshes its FAA procedure data when a new edition
+      # is published, every 28 days.
+      # - ENABLE_DATA_REFRESH=false         # default true
+
+      # ── Features that need another service (see the services below) ──
+      # - ENABLE_HISTORICAL=true            # needs track-service + timescaledb
+      # - ENABLE_ACARS=true                 # needs acars-service
+      # - ENABLE_WEATHER3D=true             # needs weather-service, US only
+      # Where nginx finds them, if you renamed or moved the services.
+      # - TRACK_API_HOST=track-service:8000
+      # - ACARS_API_HOST=acars-service:8000
+      # - WEATHER_API_HOST=weather-service:8000
+
+      # ── Voice scanner (needs your own voice stack, see docs/VOICE.md) ─
+      # Both hosts are required when ENABLE_VOICE is true.
+      # - ENABLE_VOICE=true                 # default false
+      # - VOICE_EVENTS_HOST=voice-events:8001   # what the frontend uses
+      # - VOICE_STREAM_HOST=voice-icecast:8000  # legacy stream, not played
+
+      # ── More than one receiver ───────────────────────────────────────
+      # One block per receiver, numbered from 1 with no gaps. Slot 1 is
+      # this station. Slots 2 and up are other adsb-3d instances.
       # - FEED1_NAME=Home Station
-      # - FEED1_LAT=45.0000          # overrides LATITUDE above when set
+      # - FEED1_LAT=45.0000
       # - FEED1_LON=-90.0000
       # - FEED1_ALT=1000
+      # - FEED1_ACARS=true                  # optional, this feed has ACARS
       #
-      # - FEED2_NAME=Remote Site A
-      # - FEED2_URL=192.0.2.10:8086
+      # - FEED2_NAME=Remote Site
+      # - FEED2_URL=192.0.2.10:8086         # host:port of that adsb-3d
       # - FEED2_LAT=43.0000
       # - FEED2_LON=-89.0000
-      # - FEED2_COLOR=#ff8c4c        # optional badge color
-      # - FEED2_ACARS=true           # optional, enable ACARS for this feed
+      # - FEED2_COLOR=#ff8c4c               # optional badge colour
       #
+      # If a remote feed's live data and its track API are on different
+      # hosts, give the pair instead of FEED3_URL:
       # - FEED3_NAME=Remote Site B
-      # - FEED3_URL=192.0.2.20:8086
       # - FEED3_LAT=43.0000
       # - FEED3_LON=-87.0000
-    ports:
-      - "8086:80"
-    # Uncomment to persist the map tile cache across restarts and enable
-    # boot-time tile pre-caching around your station (see MAP_ZOOM /
-    # MAP_GRID_SIZE in .env.example). Without this volume, tiles are only
-    # cached in the container's nginx proxy cache for the container's
-    # lifetime.
+      # - FEED3_DATA_HOST=192.0.2.20:8080         # serves /data/aircraft.json
+      # - FEED3_API_HOST=track-service-feed3:8000 # serves the track API
+      #
+      # Or hand-write the feed list as JSON and skip FEEDN_* entirely:
+      # - FEEDS_CONFIG=[{"id":"local","name":"Home","liveUrl":"/data/aircraft.json","apiBase":"/api","home":{"lat":45.0,"lon":-90.0,"alt":1000}}]
+
+      # ── Behind a reverse proxy ───────────────────────────────────────
+      # A subpath. /3d, /adsb and /adsb-3d are detected by themselves; set
+      # this for any other path, or if your proxy strips the prefix.
+      # - BASE_PATH=/mypath
+      # Your proxy's address range, so rate limiting counts each real
+      # visitor and not the proxy as one client. Comma-separated.
+      # - TRUSTED_PROXY_CIDR=192.0.2.0/24
+      # Only if another site calls this instance's API directly. An
+      # origin, or *. Unset sends no CORS headers.
+      # - CORS_ALLOW_ORIGIN=https://dashboard.example.com
+
+      # ── Rarely needed ────────────────────────────────────────────────
+      # Map tiles pre-cached around your station at start: zoom level and
+      # grid width. Only active with the /tiles volume below.
+      # - MAP_ZOOM=8
+      # - MAP_GRID_SIZE=21
+      # DNS server nginx uses to find upstreams. The default is Docker's
+      # own. Set it on runtimes without that, such as Kubernetes.
+      # - DNS_RESOLVER=127.0.0.11
+    # Keeps the map tile cache across restarts and turns on the pre-cache.
     # volumes:
     #   - adsb-3d-tiles:/tiles
-    # Uncomment for historical mode:
-    # depends_on:
-    #   - track-service
 
-  # ── Historical mode (uncomment to enable) ──────────────────────────────
-  # The DB password below uses ${DB_PASSWORD} — set it ONCE in a .env file
-  # next to this compose file (see .env.example). Docker Compose substitutes
-  # it into all three DB services, so the credential can never drift.
+  # ══ OPTIONAL SERVICES ═════════════════════════════════════════════════
+  # The database password is read from a .env file next to this one, so
+  # the three services that use it can never disagree. Set DB_PASSWORD
+  # there (.env.example has the line).
+
+  # ── Historical playback and the heatmap: ENABLE_HISTORICAL=true ───────
   # track-service:
   #   image: ghcr.io/hook-365/adsb-track-service:latest
   #   container_name: track-service
   #   restart: unless-stopped
+  #   depends_on:
+  #     - timescaledb-adsb
   #   environment:
-  #     - FEEDER_URL=http://ultrafeeder
+  #     - FEEDER_URL=http://192.0.2.50:8080   # the same feeder as above
+  #     - ROUTE_API_CONTACT=you@example.com   # the same contact as above; routes are off without it
   #     - DB_HOST=timescaledb-adsb
-  #     # Shown to adsb.im in the User-Agent of shared route lookups (they ask for a contact)
-  #     - ROUTE_API_CONTACT=you@example.com
-  #     # - ROUTE_CACHE_TTL_SECONDS=86400   # shared route cache lifetime (default 24 h)
-  #     # - ROUTE_MIN_INTERVAL_SECONDS=180  # floor between adsb.im requests (default 3 min)
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
   #     - DB_USER=adsb
   #     - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in your .env file}
-  #     - COLLECTION_INTERVAL=5
-  #   ports:
-  #     - "8087:8000"
-  #   depends_on:
-  #     - timescaledb-adsb
+  #     # - COLLECTION_INTERVAL=5             # seconds between stored positions
+  #     # - RETENTION_DAYS=90                 # history kept; set before first start
+  #     # - FEEDER_POLL_SECONDS=1             # live poll rate; default depends on the feeder
+  #     # - ROUTE_CACHE_TTL_SECONDS=86400     # how long a route answer is kept
+  #     # - ROUTE_MIN_INTERVAL_SECONDS=180    # least time between requests to adsb.im
+  #     # - ROUTE_BATCH_WINDOW_SECONDS=60     # how long new callsigns are collected into one request
+  #     # Point route lookups at another server that speaks adsb.im's routeset API.
+  #     # - ROUTE_API_URL=http://adsb.im/api/0/routeset
+  #     # (ULTRAFEEDER_URL is the old name for FEEDER_URL here and still works.)
 
   # timescaledb-adsb:
   #   image: timescale/timescaledb:2.17.2-pg16
@@ -147,50 +185,44 @@ services:
   #     - POSTGRES_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in your .env file}
   #   volumes:
   #     - timescaledb-data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5433:5432"
 
-  # ── ACARS service (uncomment to enable) ────────────────────────────────────
-  # Requires an external acarshub stack (or acarsdec) feeding TCP port 15550.
-  # Run that stack yourself; this service connects to it by hostname/IP.
-  # Also set ENABLE_ACARS=true on the adsb-3d service above.
+  # ── ACARS: ENABLE_ACARS=true ──────────────────────────────────────────
+  # Needs your own acarshub or acars_router, and the database above.
   # acars-service:
   #   image: ghcr.io/hook-365/adsb-acars-service:latest
   #   container_name: acars-service
   #   restart: unless-stopped
+  #   depends_on:
+  #     - timescaledb-adsb
   #   environment:
-  #     - ACARS_HOST=acarshub       # hostname or IP of your acarshub/acarsdec
-  #     - ACARS_PORT=15550
-  #     - STATION_ID=MY_STATION
+  #     - ACARS_HOST=acarshub                 # your acarshub or acars_router
+  #     - ACARS_PORT=15550                    # 15550 is ACARS, 15555 is VDL Mode 2
   #     - DB_HOST=timescaledb-adsb
   #     - DB_PORT=5432
   #     - DB_NAME=adsb_tracks
   #     - DB_USER=adsb
   #     - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD in your .env file}
-  #   depends_on:
-  #     - timescaledb-adsb
+  #     # - STATION_ID=adsb-3d                # stamped on stored messages
 
-  # ── Weather service (uncomment to enable 3D storms) ─────────────────────
-  # Downloads NOAA MRMS 3D reflectivity (keyless, public domain, US coverage
-  # only) every 5 minutes and serves a small volume cropped around whichever
-  # feed the viewer has active; one service covers every feed. No database.
-  # Also set ENABLE_WEATHER3D=true on adsb-3d above.
+  # ── 3D storms and the other NOAA layers: ENABLE_WEATHER3D=true ────────
+  # US only. No database. One service covers every feed.
   # weather-service:
   #   image: ghcr.io/hook-365/adsb-weather-service:latest
   #   container_name: weather-service
   #   restart: unless-stopped
   #   environment:
-  #     - LATITUDE=45.0000          # optional: pre-warm the local feed's volume
-  #     - LONGITUDE=-90.0000        # (same values as the adsb-3d service)
-  #     - ROUTE_API_CONTACT=you@example.com
-  #     # - WEATHER3D_RADIUS_NM=250   # half-width of each crop box (nautical miles)
-  #     # - WEATHER3D_LOCATION_TTL_S=1800  # drop idle feed locations after this
-  #     # - WEATHER_FIELDS=echotop18,echotop30,freezing,preciprate,preciptype,mesh,rotation,lightning
-  #     #                                  # 2-D products (echo tops, precip, 0 °C, hail/rotation, lightning)
+  #     - ROUTE_API_CONTACT=you@example.com   # sent to NOAA in the User-Agent
+  #     # Your station again, so its storms are ready before anyone asks.
+  #     # - LATITUDE=45.0000
+  #     # - LONGITUDE=-90.0000
+  #     # - WEATHER3D_RADIUS_NM=250           # how far around each feed
+  #     # - WEATHER3D_REFRESH_S=300           # seconds between downloads, 120 at least
+  #     # - WEATHER3D_LOCATION_TTL_S=1800     # forget a feed nobody is watching
+  #     # Which 2-D layers to fetch. Add bbtop,bbbottom for the melting
+  #     # layer (15 MB each per fetch).
+  #     # - WEATHER_FIELDS=echotop18,echotop30,freezing,preciprate,preciptype,mesh,lightning
 
-# Uncomment whichever of these you enabled above (historical mode's DB
-# volume, and/or the adsb-3d tiles cache volume) — both live under one
-# top-level `volumes:` key.
+# Uncomment the ones you turned on above.
 # volumes:
 #   timescaledb-data:
 #   adsb-3d-tiles:

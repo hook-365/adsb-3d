@@ -105,9 +105,3 @@ tests/integration/run.sh
 
 No receiver, radio hardware, credentials, or external service is required.
 GitHub Actions runs the same command on public `ubuntu-latest` runners.
-
-## Manual end-to-end checklist
-
-See `docs/PRODUCTION-CHECKLIST.md` for the full pre-release checklist covering
-browser compatibility, deployment scenarios, feeder compatibility, and optional
-feature verification (historical, ACARS, voice).

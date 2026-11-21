@@ -35,19 +35,33 @@ services:
       - LONGITUDE=-90.0000
       - ALTITUDE=1000
       - LOCATION_NAME=My Station
-      - FEEDER_URL=http://ultrafeeder
+      - FEEDER_URL=http://192.0.2.50:8080
+      - ROUTE_API_CONTACT=you@example.com
 ```
 
 Run `docker compose up -d`, open `http://localhost:8086/`, and your
 aircraft should show up within a few seconds.
 
+`FEEDER_URL` is wherever your feeder serves `aircraft.json`, so swap in
+its IP and port. If adsb-3d is on the same Docker network as your feeder,
+you can use the service name instead, like `http://ultrafeeder`.
+
+`ROUTE_API_CONTACT` is your email. Routes come from
+[adsb.im](https://adsb.im), which one person runs for free, and it goes
+in the User-Agent of those lookups so they can reach you if your
+instance misbehaves. Nobody viewing your instance sees it. Routes stay
+off until you change it from the example.
+
 If the page loads but stays empty, it's almost always `FEEDER_URL`. **It
-has to be reachable from inside the container.** A bare service name like
-`http://ultrafeeder` only resolves if adsb-3d shares a Docker network
-with your feeder. If it doesn't, use the feeder's host IP and port, like
-`http://192.168.1.50:8080`. Check `docker logs adsb-3d` if you're not
-sure. The container also reports `unhealthy` until it can reach the
-feeder.
+has to be reachable from inside the container**, and a service name only
+resolves when the two share a Docker network. Check `docker logs adsb-3d`
+if you're not sure. The container also reports `unhealthy` until it can
+reach the feeder.
+
+That's the basic setup. See [CONFIGURATION.md](docs/CONFIGURATION.md) for
+one example with all the cool stuff in it, like `ENABLE_WEATHER3D` for 3D storms, or
+`EXPLORE_PROVIDER` if you don't have your own receiver and just want to
+explore.
 
 ## Features
 
@@ -94,9 +108,9 @@ until you turn it on:
 | 3D storms and the other NOAA layers | `weather-service` |
 | VHF voice scanner | an external voice stack, see [docs/VOICE.md](docs/VOICE.md) |
 
-When you want any of those, copy `.env.example` to `.env` and start from
-`docker-compose.example.yml`. Everything in that table is already in
-there, you just uncomment it.
+When you want any of those, start from `docker-compose.example.yml`.
+It's the one example for the whole thing: what's required is at the top,
+and everything in that table is below it, you just uncomment it.
 
 ## VR & AR
 
@@ -116,14 +130,11 @@ is attached to the v0.6.0 release.
 
 | | |
 |---|---|
-| [Features](docs/FEATURES.md) | Every layer and panel, with screenshots |
-| [Configuration](docs/CONFIGURATION.md) | Every environment variable |
-| [Feeds](docs/FEEDS.md) | Several receivers, and the Explore providers |
-| [Controls](docs/CONTROLS.md) | Camera modes, mouse and keyboard |
-| [Reverse proxy](docs/REVERSE-PROXY.md) | Subdomain or subpath behind nginx, Traefik, Caddy, Apache or NPM |
+| [Features](docs/FEATURES.md) | Every layer and panel, with screenshots, and the controls |
+| [Configuration](docs/CONFIGURATION.md) | The one compose example with every setting, plus Explore providers, reverse proxy and upgrading |
 | [Voice scanner](docs/VOICE.md) | The optional VHF airband scanner |
-| [Upgrading](docs/UPGRADING.md) | Upgrade notes and how versions work |
-| [Development](docs/DEVELOPMENT.md) | Architecture, dev workflow, regenerating the bundled data |
+| [Development](docs/DEVELOPMENT.md) | Architecture, dev workflow, regenerating the bundled data, releasing |
+| [Credits](docs/CREDITS.md) | Data sources, with their licences and terms |
 | [Changelog](CHANGELOG.md) | What changed in each release |
 
 ## Built with the community
