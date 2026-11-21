@@ -230,7 +230,7 @@ export const settingsStrings = {
   'settings.airport_labels': 'Flughafen-Beschriftung',
   'settings.airport_labels_desc': 'Ein ICAO-Code an jedem Flughafen. Ein Klick fliegt die Kamera dorthin.',
   'settings.airport_weather': 'Flughafenwetter',
-  'settings.airport_weather_desc': 'Färbt jede Flughafen-Beschriftung nach Flugkategorie (VFR, MVFR, IFR, LIFR) und zeigt METAR und Vorhersage in der Flughafenkarte. Von aviationweather.gov, alle fünf Minuten aktualisiert.',
+  'settings.airport_weather_desc': 'Färbt jede Flughafen-Beschriftung nach Flugkategorie (grün VFR, blau MVFR, rot IFR, magenta LIFR; die Legende steht in der Flughafenkarte) und zeigt METAR und Vorhersage in der Flughafenkarte. Von aviationweather.gov, alle fünf Minuten aktualisiert.',
   'settings.airport_ground': 'Rollwege und Gates',
   'settings.airport_ground_desc': 'Rollwege, Vorfelder, Terminals und Gate-Nummern des Flughafens, an den herangezoomt ist. OpenStreetMap-Daten, beim ersten Heranzoomen geladen; die Abdeckung schwankt.',
   'settings.pireps': 'Pilotenmeldungen',

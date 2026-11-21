@@ -329,6 +329,8 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
       const category = getSettings().airportWeather ? (getMetar(icao)?.category ?? null) : null;
       if (category) el.dataset.category = category;
       else delete el.dataset.category;
+      const name = el.dataset.name;
+      if (name) el.title = category ? `${name} · ${category}` : name;
     }
   };
 
@@ -472,6 +474,7 @@ export function mountAirports(parent: Group, options: AirportsOptions = {}): voi
           el.setAttribute('role', 'button');
           el.tabIndex = 0;
           el.title = airport.name;
+          el.dataset.name = airport.name;
           el.addEventListener('click', (e) => {
             e.stopPropagation();
             pick();

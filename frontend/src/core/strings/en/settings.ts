@@ -234,7 +234,7 @@ export const settingsStrings = {
   'settings.airport_labels': 'Airport labels',
   'settings.airport_labels_desc': 'An ICAO code on each airport. Click one to fly the camera to it.',
   'settings.airport_weather': 'Airport weather',
-  'settings.airport_weather_desc': 'Colour each airport label by flight category (VFR, MVFR, IFR, LIFR) and show the METAR and forecast in the airport card. From aviationweather.gov, refreshed every five minutes.',
+  'settings.airport_weather_desc': 'Colour each airport label by flight category (green VFR, blue MVFR, red IFR, magenta LIFR; the airport card has the key) and show the METAR and forecast in the airport card. From aviationweather.gov, refreshed every five minutes.',
   'settings.airport_ground': 'Taxiways and gates',
   'settings.airport_ground_desc': 'Taxiways, aprons, terminals and gate numbers of the airport you are zoomed in on. OpenStreetMap data, fetched the first time an airport is viewed up close; coverage varies.',
   'settings.pireps': 'Pilot reports',

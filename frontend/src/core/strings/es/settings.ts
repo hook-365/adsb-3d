@@ -230,7 +230,7 @@ export const settingsStrings = {
   'settings.airport_labels': 'Etiquetas de aeropuerto',
   'settings.airport_labels_desc': 'Un código OACI en cada aeropuerto. Pulsa uno para llevar la cámara hasta él.',
   'settings.airport_weather': 'Meteorología de aeropuertos',
-  'settings.airport_weather_desc': 'Colorea cada etiqueta de aeropuerto según la categoría de vuelo (VFR, MVFR, IFR, LIFR) y muestra el METAR y el pronóstico en la ficha del aeropuerto. De aviationweather.gov, actualizado cada cinco minutos.',
+  'settings.airport_weather_desc': 'Colorea cada etiqueta de aeropuerto según la categoría de vuelo (verde VFR, azul MVFR, rojo IFR, magenta LIFR; la leyenda está en la ficha del aeropuerto) y muestra el METAR y el pronóstico en la ficha del aeropuerto. De aviationweather.gov, actualizado cada cinco minutos.',
   'settings.airport_ground': 'Calles de rodaje y puertas',
   'settings.airport_ground_desc': 'Calles de rodaje, plataformas, terminales y números de puerta del aeropuerto al que se ha acercado la vista. Datos de OpenStreetMap, cargados la primera vez que se ve un aeropuerto de cerca; la cobertura varía.',
   'settings.pireps': 'Informes de pilotos',

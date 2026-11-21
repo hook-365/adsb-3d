@@ -66,6 +66,13 @@ const NEARBY_NM = 5;
 const COUNT_INTERVAL_MS = 2000;
 const HPA_PER_INHG = 33.8639;
 
+const CATEGORY_KEY = [
+  ['VFR', 'misc.airport_cat_vfr'],
+  ['MVFR', 'misc.airport_cat_mvfr'],
+  ['IFR', 'misc.airport_cat_ifr'],
+  ['LIFR', 'misc.airport_cat_lifr'],
+] as const;
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -187,6 +194,16 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
   const [altimLabel, altimeter] = row('misc.airport_altimeter');
   const weatherRows = [categoryLabel, category, windLabel, wind, visLabel, visibility, ceilingLabel, ceiling, tempLabel, temp, altimLabel, altimeter];
 
+  // The key to the label dots: all four categories, the current one lit.
+  const categoryKey = el('ul', 'category-key');
+  categoryKey.setAttribute('aria-label', t('misc.airport_cat_key'));
+  const keyItems = CATEGORY_KEY.map(([id, key]) => {
+    const item = el('li', undefined, t(key));
+    item.dataset.category = id;
+    categoryKey.append(item);
+    return item;
+  });
+
   const metarHeading = el('h3', undefined, t('misc.airport_metar'));
   const metar = el('pre', 'airspace-notam');
   const tafHeading = el('h3', undefined, t('misc.airport_taf'));
@@ -200,7 +217,7 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
   const explore = el('button', 'airport-explore', t('misc.airport_explore'));
   explore.type = 'button';
   const note = el('p', 'airspace-note', t('misc.airport_note'));
-  root.append(header, name, grid, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, frequenciesHeading, frequencies, procedures, explore, note);
+  root.append(header, name, grid, categoryKey, metarHeading, metar, tafHeading, taf, runwaysHeading, runways, frequenciesHeading, frequencies, procedures, explore, note);
   document.body.appendChild(root);
 
   let current: AirportSite | null = null;
@@ -239,6 +256,8 @@ export function mountAirportPanel(getAircraft: () => Iterable<Aircraft>, options
     const m = on ? getMetar(current.airport.icao) : null;
     for (const node of weatherRows) node.hidden = !m;
     metarHeading.hidden = metar.hidden = !on;
+    categoryKey.hidden = !m?.category;
+    for (const item of keyItems) item.classList.toggle('is-current', item.dataset.category === m?.category);
     tafHeading.hidden = taf.hidden = !on;
     if (m?.category) root.dataset.category = m.category;
     else delete root.dataset.category;

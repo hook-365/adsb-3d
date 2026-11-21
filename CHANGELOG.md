@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - **Air refueling tracks.** There's a new `Refueling tracks` toggle (Settings, Map, Navigation; off by default, US only) that draws the published military refueling tracks on the ground with their names. When a military aircraft is flying along one, its card says so ("On refueling track AR-321") and names whoever is in formation with it.
+- **A key for the airport label colours.** The dot on an airport label is the weather there (green VFR, blue MVFR, red IFR, magenta LIFR), and nothing said so. The airport card now lists all four with what they mean and lights up the current one, and hovering a label shows its category.
 
 ### Changed
 
