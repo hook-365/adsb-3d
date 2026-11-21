@@ -1,7 +1,10 @@
 # =============================================================================
 # Stage 1: build the redesigned TypeScript frontend
 # =============================================================================
-FROM node:20.19-alpine AS frontend-build
+# Runs on the build machine's own architecture, never emulated: the output is
+# static files, the same for every platform, and npm under QEMU can hang for
+# hours (it stalled the arm64 build until GitHub cancelled it at 6 h).
+FROM --platform=$BUILDPLATFORM node:20.19-alpine AS frontend-build
 WORKDIR /app/frontend
 
 # Install deps first for layer caching

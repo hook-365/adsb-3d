@@ -54,6 +54,8 @@ jobs:
     uses: ./.github/workflows/backend-integration.yml
 
   build-and-push-viewer:
+    # A stuck emulated build fails in half an hour, not at the 6 h limit.
+    timeout-minutes: 30
     needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
@@ -102,6 +104,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-track-service:
+    # A stuck emulated build fails in half an hour, not at the 6 h limit.
+    timeout-minutes: 45
     needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
@@ -151,6 +155,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-acars-service:
+    # A stuck emulated build fails in half an hour, not at the 6 h limit.
+    timeout-minutes: 30
     needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
@@ -200,6 +206,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-and-push-weather-service:
+    # A stuck emulated build fails in half an hour, not at the 6 h limit.
+    timeout-minutes: 30
     needs: [version-check, frontend-checks, backend-checks]
     runs-on: ubuntu-latest
     permissions:
