@@ -63,7 +63,8 @@ services:
       # - EXPLORE_API_KEY=fia_xxxx
       # A second provider that takes over while the first one is failing.
       # - EXPLORE_FALLBACK_PROVIDER=adsb.lol
-      # Seconds between polls, and how long each city is cached.
+      # Seconds between polls, and how long each city is cached. 10 is the
+      # fastest it goes; you can only make it slower.
       # - EXPLORE_POLL_S=10
 
       # ── Features that need nothing else ──────────────────────────────

@@ -67,7 +67,9 @@ export function exploreEnabled(): boolean {
 export function explorePollMs(): number {
   const s = config().pollS;
   if (typeof s !== 'number' || !Number.isFinite(s) || s <= 0) return DEFAULT_POLL_MS;
-  return Math.round(s * 1000);
+  // Never faster than the default: the aggregators are free community
+  // services. The entrypoint enforces the same floor on the nginx cache.
+  return Math.max(DEFAULT_POLL_MS, Math.round(s * 1000));
 }
 
 export function isExploreFeedId(id: string): boolean {

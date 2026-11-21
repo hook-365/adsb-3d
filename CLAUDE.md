@@ -246,7 +246,7 @@ features get dummy upstreams so the generated nginx config is always valid.
   draws arrows and feeds the aircraft card's wind row. `EXPLORE_PROVIDER` (flyitalyadsb
   with `EXPLORE_API_KEY`, or keyless adsb.lol / adsb.fi / airplanes.live)
   turns on the Explore feed (`EXPLORE_FALLBACK_PROVIDER` names a second
-  one nginx switches to while the first fails) and `EXPLORE_POLL_S` (default 10) its poll
+  one nginx switches to while the first fails) and `EXPLORE_POLL_S` (default and minimum 10; lower values are raised) its poll
   cadence and per-city nginx cache window; every provider answers in
   readsb record format under an `ac` key (`now` in s or ms). Routes on
   Explore are on-demand only (`Feed.prefetchRoutes`), through the

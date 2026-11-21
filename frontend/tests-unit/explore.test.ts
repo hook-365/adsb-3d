@@ -111,9 +111,11 @@ describe('explore feed shape', () => {
     delete window.EXPLORE_CONFIG;
   });
 
-  it('takes the poll cadence from EXPLORE_CONFIG with a 10 s default', () => {
+  it('takes the poll cadence from EXPLORE_CONFIG, 10 s by default and never faster', () => {
+    window.EXPLORE_CONFIG = { enabled: true, pollS: 22.5 };
+    expect(explorePollMs()).toBe(22_500);
     window.EXPLORE_CONFIG = { enabled: true, pollS: 2.5 };
-    expect(explorePollMs()).toBe(2500);
+    expect(explorePollMs()).toBe(10_000);
     window.EXPLORE_CONFIG = { enabled: true, pollS: -1 };
     expect(explorePollMs()).toBe(10_000);
     delete window.EXPLORE_CONFIG;

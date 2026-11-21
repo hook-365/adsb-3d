@@ -396,7 +396,7 @@ CARTO_API_KEY_JS=$(_js_escape "${CARTO_API_KEY:-}")
 # aggregator; it defaults to flyitalyadsb when EXPLORE_API_KEY is set (the
 # only one that needs a key) and stays off otherwise. Any key stays in
 # nginx; only the enabled flag, provider id and poll cadence reach
-# config.js. EXPLORE_POLL_S (default 10) is also the nginx cache window for
+# config.js. EXPLORE_POLL_S (default and minimum 10) is also the nginx cache window for
 # each city, so upstream traffic is bounded at 60/EXPLORE_POLL_S requests a
 # minute per city whatever the viewer count. All four providers answer in
 # readsb's aircraft.json record format under an `ac` key; the frontend
@@ -486,6 +486,12 @@ EXPLORE_FALLBACK_PROVIDER_JS=$(_js_escape "${EXPLORE_FALLBACK_PROVIDER}")
 EXPLORE_POLL_S="${EXPLORE_POLL_S:-10}"
 if ! echo "${EXPLORE_POLL_S}" | grep -qE '^[0-9]+(\.[0-9]+)?$' || ! awk -v v="${EXPLORE_POLL_S}" 'BEGIN { exit !(v > 0) }'; then
     echo "[WARNING] EXPLORE_POLL_S must be a positive number ('${EXPLORE_POLL_S}'); using 10"
+    EXPLORE_POLL_S=10
+fi
+# 10 s is the fastest the Explore feed polls. The aggregators are free
+# community services; slower is yours to choose, faster is not.
+if awk -v v="${EXPLORE_POLL_S}" 'BEGIN { exit !(v < 10) }'; then
+    echo "[WARNING] EXPLORE_POLL_S=${EXPLORE_POLL_S} is below the 10 s minimum; using 10"
     EXPLORE_POLL_S=10
 fi
 EXPLORE_API_KEY="${EXPLORE_API_KEY:-}"
