@@ -20,7 +20,7 @@ Use this checklist before publishing a new release of ADS-B 3D.
 - [ ] `docker-compose.example.yml` references the published image tags (not `build:`)
 - [ ] `docker pull ghcr.io/hook-365/adsb-3d:latest` succeeds on a clean machine
 
-## Smoke test — bare minimum
+## Smoke test: bare minimum
 
 ```bash
 docker run --rm \
@@ -43,15 +43,15 @@ few seconds if the feeder is reachable.
 
 Test with a live feeder attached. Verify:
 
-- [ ] Chrome / Edge (latest) — desktop
-- [ ] Firefox (latest) — desktop
-- [ ] Safari (latest) — macOS
+- [ ] Chrome / Edge (latest), desktop
+- [ ] Firefox (latest), desktop
+- [ ] Safari (latest), macOS
 - [ ] Chrome Mobile (latest Android)
 - [ ] Mobile Safari (latest iOS)
 
 Check on each:
 - 3D scene renders, aircraft appear, trails draw correctly
-- Click an aircraft — detail card opens, route row populates
+- Click an aircraft: detail card opens, route row populates
 - Settings panel opens, basemap switcher works
 - Basemap attribution visible bottom-right and matches the active provider (CARTO requires OpenStreetMap + CARTO credit)
 - With `CARTO_API_KEY` set: Carto Dark / Voyager appear in the picker and load real tiles (no "API KEY REQUIRED" watermark); without it they are absent and the map falls back to OpenStreetMap
@@ -60,8 +60,8 @@ Check on each:
 
 ## Deployment scenarios
 
-- [ ] Root domain (`adsb3d.example.com`) — see `docs/REVERSE-PROXY.md`
-- [ ] Subdirectory (`example.com/3d`) — entrypoint auto-detects `/3d`, `/adsb`, and `/adsb-3d`; `BASE_PATH` is only needed for non-standard paths (see `docs/REVERSE-PROXY.md`)
+- [ ] Root domain (`adsb3d.example.com`): see `docs/REVERSE-PROXY.md`
+- [ ] Subdirectory (`example.com/3d`): entrypoint auto-detects `/3d`, `/adsb`, and `/adsb-3d`; `BASE_PATH` is only needed for non-standard paths (see `docs/REVERSE-PROXY.md`)
 - [ ] Behind Nginx Proxy Manager with WebSocket support enabled
 - [ ] Container starts cleanly with only required env vars set
 
@@ -119,7 +119,7 @@ Test aircraft.json ingestion with:
   (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
   `Referrer-Policy`, CSP `frame-ancestors 'self'`), and the `Server`
   header carries no version (`server_tokens off`)
-- [ ] CORS is locked by default — `curl -sI <host>/api/health` shows no
+- [ ] CORS is locked by default: `curl -sI <host>/api/health` shows no
   `Access-Control-*` headers. Set `CORS_ALLOW_ORIGIN` only if another
   origin consumes the API directly
 - [ ] Behind a fronting reverse proxy: `TRUSTED_PROXY_CIDR` set to the
@@ -140,7 +140,7 @@ Test aircraft.json ingestion with:
 
 1. Make sure `CHANGELOG.md` has everything under `## [Unreleased]` and the
    tree is clean.
-2. `scripts/release.sh X.Y.Z` — writes `VERSION` + `package.json`, dates the
+2. `scripts/release.sh X.Y.Z`: writes `VERSION` + `package.json`, dates the
    changelog section, commits `release: vX.Y.Z`, creates the annotated tag.
 3. Review `git show`, then `git push origin master vX.Y.Z`. The publish
    workflow's `version-check` job fails the build if `VERSION`,

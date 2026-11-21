@@ -4,22 +4,127 @@
 [![Contributors](https://img.shields.io/github/contributors/hook-365/adsb-3d)](https://github.com/hook-365/adsb-3d/graphs/contributors)
 [![Issues](https://img.shields.io/github/issues/hook-365/adsb-3d)](https://github.com/hook-365/adsb-3d/issues)
 
-Real-time 3D visualization of ADS-B aircraft, with historical playback,
-3D airway-density heatmaps, optional ACARS message decoding, and NOAA
-radar as 3D storm volumes, surface precipitation, freezing level, severe
-cells and lightning. Watch your own receiver, or pick any city in the
-world through a community aggregator. One Docker image: it serves the
-viewer and reverse-proxies your existing ADS-B feeder. Runs on your
-desktop, your phone, and, with a headset, your coffee table.
+This is a 3D viewer for ADS-B aircraft traffic. Point it at your own
+receiver, or pick any city if you don't have one, and you get the
+aircraft over real terrain, with airspace and weather radar drawn in 3D
+around them. If you run your own receivers you also get historical
+playback and ACARS. It runs on your desktop, your phone, and, with a
+headset, your coffee table.
 
-Works with anything that publishes readsb's `aircraft.json` — tar1090,
-ultrafeeder, dump1090-fa, readsb-protobuf, and so on.
+It works with anything that publishes readsb's `aircraft.json`: tar1090,
+ultrafeeder, dump1090-fa, readsb-protobuf, that kind of thing.
 
-**[Live demo →](https://adsb3d.hook.technology)** — explore a running instance in your browser.
+**[Live demo](https://adsb3d.hook.technology)**: this is my own instance, so you can go fly around before you install anything.
 
 [![Arrivals and departures threading the stacked shelves of the Minneapolis Class B airspace, drawn in 3D](Airspace.jpg)](https://github.com/hook-365/adsb-3d/releases/download/v0.14.0/adsb-3d-airspace.mp4)
 
-Airspace in 3D, since v0.14. Click the image for a short clip.
+Click the image for a short clip.
+
+## Quick start
+
+You need Docker with Compose v2, and a feeder that's already publishing
+`aircraft.json`. After that it's one service:
+
+```yaml
+services:
+  adsb-3d:
+    image: ghcr.io/hook-365/adsb-3d:latest
+    ports: ["8086:80"]
+    environment:
+      - LATITUDE=45.0000
+      - LONGITUDE=-90.0000
+      - ALTITUDE=1000
+      - LOCATION_NAME=My Station
+      - FEEDER_URL=http://ultrafeeder
+```
+
+Run `docker compose up -d`, open `http://localhost:8086/`, and your
+aircraft should show up within a few seconds.
+
+If the page loads but stays empty, it's almost always `FEEDER_URL`. **It
+has to be reachable from inside the container.** A bare service name like
+`http://ultrafeeder` only resolves if adsb-3d shares a Docker network
+with your feeder. If it doesn't, use the feeder's host IP and port, like
+`http://192.168.1.50:8080`. Check `docker logs adsb-3d` if you're not
+sure. The container also reports `unhealthy` until it can reach the
+feeder.
+
+## Features
+
+![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
+
+- **Live traffic** as 3D aircraft shapes with trails, altitude colours
+  and a detail card (photo, route, airframe, what the aircraft is doing).
+- **3D terrain and basemaps**: OpenStreetMap, topo, satellite, FAA charts
+  and CARTO, with an altitude scale you can exaggerate.
+- **Any city**: point the scope at about 85 world cities, 3,100 US cities
+  or 6,000 airports through a community aggregator.
+- **3D airspace** (US): Class B, C and D, special use airspace and live
+  TFRs as volumes, each with an info card.
+- **Airports** (procedures US only): runways, ground detail, weather-coloured
+  labels, METAR and TAF, frequencies, published approaches, arrivals and
+  departures.
+- **Weather**: precipitation radar anywhere; in the US, NOAA radar as 3D
+  storm volumes with freezing level, hail and lightning.
+- **Navigation data** (US): airways, navaids, fixes, centre boundaries,
+  refueling tracks, pilot reports, winds aloft.
+- **Historical playback**: scrub the last hour, day or week, with a 3D
+  airway-density heatmap.
+- **ACARS**: decoded messages on the map and on each aircraft's card.
+- **Alerts**: emergency squawks, a watchlist and military traffic.
+- **VR and AR**: a walkable diorama on a WebXR headset.
+- **Also**: several receivers in one picker, a free-fly camera, five
+  themes, English, German and Spanish, keyboard and screen reader support.
+
+That's the short version. The full list, with screenshots, is in
+[docs/FEATURES.md](docs/FEATURES.md).
+
+### What needs more than the one container
+
+The quick start gets you live traffic, terrain, airspace, airports and
+the precipitation radar. Everything else is optional, and it stays off
+until you turn it on:
+
+| Feature | Needs |
+|---|---|
+| Explore any city | `EXPLORE_PROVIDER` (a free aggregator; one of them wants a free key) |
+| Winds aloft | `ENABLE_WINDS_ALOFT` |
+| Historical playback and heatmap | `track-service` and TimescaleDB |
+| ACARS | `acars-service` and your own acarshub feed |
+| 3D storms and the other NOAA layers | `weather-service` |
+| VHF voice scanner | an external voice stack, see [docs/VOICE.md](docs/VOICE.md) |
+
+When you want any of those, copy `.env.example` to `.env` and start from
+`docker-compose.example.yml`. Everything in that table is already in
+there, you just uncomment it.
+
+## VR & AR
+
+Put the airspace on your desk. With a WebXR headset the scope turns into
+a diorama you can walk around. You can orbit an aircraft, fly through
+the traffic, change settings from a menu on your wrist, or go into AR
+and set the whole map down on a real table.
+
+https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
+
+That was recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit),
+who has hardware-tested every iteration of this. The
+[full-length demo](https://github.com/hook-365/adsb-3d/releases/download/v0.6.0/ADS-B-3D-VR-AR-demo.mp4)
+is attached to the v0.6.0 release.
+
+## Documentation
+
+| | |
+|---|---|
+| [Features](docs/FEATURES.md) | Every layer and panel, with screenshots |
+| [Configuration](docs/CONFIGURATION.md) | Every environment variable |
+| [Feeds](docs/FEEDS.md) | Several receivers, and the Explore providers |
+| [Controls](docs/CONTROLS.md) | Camera modes, mouse and keyboard |
+| [Reverse proxy](docs/REVERSE-PROXY.md) | Subdomain or subpath behind nginx, Traefik, Caddy, Apache or NPM |
+| [Voice scanner](docs/VOICE.md) | The optional VHF airband scanner |
+| [Upgrading](docs/UPGRADING.md) | Upgrade notes and how versions work |
+| [Development](docs/DEVELOPMENT.md) | Architecture, dev workflow, regenerating the bundled data |
+| [Changelog](CHANGELOG.md) | What changed in each release |
 
 ## Built with the community
 
@@ -35,454 +140,30 @@ Airspace in 3D, since v0.14. Click the image for a short clip.
 Want your name here? Issues with reproduction steps, hardware testing,
 and translations count just as much as code.
 
-## What's new
-
-<img src="Weather3D.jpg" width="640" alt="Storm cells beside Houston as 3D volumes from NOAA MRMS with surface precipitation beneath, and traffic routing around them on the Explore feed">
-
-- **v0.15.1**: security release. nginx is updated to 1.30.7, patched against the NGINX2Root vulnerabilities (CVE-2026-123007 and four others, disclosed 2026-11-18). Update now, and update any nginx-based reverse proxy in front of it. Also smoother 3D storms in VR/AR and Explore motion without pauses.
-- **v0.15**: airports with runways, ground detail at 420 fields, weather-coloured labels and an info card; published approaches, arrivals and departures (US) with the runways in use lit up; airways, navaids and fixes; an alert log with a watchlist; what each aircraft is doing on its card; a busy scope at about twice the frame rate.
-- **v0.14**: 3D airspace (Class B/C/D and special use, US only) with clickable info cards, plus live temporary flight restrictions; search any US city or airport code in Explore; close-up camera with zoom-to-cursor; automatic fallback Explore provider.
-- **v0.13**: 3D weather from NOAA radar (storms, precipitation, freezing level, hail, lightning; US only); Explore any of about 85 cities; free camera; docked panels by default.
-- **v0.12**: shared route cache and batched, identified requests to adsb.im ([#16](https://github.com/hook-365/adsb-3d/issues/16)); one `VERSION` everywhere; daily update check with an in-app badge.
-- **v0.11**: smooth motion between position updates (by [@auggiesoft](https://github.com/auggiesoft)); routes on live-only installs with an "Unverified" mark when they do not fit the aircraft's position; per-tab settings; upright balloons and airships.
-- **v0.10**: AR diorama matured: placeable, resizable clip box, auto-orbit, follow-random-aircraft, high-res basemap option.
-- **v0.9**: ACARS panel on the map with decoded messages and position pings; CARTO basemaps browser-direct under your own key; the hardening release (security headers, rate limiting, 750+ tests in CI).
-- **v0.7**: real 3D aircraft bodies built from each tar1090 silhouette.
-
-Full history in [CHANGELOG.md](CHANGELOG.md) and on the
-[releases page](https://github.com/hook-365/adsb-3d/releases).
-
-## What you get
-
-![Live view over Salt Lake City: 3D aircraft silhouettes and trails over exaggerated Wasatch terrain, with the aircraft list](Live.jpg)
-
-- **Live mode**: per-second updates, tar1090 altitude colours on cones, trails, ground icons and labels. Click an aircraft for photo, route, airframe and autopilot data. Filter pills (`All / Air / Ground / Mil / Emerg`) drive the list and the scene. Mobile-friendly.
-
-![Following a SkyWest E175 inbound to Salt Lake: 3D silhouette over terrain, detail card with photo, route and airframe, aircraft list with filter pills](Aircraft-Details.jpg)
-
-- **Historical mode** (track-service + TimescaleDB): scrub the last 1h / 24h / 7d at 1x to 60x, with a 3D airway-density overlay that draws every flight path at its real altitude.
-
-![A week of traffic as a 3D airway-density heatmap, cruise-altitude airways above low-altitude local traffic](Heatmap.jpg)
-
-- **ACARS** (acars-service): a searchable message panel, per-aircraft messages in the detail card with an OOOI phase chip, an `A` badge on label and list row, and decoded summaries for position reports, arrivals, weather and CPDLC/ADS-C/AFN (details in [acars-service/README.md](acars-service/README.md#message-decoding)). Messages with coordinates drop a position ping on the map, even beyond ADS-B range.
-
-![Docked ACARS panel with decoded position and waypoint reports, and A badges in the aircraft list](Acars.jpg)
-
-- **Weather radar**: [RainViewer](https://www.rainviewer.com/) precipitation over any basemap, refreshed every few minutes, proxied and cached by nginx, credited on screen while on.
-
-![RainViewer precipitation radar overlaid on the live 3D view: a storm cell with yellow and red cores over Door County and Lake Michigan, aircraft and trails above it](Radar.jpg)
-
-- **3D storms** (weather-service, US only): NOAA MRMS merged reflectivity, 33 altitude slices cropped around whichever feed is active and raymarched as translucent storm volumes so you can see aircraft route around cells. One sidecar serves every feed; refreshes every 5 minutes; browsers get a few hundred KB at most. Cells end at their real **echo tops**, and the detail panel shows the storm top next to a nearby aircraft's altitude.
-- **More MRMS layers** (same sidecar, each a toggle): **surface precipitation** by rate and type (rain, snow, convective, hail) in place of RainViewer inside US coverage; a translucent **freezing level** sheet at the 0 °C height, cut to where it is raining; **severe cells** ringed and labelled from hail size; **lightning** flashes from NLDN density, with the strike rate in the detail panel.
-- **3D airspace** (off by default, US only; separate toggles for controlled airspace, special use airspace and the name labels): Class B, C and D and special use airspace (MOA, restricted, prohibited, warning, alert) drawn as volumes between their published floors and ceilings, so a Class B shows as its stacked shelves. Select an aircraft and the detail panel names the airspace it is in. Click an airspace's name label to fly the camera to it and open a card that explains it: what the class means and what entering takes, its limits, each shelf, published times of use, and how many aircraft are inside right now. Built from FAA open data baked into the image (`scripts/build-airspace.py` refreshes it); no extra container, no runtime calls to the FAA. Not for navigation.
-- **Temporary flight restrictions** (off by default, US only): active and upcoming TFRs (wildfires, stadiums, launches, VIP movements) drawn as volumes with the rest of the airspace, live from the FAA's TFR site through the container's own cached proxy and refreshed every ten minutes. Click a TFR's label for its NOTAM: type, location, limits, when it is in force and the published text. Not for navigation.
-- **Airspace that follows its hours**: special use airspace outside its published times of use is drawn fainter, and its info card says where the clock stands. Areas activated only by NOTAM, and schedules the app cannot read with certainty, are left as they are; it never guesses.
-- **Airports** (runways and labels on by default, approach paths a toggle): runways drawn where they lie, a three-degree approach path to each lit paved runway, and clickable ICAO labels, for the airports on the scope. Runway data from OurAirports, baked into the image.
-- **Winds aloft** (needs `ENABLE_WINDS_ALOFT`): forecast wind drawn as arrows at a height you choose (5,000 ft to FL340), and a wind row on the selected aircraft's card with its head or tail wind component. A model forecast for the current hour on a coarse grid, from Open-Meteo.
-- **Airways, navaids and fixes** (off by default, US only): low airways (Victor and T routes) drawn at 8,000 ft and high ones (Jet and Q routes) at flight level 330, so cruising traffic follows the lines at its own height; VORs and NDBs with their identifiers and frequencies; and the named fixes along the airways. From the FAA's CIFP, baked into the image. Not for navigation.
-- **Published instrument procedures** (US): with approach paths on, each runway end draws the real final segment of its instrument approach (fixes, crossing altitudes, glide angle), and a final that live traffic is established on is drawn brighter, so the runways in use stand out. The airport card lists every approach, arrival (STAR) and departure (SID); click one to draw it in full with its fixes and altitude limits. Curved RNP legs and DME arcs are drawn as published; vectors, climbs, holds and missed approaches are dashed approximations. From the FAA's CIFP, baked into the image; the card shows the edition and says when it is out of date. Not for navigation.
-- **Airport weather and info card**: airport labels are coloured by flight category (VFR, MVFR, IFR, LIFR). Click one for the field's runways, the current METAR decoded and as published, the forecast (TAF), how many aircraft are at the field, and a button to move the Explore scope there. Weather comes from aviationweather.gov through the container's cached proxy.
-- **Airport ground detail** (on by default): zoom in on a major airport and its taxiways, aprons, terminal buildings and gate numbers are drawn under the runways. OpenStreetMap data, pre-built for the largest airports and baked into the image; only the airport in view is fetched.
-- **Frequencies**: the airport card lists the field's ATIS, clearance, ground, tower, approach and departure frequencies (OurAirports).
-- **Pilot reports** (off by default): turbulence, icing and weather reported by pilots in the last two hours, marked where and how high they were and coloured by severity. Click one for the report as filed. From aviationweather.gov; mostly a US product.
-- **Centre boundaries** (off by default, US): outlines of the air route traffic control centres, and a Centre row on the aircraft card saying whose airspace it is in.
-- **Air refueling tracks** (off by default, US): the published military refueling tracks drawn on the ground and named, and the aircraft card says when a military aircraft is flying along one and who is in formation with it. Centrelines from the overlay tar1090 draws; the data gives no heights. An inference from position, not a statement that fuel is moving.
-- **Route line**: select an aircraft and its scheduled route is drawn as a great-circle line from origin to destination, when the route fits where the aircraft is.
-
-- **Alerts**: squawk 7500 / 7600 / 7700 raises a toast (click to select), a red label with the squawk beside the flight name, and a pulsing ground ring. Squawks 7400 (unmanned, lost link) and 7777 (military intercept) raise a calmer one. A watchlist of callsigns, registrations or hex codes (`RCH*` matches any ending) and, optionally, military aircraft alert when they come onto the scope. Every alert is kept in a log behind a pill at the top of the screen. Live only; an emergency sound is off by default. Desktop only: a headset shows the ring, not the toast.
-- **Panel style**: *Docked* (default) attaches solid panels to the edges with the map credit inside the footer; *Glass* floats cards over the map.
-- **Multi-feed**: several receivers and one feed picker in the status bar that lists them above the Explore places, with a single search box and in-place switching.
-- **Explore anywhere**: watch any area's traffic from a global aggregator (FlyItalyADSB, adsb.lol, adsb.fi or airplanes.live), with terrain and basemaps as usual. Pick from about 85 curated world cities, search about 3,100 US cities, or type an airport code or name (`KMSP`, `ATW`, `heathrow`) from about 6,000 airports. An optional second provider takes over automatically if the first fails. See [Explore](#explore-any-city).
-- **Free camera**: the footer *fly* button swaps the orbit for a free-flying eye: drag to look, WASD or arrows to move, R/F up and down, Shift for speed. It slows to a walk near the ground. Deselecting an aircraft returns the orbit camera to the view you had before.
-- **Sharper map up close** (off by default): when the camera is near the ground, a small patch of map tiles three zoom levels finer is loaded for the area it is looking at and follows the view. Same tile proxy and cache as the basemap.
-- **Close-up views**: the camera goes down to within a mile or so of the ground and the wheel zooms toward the cursor, so an airport, a ridge or an airspace shelf can be inspected from beside it.
-- **Themes**: Midnight Glass, Daylight, Sectional Chart, Phosphor CRT, High Contrast, or `Auto` from your system preference. The 3D scene re-tints live.
-- **Languages**: English, German, Spanish (machine-drafted pending native review; corrections welcome).
-- **3D terrain** (on by default): the basemap rises to real elevation with rings, markers and ground icons draped over it; free data, no key. An **altitude scale** slider warps the vertical axis toward pattern or flight-level detail.
-- **VR / AR**: WebXR with laser-pointer controllers, a wrist menu with full settings parity, comfort locomotion, AR scope placement and the diorama clip box. Quest 3 tested; demo in [VR & AR](#vr--ar). Side-by-side stereo for anything without WebXR.
-- **Basemaps**: OpenStreetMap, OpenTopoMap, ESRI relief and satellite, FAA charts, and CARTO Dark / Voyager with your own free `CARTO_API_KEY` (browser-direct, as [their terms](https://carto.com/legal/basemap-terms/) require). Attribution always on screen. High-res mode (one zoom level deeper) and a sharper patch of tiles under a close-up camera are both on by default.
-
-![The same view over Salt Lake City on four basemaps: satellite, hillshade, FAA sectional, and topo, with 3D terrain at x12](Basemaps.jpg)
-
-- **Keyboard and screen readers**: the aircraft list is a real listbox with arrow-key navigation, proper roles, a keyboard-operable ACARS panel, and a throttled live count.
-
-## Prerequisites
-
-- Docker Engine 20+ and Docker Compose v2
-- An ADS-B feeder already publishing `aircraft.json` (tar1090,
-  ultrafeeder, dump1090-fa, readsb-protobuf, …)
-
-## Quick start
-
-```yaml
-services:
-  adsb-3d:
-    image: ghcr.io/hook-365/adsb-3d:latest
-    ports: ["8086:80"]
-    environment:
-      - LATITUDE=45.0000
-      - LONGITUDE=-90.0000
-      - ALTITUDE=1000
-      - LOCATION_NAME=My Station
-      - FEEDER_URL=http://ultrafeeder
-```
-
-`docker compose up -d`, then open `http://localhost:8086/` — your
-aircraft should appear within a few seconds.
-
-**`FEEDER_URL` must be reachable from inside the container.** A bare
-service name like `http://ultrafeeder` only resolves if adsb-3d shares a
-Docker network with your feeder. If it doesn't, use the feeder's host IP
-and port — e.g. `http://192.168.1.50:8080`. If the page loads but stays
-empty, this is almost always why: check `docker logs adsb-3d` (the
-container reports `unhealthy` until it can reach the feeder).
-
-For historical playback, ACARS, 3D storms, or the voice scanner, copy
-`.env.example` to `.env` and start from `docker-compose.example.yml`
-in the repo root. Both have track-service, ACARS, weather-service, and
-TimescaleDB ready to uncomment; the `ENABLE_*` flags below switch each on.
-
-## VR & AR
-
-Put the airspace on your desk. With a WebXR headset the scope becomes a
-walkable diorama: orbit a selected aircraft, free-fly through the
-traffic, change settings from a wrist menu, or enter AR and drop the map
-onto real furniture with a glance and a trigger pull. Diorama clipping
-keeps it desk-sized — the map pans beneath a fixed, resizable open-top
-box — and auto-orbit slowly circles the scope (or your followed
-aircraft) like a live model.
-
-https://github.com/user-attachments/assets/a8a1f6ba-8fe8-4c3b-ad88-d2dae76e2281
-
-Demo recorded on a Quest 3 by [@tyzbit](https://github.com/tyzbit), who
-hardware-tested every iteration of these features. The
-[full-length demo](https://github.com/hook-365/adsb-3d/releases/download/v0.6.0/ADS-B-3D-VR-AR-demo.mp4)
-is attached to the v0.6.0 release.
-
-## Reverse proxy
-
-adsb-3d runs on a subdomain or a subpath (`example.com/3d`). The
-entrypoint auto-detects the subpaths `/3d`, `/adsb`, and `/adsb-3d` when
-your proxy passes the prefix through; set `BASE_PATH` if the proxy strips
-the prefix or uses a different path. Worked configs for nginx, Traefik,
-Caddy, Apache, and Nginx Proxy Manager are in
-[docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).
-
-## Multi-feed
-
-Define each feed with flat `FEEDN_*` env vars — the entrypoint
-synthesises the rest:
-
-```env
-FEED1_NAME=Home Station
-FEED1_LAT=45.0000
-FEED1_LON=-90.0000
-FEED1_ALT=1000                # feet MSL, like all altitudes here
-FEED1_ACARS=true              # optional
-
-FEED2_NAME=Remote Site
-FEED2_URL=192.0.2.10:8086     # host:port of another adsb-3d instance
-FEED2_LAT=43.0000
-FEED2_LON=-89.0000
-FEED2_COLOR=#ff8c4c           # optional
-```
-
-Slot 1 is always local — `FEED1_URL` is ignored. Slots 2+ point at other
-adsb-3d instances and the entrypoint wires up the nginx proxy blocks.
-Parsing stops at the first missing `FEEDN_NAME`.
-
-### Explore: any city
-
-Set `EXPLORE_PROVIDER` and the feed picker lists Explore places under your
-receivers. The scene recentres on the chosen place and shows that area's
-traffic from the aggregator's worldwide feed, with terrain and basemaps as
-usual. Live only: no history, ACARS or voice for that feed, and routes are
-looked up only for the aircraft you select.
-
-One search box covers three sources:
-
-| Source | What you can type | Notes |
-|---|---|---|
-| Curated cities (about 85 worldwide, grouped by region) | City, state or province, country, or an airport code serving it (`msp`, `lhr`) | Always listed |
-| US cities (about 3,100, every city over 15,000 people) | City, `City, ST`, or a state name | Shown as you type, largest first. From [GeoNames](https://www.geonames.org) |
-| Airports (about 6,000: large and medium worldwide, plus US small fields with an ICAO code) | ICAO or IATA code, airport name or city (`KMSP`, `ATW`, `heathrow`) | Centres on the airport itself; fetched the first time the picker opens. From [OurAirports](https://ourairports.com/data/) |
-
-Every place has a shareable link (`?place=minneapolis`, `?place=us_wi_wausau`,
-`?place=apt_kmsp`).
-
-| `EXPLORE_PROVIDER` | Key | Notes |
-|---|---|---|
-| `flyitalyadsb` | `EXPLORE_API_KEY`, free and self-serve at [flyitalyadsb.com](https://flyitalyadsb.com/en/data/api/) | 30 requests/min on the free plan; feeders get Pro limits on the same key. Data is CC BY-SA 4.0 |
-| `adsb.lol` | none | No published limit ("dynamic"); data is ODbL 1.0; feeding them is encouraged |
-| `adsb.fi` | none | 1 request/s per IP; personal, non-commercial use only; cite with a link |
-| `airplanes.live` | none | No published limit; site terms are non-commercial |
-
-Set `EXPLORE_FALLBACK_PROVIDER` to a second provider from the table and
-nginx switches to it by itself whenever the first one fails: a connection
-error or timeout, a 5xx, a rate limit (429) or a rejected key. It goes
-back to the first as soon as that answers again, and both are credited in
-the attribution line, since either may be supplying the data.
-
-Any key stays in nginx. nginx rewrites the browser's `?lat=&lon=` into the
-provider's radius query, adds the key and User-Agent, and caches each
-city for the poll interval, so any number of viewers of one city cost one
-upstream request per interval. The default `EXPLORE_POLL_S=10` keeps even
-the FlyItalyADSB free plan well inside its limit with several cities
-open; smooth motion fills the gaps. Each city costs at most six upstream
-requests a minute however many people are watching it, and nothing from
-the aggregators is stored: routes are looked up on selection only and the
-history collector never sees Explore traffic. The attribution line credits
-the provider while the feed is active; keep it visible, it is a licence
-condition for some of them.
-
-## Environment variables
-
-**Core:**
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `LATITUDE` / `LONGITUDE` / `ALTITUDE` | — | Receiver location; `ALTITUDE` in **feet** MSL (as are all `FEEDN_ALT`) |
-| `LOCATION_NAME` | `Home` | Display name |
-| `FEEDER_URL` | `http://ultrafeeder` | Anything publishing `/data/aircraft.json` — must be reachable from the container |
-| `ENABLE_HISTORICAL` | `false` | Historical playback UI (needs track-service) |
-| `ENABLE_ACARS` | `false` | ACARS panel (needs acars-service) |
-| `ENABLE_WEATHER3D` | `false` | 3D storm volumes and the other MRMS layers, US only (needs weather-service) |
-| `ENABLE_WINDS_ALOFT` | `false` | Winds aloft layer and the wind row on the aircraft card, from [Open-Meteo](https://open-meteo.com) (free tier is non-commercial; credited on screen). No sidecar: nginx proxies and caches it hourly |
-| `WINDS_API_KEY` | — | Optional Open-Meteo API key for commercial or heavier use; switches the proxy to their customer endpoint. Never sent to browsers |
-| `WEATHER_FIELDS` (weather-service) | `echotop18,echotop30,freezing,preciprate,preciptype,mesh,lightning` | Which MRMS 2-D products the sidecar fetches; add `bbtop,bbbottom` for the melting layer (15 MB each per fetch), or trim the list |
-| `ENABLE_VOICE` | `false` | VHF voice scanner panel (see [docs/VOICE.md](docs/VOICE.md)) |
-| `EXPLORE_PROVIDER` | — | `flyitalyadsb`, `adsb.lol`, `adsb.fi` or `airplanes.live`; adds the *Explore* feed (pick any city). See [Explore](#explore-any-city) |
-| `EXPLORE_API_KEY` | — | API key for `flyitalyadsb` (setting it alone selects that provider) |
-| `EXPLORE_FALLBACK_PROVIDER` | — | A second provider from the same list, used automatically while `EXPLORE_PROVIDER` is failing. See [Explore](#explore-any-city) |
-| `EXPLORE_POLL_S` | `10` | Seconds between Explore polls and the per-city cache window; a free key allows 30 requests a minute |
-| `ENABLE_TERRAIN` | `true` | Deploy-level 3D-terrain kill switch (users can also turn it off per-browser) |
-| `ENABLE_UPDATE_CHECK` | `true` | The container asks GitHub once a day for the latest release and the settings panel shows a badge when it is newer. Runs server-side only (one request per deployment per day, no viewer IPs); `false` disables it entirely |
-| `ENABLE_DATA_REFRESH` | `true` | The container asks the FAA once a day whether a new edition of its procedure data is out (approaches, arrivals, departures, airways, navaids; one every 28 days) and, when it is, downloads it (about 9 MB) and rebuilds the app's copy, a few seconds of work. Runs server-side only (no viewer IPs); `false` keeps the copy built into the image, which the airport card marks out of date once its 28 days are up |
-| `HIDE_TOWER` | `false` | Hide the home tower marker |
-| `TRACK_API_HOST` | `track-service:8000` | nginx upstream |
-| `ROUTE_CACHE_TTL_SECONDS` (track-service) | `86400` | How long the shared route cache keeps an answer before asking adsb.im again |
-| `ROUTE_MIN_INTERVAL_SECONDS` (track-service) | `180` | Minimum spacing between route requests to adsb.im; newly seen callsigns coalesce until it passes |
-| `ROUTE_API_CONTACT` (adsb-3d and track-service) | — | Contact (email or site) sent to adsb.im and tile providers in the User-Agent (`adsb-3d/<version> (+repo; contact)`); they ask for one. Unset = no contact sent, warning at start |
-| `ACARS_API_HOST` | `acars-service:8000` | nginx upstream |
-| `WEATHER_API_HOST` | `weather-service:8000` | nginx upstream for `/weather-api/` |
-| `VOICE_EVENTS_HOST` | — | nginx upstream for `/voice/calls` + `/voice/ws` — what the frontend uses |
-| `VOICE_STREAM_HOST` | — | required when voice is on; point at any reachable `host:port` (legacy Icecast block, not played by the frontend) |
-| `CARTO_API_KEY` | — | Free [CARTO basemaps key](https://carto.com/basemaps/apikey) that unlocks the Carto Dark and Carto Voyager basemaps. Fetched by the browser directly from CARTO (their terms forbid proxying), one key per deployment. Without it those two entries are hidden and the default basemap falls back to OpenStreetMap |
-| `DNS_RESOLVER` | `127.0.0.11` | nginx `resolver` address(es) for upstream lookups; override on runtimes without Docker's embedded DNS (e.g. Kubernetes CoreDNS) |
-| `MAP_ZOOM` / `MAP_GRID_SIZE` | `8` / `21` | boot-time tile pre-cache around the station (zoom level / grid width); only active with the `/tiles` volume mounted |
-
-**Multi-feed:** `FEEDN_NAME`, `FEEDN_LAT`, `FEEDN_LON`, `FEEDN_ALT`,
-`FEEDN_URL`, `FEEDN_COLOR`, `FEEDN_ACARS` — see [Multi-feed](#multi-feed).
-(`FEEDS_CONFIG` accepts the raw JSON feed array directly and skips the
-`FEEDN_*` synthesis — see `.env.example` for the shape.)
-
-**Backend services** (`track-service` / `acars-service` / `weather-service`
-containers, not the main image — see the compose example):
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `FEEDER_URL` | `http://ultrafeeder` | same feeder the frontend uses; both services poll it |
-| `FEEDER_POLL_SECONDS` | heuristic | live-stream poll cadence override (defaults per feeder type) |
-| `COLLECTION_INTERVAL` | `5` | seconds between DB track snapshots (track-service) |
-| `RETENTION_DAYS` | `90` | TimescaleDB retention for tracks and ACARS messages |
-| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `timescaledb-adsb` / `5432` / `adsb_tracks` / `adsb` / — | TimescaleDB connection; password has no default on purpose |
-| `ACARS_HOST` / `ACARS_PORT` | `acarshub` / `15550` | acarshub / acars_router JSON-over-TCP feed (acars-service); `15550` is the ACARS lane, `15555` VDL Mode 2 |
-| `LATITUDE` / `LONGITUDE` (weather-service) | — | optional; pre-warms a pinned storm volume for the local feed at startup. Other feeds are cropped on demand from the viewer's `lat`/`lon` |
-| `WEATHER3D_RADIUS_NM` | `250` | half-width of each feed's crop box in nautical miles (weather-service) |
-| `WEATHER3D_REFRESH_S` | `300` | seconds between NOAA MRMS downloads (weather-service); floor `120`, lower values are raised to it |
-| `WEATHER3D_LOCATION_TTL_S` | `1800` | drop a feed location nobody asked about for this long; pinned pre-warm never expires (weather-service) |
-| `ROUTE_API_CONTACT` (weather-service) | — | contact sent to NOAA in the User-Agent, same as the other services |
-
-ACARS messages are decoded into human-readable summaries (position reports, arrivals, weather requests, and CPDLC/ADS-C/AFN datalink) shown above the raw text; see [acars-service/README.md](acars-service/README.md#message-decoding).
-| `STATION_ID` | `adsb-3d` | station identifier stamped on stored ACARS messages |
-
-**Reverse proxy:** `BASE_PATH` overrides the auto-detected subpath
-(see [Reverse proxy](#reverse-proxy)). `TRUSTED_PROXY_CIDR` (comma-
-separated CIDRs) makes rate limiting key on the real client IP behind
-a fronting proxy instead of one shared bucket. `CORS_ALLOW_ORIGIN`
-(default empty = no CORS headers) opts a specific origin — or `*` —
-back in if another site consumes the API directly.
-
-## Controls
-
-Two camera modes, switched with the footer pill (or Settings → Camera):
-
-- **Orbit** (default): **left-drag** turns around a point, **scroll** zooms,
-  **right-drag** pans the view (moves the center point). Selecting an
-  aircraft follows it; deselecting eases back to the view you had.
-  The footer's **share** button copies a link to the selected aircraft;
-  opening one zooms in on that aircraft.
-- **Free**: **left-drag** looks around, **WASD** or the arrow keys fly
-  relative to where you look, **R / F** (or PageUp / PageDown) go straight
-  up and down, **Shift** is fast, **scroll** pushes along the line of sight.
-
-In orbit mode the camera can come within about a mile of the point it
-turns around, **scroll** zooms toward whatever is under the cursor (toward
-the aircraft while one is followed), and the eye can skim just above the
-ground. The free camera slows down as it gets low, so close inspection is
-not a blur.
-
-**Spin** in the footer starts a slow auto-orbit and opens a direction and
-speed popover; once the hand is still for two seconds the controls fade so
-only the orbit is left, and any movement brings them back. Spin is an
-orbit, so starting it switches a free camera back to orbit, and switching
-to the free camera stops it.
-
-With **3D airspace** on, click an airspace's name label to frame it and
-open its info card; `Esc` or the × closes the card.
-
-On a phone the aircraft list and the settings panel each fill the screen,
-so opening one closes the other.
-
-| Key | Action |
-|---|---|
-| Arrow keys | Pan the view (orbit) or fly (free) |
-| `R` | Recenter camera + clear selection (orbit); straight up (free) |
-| `/` | Focus the list search box |
-| `Esc` | Close settings panel, ACARS panel or a popover |
-
-## Upgrading
-
-Pull the new image and restart; settings and data carry over. From
-0.12.2 the settings panel shows an **Update available** badge when a
-newer release exists, and the first load after an upgrade shows what
-changed.
-
-**Routes (origin / destination) stopped showing?** Releases before
-0.12 sent route lookups to [adsb.im](https://adsb.im) one callsign at a
-time and may be rate-limited or blocked there. Pull a current image
-(`:latest` or `0.12.2`+) and restart; routes come back, and from 0.12.2
-the settings panel tells you when a newer release exists. See
-[#17](https://github.com/hook-365/adsb-3d/issues/17).
-
-Full detail in [CHANGELOG.md](CHANGELOG.md).
-
-### Versioning
-
-`VERSION` at the repository root is the single source of truth. Every image
-copies it at build time and reports it everywhere a version appears: the
-settings panel (`v0.12.1`), the `/api` and `/acars-api` root endpoints, the
-nginx `User-Agent` sent to adsb.im and tile providers, and track-service's
-`adsb-3d/<version> track-service` agent. Images built from a commit that is
-not a release tag carry build metadata (`0.12.1+a1b2c3d`, or `+local` for a
-local compose build), so a non-release build can never be mistaken for the
-published one. Releases are cut with `scripts/release.sh X.Y.Z`; CI refuses
-to publish if `VERSION`, `frontend/package.json` and the tag disagree.
-
-## Architecture
-
-```
-                ┌──────── browser ────────┐
-                │  Vite/TS Three.js app   │
-                └───────────┬─────────────┘
-                            │
-                       nginx (port 80)
-                            │
-      ┌──────────┬──────────┼──────────┬──────────────┬───────────────┐
-      │          │          │          │              │               │
-   /data/...  /api/...   /ws/...  /api/feeds/N/...  /acars-api/   /weather-api/
-      │          │          │          │              │               │
- ultrafeeder  track-service │   remote adsb-3d   acars-service  weather-service
-                  │             instance (slot N)                 (NOAA MRMS)
-                  ▼
-            TimescaleDB
-       (aircraft_positions
-        + aircraft_metadata
-        + acars_messages)
-```
-
-- **`frontend/`** — Vite + TypeScript + Three.js viewer, no framework.
-- **`track-service/`** — FastAPI + asyncpg; a live WebSocket diff stream
-  plus a TimescaleDB history collector.
-- **`acars-service/`** — FastAPI bridge to an acarshub TCP feed.
-- **`weather-service/`** — FastAPI sidecar that downloads NOAA MRMS 3D
-  reflectivity once and serves a small volume cropped around each feed.
-- **`nginx/`** — reverse proxy + static host; `entrypoint.sh` renders the
-  config (including per-feed proxy blocks) from env vars at start.
-
-See [CLAUDE.md](CLAUDE.md) for a deeper architecture orientation.
-
-## Development
-
-```sh
-cd frontend
-npm install
-npm run dev         # Vite dev server
-npm run typecheck   # tsc, strict
-npm run test        # Vitest
-npm run build       # → dist/
-```
-
-`npm run dev` proxies backend routes to `http://localhost:8080`; override
-with `DEV_BACKEND`.
-
-Three data files in the frontend are generated from public sources and
-committed, so the running container never fetches them. Regenerate with
-the matching script (Python 3, standard library only) and commit the
-result:
-
-| Script | Writes | Source | When |
-|---|---|---|---|
-| `scripts/build-airspace.py` | `frontend/src/world/airspace-data.json` | FAA ADDS Class Airspace and Special Use Airspace | When a chart cycle changes airspace |
-| `scripts/build-cities.py` | `frontend/src/feed/explore-cities.json` | GeoNames `cities15000` (CC BY 4.0) | Rarely |
-| `scripts/build-airports.py` | `frontend/src/feed/explore-airports.json` | OurAirports `airports.csv` (public domain) | When airports or codes change |
-| `scripts/build-runways.py` | `frontend/src/world/runways-data.json` | OurAirports `runways.csv` (public domain) | After `build-airports.py`, or when runways change |
-| `scripts/build-frequencies.py` | `frontend/src/world/frequencies-data.json` | OurAirports `airport-frequencies.csv` (public domain) | With the runways |
-| `scripts/build-artcc.py` | `frontend/src/world/artcc-data.json` | FAA open data, Airspace Boundary (public domain) | Rarely; with the airspace file |
-| `scripts/build-refueling.py` | `frontend/src/world/refueling-data.json` | tar1090's `US_A2A_refueling.geojson` (GPL v2+) | Rarely |
-| `scripts/build-airport-ground.py` | `frontend/src/world/airport-ground-index.json`, `airport-ground.pack` | OpenStreetMap through the Overpass API (ODbL) | Occasionally. Slow: the public Overpass servers are often busy, so it retries and resumes from `.cache/` |
-| `scripts/build-procedures.py` | `frontend/src/world/procedures-index.json`, `procedures.pack` | FAA CIFP (not copyrighted) | Every 28 days, when a new edition is effective |
-| `scripts/build-navdata.py` | `frontend/src/world/navdata.json` | FAA CIFP (not copyrighted) | With `build-procedures.py` |
-| `scripts/refresh-cifp.py` | runs the two above from one download | FAA CIFP | Before a release. Running containers run the same script daily for themselves (`ENABLE_DATA_REFRESH`) |
-
-To run the full container against an existing backend:
-
-```sh
-docker compose -f docker-compose.dev.yml --project-directory . up --build -d
-# → http://localhost:8186/
-```
-
 ## Credits
 
-- **FAA Aeronautical Information Services** ([ADDS open data](https://adds-faa.opendata.arcgis.com), published for public use) — Class Airspace and Special Use Airspace behind the 3D airspace (`frontend/src/world/airspace-data.json`). Simplified from the FAA originals, which the FAA does not warrant once modified; not for navigation.
-- **FAA CIFP** ([Coded Instrument Flight Procedures](https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/cifp/), not copyrighted) — the instrument approaches, arrivals and departures, and the airways, navaids and fixes. Provided by the FAA as is, with no warranty; this project simplifies it and it must not be used for navigation.
-- **[Open-Meteo](https://open-meteo.com)** (CC BY 4.0) — forecast winds aloft, when `ENABLE_WINDS_ALOFT` is on; proxied and cached hourly by the container and credited on screen. Their free API is for non-commercial use.
-- **[aviationweather.gov](https://aviationweather.gov/data/api/)** (US National Weather Service) — METARs and TAFs for the airport card, and pilot reports, proxied and cached by the container (five and fifteen minutes); nothing stored.
-- **FAA TFR site** ([tfr.faa.gov](https://tfr.faa.gov)) — the live temporary flight restrictions, proxied and cached by the container (list ten minutes, each NOTAM thirty); nothing stored.
-- **OurAirports** ([ourairports.com/data](https://ourairports.com/data/), public domain) — the airport list behind the Explore picker's code search (`frontend/src/feed/explore-airports.json`) and the runways of the airports layer (`frontend/src/world/runways-data.json`).
-- **OpenStreetMap contributors** ([openstreetmap.org/copyright](https://www.openstreetmap.org/copyright), ODbL 1.0) — the taxiways, aprons, terminals and gates of the airport ground detail (`frontend/src/world/airport-ground.pack`), credited on screen while the layer is on.
-- **GeoNames** ([geonames.org](https://www.geonames.org), CC BY 4.0) — the US city list behind the Explore picker's search (`frontend/src/feed/explore-cities.json`).
-- **tar1090** ([wiedehopf/tar1090](https://github.com/wiedehopf/tar1090),
-  GPL v2+) — SVG aircraft shape catalog, the altitude → color palette, and
-  the US air refueling track centrelines (its "US A2A Refueling" overlay,
-  `frontend/src/world/refueling-data.json`).
-- **readsb / dump1090-fa** — upstream Mode S/ADS-B decoder.
-- **planespotters.net** — aircraft photographs in the detail panel.
-- **[adsb.im](https://adsb.im)** — callsign → route resolution, run by
-  one person as a hobby service. Lookups are cached and batched to keep
-  the load small; please keep it that way if you fork this.
-- **[FlyItalyADSB](https://flyitalyadsb.com)** (CC BY-SA 4.0),
-  **[adsb.lol](https://adsb.lol)** (ODbL 1.0), **[adsb.fi](https://adsb.fi)**
-  (personal, non-commercial) and **[airplanes.live](https://airplanes.live)**
-  — community-run aggregators whose radius APIs power the Explore feed,
-  one at a time per deployment; credited on screen while active, polled
-  at most six times a minute per city, nothing stored.
-- **[NOAA MRMS](https://mrms.ncep.noaa.gov/)** — merged 3D reflectivity
-  behind the 3D storms, US government public domain; credited on screen.
-- **OpenStreetMap, ESRI, OpenTopoMap** — basemap tile providers, proxied
-  and cached by the container; credited on screen.
-- **[CARTO](https://carto.com/attributions)** — Dark / Voyager basemaps,
-  fetched directly by the browser under your own free API key per
-  [CARTO's basemap terms](https://carto.com/legal/basemap-terms/)
-  (5M tiles/month fair-use, OpenStreetMap + CARTO attribution required,
-  no server-side caching).
-- **[VFRMap](https://vfrmap.com)** — hosting for FAA Sectional / Helicopter
-  / IFR Low / IFR High chart tiles, kept in sync with the FAA 56-day cycle.
-  Free non-commercial service; please don't abuse it.
+None of the data here is mine, and this only works because other people
+share theirs. Aircraft shapes, colours and refueling tracks come from
+[tar1090](https://github.com/wiedehopf/tar1090). Routes come from
+[adsb.im](https://adsb.im), photos from planespotters.net. Explore traffic
+comes from [FlyItalyADSB](https://flyitalyadsb.com),
+[adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi) and
+[airplanes.live](https://airplanes.live). Airspace, procedures and TFRs
+come from the FAA; weather from [NOAA MRMS](https://mrms.ncep.noaa.gov/),
+[aviationweather.gov](https://aviationweather.gov/data/api/),
+[RainViewer](https://www.rainviewer.com/) and
+[Open-Meteo](https://open-meteo.com). Airports come from
+[OurAirports](https://ourairports.com/data/), cities from
+[GeoNames](https://www.geonames.org), and maps from OpenStreetMap, ESRI,
+OpenTopoMap, [CARTO](https://carto.com/attributions) and
+[VFRMap](https://vfrmap.com).
+
+The licences and terms for each of them are in
+[docs/CREDITS.md](docs/CREDITS.md). Please don't navigate with any of it.
 
 ## License
 
 Source code is MIT (see `LICENSE`). Data taken from tar1090
 (`frontend/src/aircraft/shapes-data.json` and
-`frontend/src/world/refueling-data.json`) is GPL v2+ per upstream — if
+`frontend/src/world/refueling-data.json`) is GPL v2+ per upstream. If
 you redistribute the built app, GPL governs those components.

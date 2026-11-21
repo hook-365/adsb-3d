@@ -29,7 +29,12 @@ external voice-services stack).
 - `Dockerfile` + `entrypoint.sh` — single image. The entrypoint renders
   `config.js` (frontend runtime config) and the nginx config from environment
   variables at container start.
-- `docs/` — `VOICE.md`, `REVERSE-PROXY.md`, `PRODUCTION-CHECKLIST.md`.
+- `docs/` — everything the README links out to: `FEATURES.md`,
+  `CONFIGURATION.md` (the environment variable reference; a new variable
+  gets its row there, plus `.env.example` and the compose example),
+  `FEEDS.md`, `CONTROLS.md`, `UPGRADING.md`, `DEVELOPMENT.md`, `CREDITS.md`,
+  `VOICE.md`, `REVERSE-PROXY.md`, `PRODUCTION-CHECKLIST.md`. The README
+  stays short: pitch, quick start, feature summary, links.
 
 ## Frontend architecture
 

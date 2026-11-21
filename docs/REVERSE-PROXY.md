@@ -31,7 +31,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket support — required for /ws/live (live aircraft feed)
+        # WebSocket support, required for /ws/live (live aircraft feed)
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -184,7 +184,7 @@ labels:
 ```
 
 **Note**: With the `stripprefix` middleware above, the container never sees
-the `/3d` prefix and cannot auto-detect it — set `BASE_PATH=/3d` on the
+the `/3d` prefix and cannot auto-detect it, so set `BASE_PATH=/3d` on the
 container so asset URLs are rewritten correctly.
 
 ---

@@ -2,32 +2,33 @@
 
 Three.js + TypeScript app, Vite-built.
 
-See `../README.md` for the project-level overview, environment
-variables, and architecture notes.
+See `../README.md` for the project-level overview,
+`../docs/CONFIGURATION.md` for environment variables and
+`../docs/DEVELOPMENT.md` for architecture notes.
 
 ## Layout
 
-- `src/core/` — settings store, filter store, config (HOME etc.),
+- `src/core/`: settings store, filter store, config (HOME etc.),
   coordinate projection, units formatter, URL state, time-context
   (live ↔ historical mode + playback cursor/rate).
-- `src/feed/` — `feeds.ts` (multi-feed bootstrap + switcher),
+- `src/feed/`: `feeds.ts` (multi-feed bootstrap + switcher),
   `live.ts` (WS + HTTP fallback), `history.ts` (live-mode trail
   backfill), `historical.ts` (full-window playback feed with
   interpolation), `routes.ts` (callsign → origin/destination cache),
   `acars.ts` (ACARS WS + HTTP fallback).
-- `src/aircraft/` — aircraft store, reconciler (one Group per
+- `src/aircraft/`: aircraft store, reconciler (one Group per
   aircraft), acars-store (per-hex messages + OOOI summary), vendored
   tar1090 shape catalog + resolver.
-- `src/world/` — scene, camera/orbit controls, label renderer, basemap
+- `src/world/`: scene, camera/orbit controls, label renderer, basemap
   tile layer, heatmap (3D airway-density LineSegments).
-- `src/ui/` — aircraft list, aircraft detail card, photo loader,
+- `src/ui/`: aircraft list, aircraft detail card, photo loader,
   panel toggle, feed selector, settings panel, time-controls strip,
   docked ACARS panel, basemap attribution, loading overlay, voice scanner panel
   (opt-in via `ENABLE_VOICE`; see [docs/VOICE.md](../docs/VOICE.md)).
-- `src/interaction/` — click/tap raycast picking.
-- `src/main.ts` — composes the above; owns the FeedSession lifecycle
+- `src/interaction/`: click/tap raycast picking.
+- `src/main.ts`: composes the above; owns the FeedSession lifecycle
   for in-place feed switching and the live ↔ historical handover.
-- `tests-unit/` — Vitest smoke tests.
+- `tests-unit/`: Vitest smoke tests.
 
 ## Scripts
 
